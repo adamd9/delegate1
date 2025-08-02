@@ -13,6 +13,8 @@ export type Item = {
   params?: Record<string, any>;
   // For "function_call_output" items
   output?: string;
+  // For multi-channel support
+  channel?: "voice" | "text";
 };
 
 export interface PhoneNumber {

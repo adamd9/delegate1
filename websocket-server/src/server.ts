@@ -6,10 +6,7 @@ import http from "http";
 import { readFileSync } from "fs";
 import { join } from "path";
 import cors from "cors";
-import {
-  handleCallConnection,
-  handleFrontendConnection,
-} from "./sessionManager";
+import { handleCallConnection, handleFrontendConnection, handleChatConnection } from "./sessionManager";
 import functions from "./functionHandlers";
 
 dotenv.config();
@@ -115,6 +112,7 @@ app.post("/access-token", (req, res) => {
 
 let currentCall: WebSocket | null = null;
 let currentLogs: WebSocket | null = null;
+let currentChat: WebSocket | null = null;
 
 wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
   const url = new URL(req.url || "", `http://${req.headers.host}`);
@@ -135,6 +133,10 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     if (currentLogs) currentLogs.close();
     currentLogs = ws;
     handleFrontendConnection(currentLogs);
+  } else if (type === "chat") {
+    if (currentChat) currentChat.close();
+    currentChat = ws;
+    handleChatConnection(currentChat, OPENAI_API_KEY);
   } else {
     ws.close();
   }

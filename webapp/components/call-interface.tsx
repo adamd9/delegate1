@@ -6,6 +6,7 @@ import ChecklistAndConfig from "@/components/checklist-and-config";
 import SessionConfigurationPanel from "@/components/session-configuration-panel";
 import Transcript from "@/components/transcript";
 import FunctionCallsPanel from "@/components/function-calls-panel";
+import ChatInput from "@/components/chat-input";
 import { Item } from "@/components/types";
 import handleRealtimeEvent from "@/lib/handle-realtime-event";
 import PhoneNumberChecklist from "@/components/phone-number-checklist";
@@ -16,6 +17,8 @@ const CallInterface = () => {
   const [items, setItems] = useState<Item[]>([]);
   const [callStatus, setCallStatus] = useState("disconnected");
   const [ws, setWs] = useState<WebSocket | null>(null);
+  const [chatWs, setChatWs] = useState<WebSocket | null>(null);
+  const [chatStatus, setChatStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
 
   useEffect(() => {
     if (allConfigsReady && !ws) {
@@ -42,6 +45,66 @@ const CallInterface = () => {
     }
   }, [allConfigsReady, ws]);
 
+  // Chat WebSocket connection
+  useEffect(() => {
+    if (allConfigsReady && !chatWs) {
+      setChatStatus('connecting');
+      const newChatWs = new WebSocket("ws://localhost:8081/chat");
+
+      newChatWs.onopen = () => {
+        console.log("Connected to chat websocket");
+        setChatStatus('connected');
+      };
+
+      newChatWs.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log("Received chat event:", data);
+        
+        // Handle chat responses
+        if (data.type === "chat.response") {
+          // Create a synthetic transcript item for the chat response
+          const responseItem: Item = {
+            id: `chat_response_${Date.now()}`,
+            object: "realtime.item",
+            type: "message",
+            role: "assistant",
+            content: [{ type: "text", text: data.content }],
+            channel: "text"
+          };
+          
+          setItems(prevItems => [...prevItems, responseItem]);
+        }
+      };
+
+      newChatWs.onclose = () => {
+        console.log("Chat websocket disconnected");
+        setChatWs(null);
+        setChatStatus('disconnected');
+      };
+
+      newChatWs.onerror = (error) => {
+        console.error("Chat websocket error:", error);
+        setChatStatus('disconnected');
+      };
+
+      setChatWs(newChatWs);
+    }
+  }, [allConfigsReady, chatWs]);
+
+  const handleSendChatMessage = (message: string) => {
+    if (chatWs && chatWs.readyState === WebSocket.OPEN) {
+      const chatMessage = {
+        type: "chat.message",
+        content: message,
+        timestamp: Date.now()
+      };
+      console.log("Sending chat message:", chatMessage);
+      chatWs.send(JSON.stringify(chatMessage));
+    } else {
+      console.error("Chat WebSocket not connected");
+    }
+  };
+
   return (
     <div className="h-screen bg-white flex flex-col">
       <ChecklistAndConfig
@@ -51,8 +114,8 @@ const CallInterface = () => {
         setSelectedPhoneNumber={setSelectedPhoneNumber}
       />
       <TopBar />
-      <div className="flex-grow p-4 h-full overflow-hidden flex flex-col">
-        <div className="grid grid-cols-12 gap-4 h-full">
+      <div className="flex-grow p-4 overflow-hidden flex flex-col">
+        <div className="grid grid-cols-12 gap-4 flex-grow overflow-hidden">
           {/* Left Column */}
           <div className="col-span-3 flex flex-col h-full overflow-hidden">
             <SessionConfigurationPanel
@@ -86,6 +149,15 @@ const CallInterface = () => {
           <div className="col-span-3 flex flex-col h-full overflow-hidden">
             <FunctionCallsPanel items={items} ws={ws} />
           </div>
+        </div>
+        
+        {/* Chat Input at Bottom */}
+        <div className="mt-4">
+          <ChatInput
+            onSendMessage={handleSendChatMessage}
+            connectionStatus={chatStatus}
+            disabled={!allConfigsReady}
+          />
         </div>
       </div>
     </div>

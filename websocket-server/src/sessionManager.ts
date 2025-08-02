@@ -4,6 +4,7 @@ import functions from "./functionHandlers";
 interface Session {
   twilioConn?: WebSocket;
   frontendConn?: WebSocket;
+  chatConn?: WebSocket;
   modelConn?: WebSocket;
   streamSid?: string;
   saved_config?: any;
@@ -11,6 +12,7 @@ interface Session {
   responseStartTimestamp?: number;
   latestMediaTimestamp?: number;
   openAIApiKey?: string;
+  conversationHistory?: Array<{type: 'user' | 'assistant', content: string, timestamp: number, channel: 'voice' | 'text'}>;
 }
 
 let session: Session = {};
@@ -43,7 +45,26 @@ export function handleFrontendConnection(ws: WebSocket) {
   ws.on("close", () => {
     cleanupConnection(session.frontendConn);
     session.frontendConn = undefined;
-    if (!session.twilioConn && !session.modelConn) session = {};
+    if (!session.twilioConn && !session.modelConn && !session.chatConn) session = {};
+  });
+}
+
+export function handleChatConnection(ws: WebSocket, openAIApiKey: string) {
+  cleanupConnection(session.chatConn);
+  session.chatConn = ws;
+  session.openAIApiKey = openAIApiKey;
+  
+  // Initialize conversation history if not exists
+  if (!session.conversationHistory) {
+    session.conversationHistory = [];
+  }
+
+  ws.on("message", handleChatMessage);
+  ws.on("error", ws.close);
+  ws.on("close", () => {
+    cleanupConnection(session.chatConn);
+    session.chatConn = undefined;
+    if (!session.twilioConn && !session.modelConn && !session.frontendConn) session = {};
   });
 }
 
@@ -115,8 +136,86 @@ function handleFrontendMessage(data: RawData) {
   }
 }
 
+function handleChatMessage(data: RawData) {
+  const msg = parseMessage(data);
+  if (!msg) return;
+
+  console.log("Chat message received:", msg);
+
+  // Handle different chat message types
+  switch (msg.type) {
+    case "chat.message":
+      const userMessage: {type: 'user' | 'assistant', content: string, timestamp: number, channel: 'voice' | 'text'} = {
+        type: 'user' as const,
+        content: msg.content,
+        timestamp: Date.now(),
+        channel: 'text' as const
+      };
+      
+      // Add to conversation history
+      if (!session.conversationHistory) {
+        session.conversationHistory = [];
+      }
+      session.conversationHistory.push(userMessage);
+      
+      // Forward to observability clients
+      if (isOpen(session.frontendConn)) {
+        jsonSend(session.frontendConn, {
+          type: "conversation.item.created",
+          item: {
+            id: `msg_${Date.now()}`,
+            type: "message",
+            role: "user",
+            content: [{ type: "text", text: msg.content }],
+            channel: "text"
+          }
+        });
+      }
+      
+      // Connect to model if not already connected
+      if (!isOpen(session.modelConn)) {
+        tryConnectModel();
+      }
+      
+      // Send text message to OpenAI Realtime API
+      if (isOpen(session.modelConn)) {
+        jsonSend(session.modelConn, {
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [{ type: "text", text: msg.content }]
+          }
+        });
+        
+        // Trigger response generation
+        jsonSend(session.modelConn, {
+          type: "response.create",
+          response: {
+            modalities: ["text"],
+            instructions: "Please respond to the user's text message."
+          }
+        });
+      }
+      break;
+      
+    case "session.update":
+      // Handle session configuration updates from chat client
+      session.saved_config = msg.session;
+      if (isOpen(session.modelConn)) {
+        jsonSend(session.modelConn, msg);
+      }
+      break;
+      
+    default:
+      console.log("Unknown chat message type:", msg.type);
+  }
+}
+
 function tryConnectModel() {
-  if (!session.twilioConn || !session.streamSid || !session.openAIApiKey)
+  // Connect to model if we have either a Twilio connection OR a chat connection
+  const hasConnection = (session.twilioConn && session.streamSid) || session.chatConn;
+  if (!hasConnection || !session.openAIApiKey)
     return;
   if (isOpen(session.modelConn)) return;
 
@@ -202,6 +301,31 @@ function handleModelMessage(data: RawData) {
           .catch((err) => {
             console.error("Error handling function call:", err);
           });
+      } else if (item.type === "message" && item.role === "assistant") {
+        // Handle text responses from assistant
+        const textContent = item.content?.find((c: any) => c.type === "text");
+        if (textContent && session.chatConn) {
+          // Add to conversation history
+          if (!session.conversationHistory) {
+            session.conversationHistory = [];
+          }
+          const assistantMessage: {type: 'user' | 'assistant', content: string, timestamp: number, channel: 'voice' | 'text'} = {
+            type: 'assistant' as const,
+            content: textContent.text,
+            timestamp: Date.now(),
+            channel: 'text' as const
+          };
+          session.conversationHistory.push(assistantMessage);
+          
+          // Send response back to chat client
+          if (isOpen(session.chatConn)) {
+            jsonSend(session.chatConn, {
+              type: "chat.response",
+              content: textContent.text,
+              timestamp: Date.now()
+            });
+          }
+        }
       }
       break;
     }
