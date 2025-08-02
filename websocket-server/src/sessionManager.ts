@@ -319,11 +319,31 @@ function tryConnectModel() {
   session.modelConn.on("close", closeModel);
 }
 
+function shouldForwardToFrontend(event: any): boolean {
+  // Filter out events that would disrupt existing chat history
+  if (event.type === "session.created") {
+    console.log("🚫 Filtering session.created event to preserve chat history");
+    return false;
+  }
+  
+  // Filter out session.updated events that might reset frontend state
+  if (event.type === "session.updated") {
+    console.log("🚫 Filtering session.updated event to preserve chat history");
+    return false;
+  }
+  
+  // Allow all other events through
+  return true;
+}
+
 function handleModelMessage(data: RawData) {
   const event = parseMessage(data);
   if (!event) return;
 
-  jsonSend(session.frontendConn, event);
+  // Filter events before forwarding to frontend to preserve chat history
+  if (shouldForwardToFrontend(event)) {
+    jsonSend(session.frontendConn, event);
+  }
 
   switch (event.type) {
     case "input_audio_buffer.speech_started":

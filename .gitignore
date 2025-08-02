@@ -4,3 +4,5 @@ node_modules
 generate-token.js
 Reference Implementations/
 .DS_Store
+websocket-server/session-data.json
+websocket-server/dist
