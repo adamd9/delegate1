@@ -28,7 +28,7 @@ const SessionConfigurationPanel: React.FC<SessionConfigurationPanelProps> = ({
   const [instructions, setInstructions] = useState(
     "You are a helpful assistant in a phone call."
   );
-  const [voice, setVoice] = useState("ash");
+  const [voice, setVoice] = useState("ballad");
   const [tools, setTools] = useState<string[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingSchemaStr, setEditingSchemaStr] = useState("");
