@@ -1,7 +1,7 @@
 import { RawData, WebSocket } from "ws";
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import functions from "./functionHandlers";
+import { getAllFunctions, getDefaultAgent, FunctionHandler } from "./agentConfigs";
 
 interface Session {
   twilioConn?: WebSocket;
@@ -74,8 +74,9 @@ export function handleChatConnection(ws: WebSocket, openAIApiKey: string) {
 
 async function handleFunctionCall(item: { name: string; arguments: string }) {
   console.log("Handling function call:", item);
-  const fnDef = functions.find((f) => f.schema.name === item.name);
-  if (!fnDef) {
+  const allFunctions = getAllFunctions();
+  const func = allFunctions.find((f: FunctionHandler) => f.schema.name === item.name);
+  if (!func) {
     throw new Error(`No handler found for function: ${item.name}`);
   }
 
@@ -89,8 +90,8 @@ async function handleFunctionCall(item: { name: string; arguments: string }) {
   }
 
   try {
-    console.log("Calling function:", fnDef.schema.name, args);
-    const result = await fnDef.handler(args as any);
+    console.log("Calling function:", func.schema.name, args);
+    const result = await func.handler(args as any);
     return result;
   } catch (err: any) {
     console.error("Error running function:", err);
@@ -214,7 +215,8 @@ async function handleTextChatMessage(content: string) {
     console.log("🤖 Calling OpenAI REST API for text response...");
     
     // Import function schemas for supervisor agent
-    const functionSchemas = functions.map(f => f.schema);
+    const allFunctions = getAllFunctions();
+    const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
     
     // Call OpenAI REST API for text response with supervisor agent capability
     const completion = await session.openaiClient.chat.completions.create({
@@ -263,7 +265,8 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
       
       try {
         // Find and execute the function
-        const functionHandler = functions.find(f => f.schema.name === message.function_call!.name);
+        const allFunctions = getAllFunctions();
+        const functionHandler = allFunctions.find((f: FunctionHandler) => f.schema.name === message.function_call!.name);
         if (functionHandler) {
           const args = JSON.parse(message.function_call!.arguments);
           console.log(`🧠 Executing ${message.function_call!.name} with args:`, args);
@@ -412,7 +415,8 @@ function tryConnectModel() {
     const config = session.saved_config || {};
     
     // Include supervisor agent function for voice channel
-    const functionSchemas = functions.map(f => f.schema);
+    const allFunctions = getAllFunctions();
+    const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
     
     jsonSend(session.modelConn, {
       type: "session.update",

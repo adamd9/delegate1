@@ -1,0 +1,30 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  trigger-deployment:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Set domain based on branch
+        id: set-domain
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "DOMAIN=1.mdlg.dev" >> $GITHUB_ENV
+          elif [ "${{ github.ref_name }}" = "dev" ]; then
+            echo "DOMAIN=1-dev.mdlg.dev" >> $GITHUB_ENV
+          fi
+          
+      - name: Trigger Docker Server Deployment
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/adamd9/docker-server/dispatches \
+            -d '{"event_type": "deploy-service", "client_payload": {"domain": "${{ env.DOMAIN }}", "action": "down-up"}}'
