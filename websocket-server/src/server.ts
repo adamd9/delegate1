@@ -51,6 +51,24 @@ app.get("/tools", (req, res) => {
   res.json(functions.map((f) => f.schema));
 });
 
+// Access token endpoint for voice client
+app.post("/access-token", (req, res) => {
+  // For now, return a simple response that the voice client can use
+  // In production, you'd generate a real Twilio access token here
+  const clientName = req.body.clientName || `voice-client-${Date.now()}`;
+  
+  // TODO: Generate actual Twilio access token
+  // const AccessToken = require('twilio').jwt.AccessToken;
+  // const VoiceGrant = AccessToken.VoiceGrant;
+  // ... token generation logic
+  
+  res.json({
+    message: "Access token endpoint ready",
+    clientName,
+    note: "This endpoint needs Twilio SDK integration to generate real tokens"
+  });
+});
+
 let currentCall: WebSocket | null = null;
 let currentLogs: WebSocket | null = null;
 

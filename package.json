@@ -1,0 +1,40 @@
+{
+  "name": "delegate1",
+  "version": "1.0.0",
+  "description": "Single-threaded, multi-channel AI assistant with voice, text, and phone capabilities",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\" \"npm run voice-client:dev\"",
+    "dev:core": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\"",
+    "start": "concurrently \"npm run backend:start\" \"npm run frontend:start\"",
+    "build": "npm run backend:build && npm run frontend:build && npm run voice-client:build",
+    "backend:dev": "cd websocket-server && npm run dev",
+    "backend:start": "cd websocket-server && npm start",
+    "backend:build": "cd websocket-server && npm run build",
+    "frontend:dev": "cd webapp && npm run dev",
+    "frontend:start": "cd webapp && npm start",
+    "frontend:build": "cd webapp && npm run build",
+    "voice-client:dev": "cd voice-client && npm run dev",
+    "voice-client:build": "cd voice-client && npm run build",
+    "voice-client:serve": "cd voice-client && npm run serve",
+    "install:all": "npm install && cd websocket-server && npm install && cd ../webapp && npm install && cd ../voice-client && npm install",
+    "clean": "rm -rf node_modules websocket-server/node_modules webapp/node_modules voice-client/node_modules websocket-server/dist voice-client/dist"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": [
+    "ai",
+    "assistant",
+    "realtime",
+    "voice",
+    "twilio",
+    "openai",
+    "multi-channel"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "twilio": "^5.8.0"
+  }
+}
