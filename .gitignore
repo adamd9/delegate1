@@ -2,3 +2,5 @@ node_modules
 .next
 .env
 generate-token.js
+Reference Implementations/
+.DS_Store
