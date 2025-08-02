@@ -213,29 +213,106 @@ async function handleTextChatMessage(content: string) {
     
     console.log("🤖 Calling OpenAI REST API for text response...");
     
-    // Call OpenAI REST API for text response
+    // Import function schemas for supervisor agent
+    const functionSchemas = functions.map(f => f.schema);
+    
+    // Call OpenAI REST API for text response with supervisor agent capability
     const completion = await session.openaiClient.chat.completions.create({
       model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: "You are a helpful AI assistant. Provide clear, concise responses to user questions."
+          content: `You are a fast chat AI assistant with access to a supervisor agent for complex queries. 
+
+For simple conversations, greetings, basic questions, and quick responses, handle them directly.
+
+For complex queries that require:
+- Multi-step analysis or planning
+- Technical deep-dives
+- Creative problem-solving
+- Detailed research or reasoning
+- Complex calculations or logic
+
+Use the getNextResponseFromSupervisor function to escalate to a more powerful reasoning model.
+
+Be conversational and helpful. When escalating, choose the appropriate reasoning_type and provide good context.`
         },
         ...messages
       ],
+      functions: functionSchemas,
+      function_call: "auto",
       max_tokens: 500,
       temperature: 0.7,
     });
     
-    const assistantResponse = completion.choices[0]?.message?.content;
+    const message = completion.choices[0]?.message;
     
-    if (assistantResponse) {
-      console.log("✅ Received text response from OpenAI:", assistantResponse.substring(0, 100) + "...");
+    // Handle function calls (supervisor agent escalation)
+    if (message?.function_call) {
+      console.log(`🔧 Function call detected: ${message.function_call.name}`);
+      
+      try {
+        // Find and execute the function
+        const functionHandler = functions.find(f => f.schema.name === message.function_call!.name);
+        if (functionHandler) {
+          const args = JSON.parse(message.function_call!.arguments);
+          console.log(`🧠 Executing ${message.function_call!.name} with args:`, args);
+          
+          const functionResult = await functionHandler.handler(args);
+          console.log(`✅ Function result received (${functionResult.length} chars)`);
+          
+          // Parse the supervisor response
+          const supervisorData = JSON.parse(functionResult);
+          const finalResponse = supervisorData.response || supervisorData.error || "Supervisor agent completed.";
+          
+          // Add supervisor response to conversation history
+          const assistantMessage = {
+            type: 'assistant' as const,
+            content: finalResponse,
+            timestamp: Date.now(),
+            channel: 'text' as const
+          };
+          session.conversationHistory.push(assistantMessage);
+          
+          // Send supervisor response back to chat client
+          if (isOpen(session.chatConn)) {
+            jsonSend(session.chatConn, {
+              type: "chat.response",
+              content: finalResponse,
+              timestamp: Date.now(),
+              supervisor: supervisorData.escalated || false
+            });
+          }
+          
+          // Forward supervisor response to observability clients
+          if (isOpen(session.frontendConn)) {
+            jsonSend(session.frontendConn, {
+              type: "conversation.item.created",
+              item: {
+                id: `msg_${Date.now()}`,
+                type: "message",
+                role: "assistant",
+                content: [{ type: "text", text: finalResponse }],
+                channel: "text",
+                supervisor: supervisorData.escalated || false
+              }
+            });
+          }
+        } else {
+          console.error(`❌ Function handler not found: ${message.function_call!.name}`);
+        }
+      } catch (error) {
+        console.error("❌ Error executing function call:", error);
+      }
+    }
+    // Handle regular text responses
+    else if (message?.content) {
+      console.log("✅ Received text response from OpenAI:", message.content.substring(0, 100) + "...");
       
       // Add assistant response to conversation history
       const assistantMessage = {
         type: 'assistant' as const,
-        content: assistantResponse,
+        content: message.content,
         timestamp: Date.now(),
         channel: 'text' as const
       };
@@ -245,7 +322,7 @@ async function handleTextChatMessage(content: string) {
       if (isOpen(session.chatConn)) {
         jsonSend(session.chatConn, {
           type: "chat.response",
-          content: assistantResponse,
+          content: message.content,
           timestamp: Date.now()
         });
       }
@@ -258,7 +335,7 @@ async function handleTextChatMessage(content: string) {
             id: `msg_${Date.now()}`,
             type: "message",
             role: "assistant",
-            content: [{ type: "text", text: assistantResponse }],
+            content: [{ type: "text", text: message.content }],
             channel: "text"
           }
         });
@@ -300,6 +377,10 @@ function tryConnectModel() {
 
   session.modelConn.on("open", () => {
     const config = session.saved_config || {};
+    
+    // Include supervisor agent function for voice channel
+    const functionSchemas = functions.map(f => f.schema);
+    
     jsonSend(session.modelConn, {
       type: "session.update",
       session: {
@@ -309,6 +390,21 @@ function tryConnectModel() {
         input_audio_transcription: { model: "whisper-1" },
         input_audio_format: "g711_ulaw",
         output_audio_format: "g711_ulaw",
+        tools: functionSchemas,
+        instructions: `You are a fast voice AI assistant with access to a supervisor agent for complex queries.
+
+For simple conversations, greetings, basic questions, and quick responses, handle them directly with natural speech.
+
+For complex queries that require:
+- Multi-step analysis or planning
+- Technical deep-dives  
+- Creative problem-solving
+- Detailed research or reasoning
+- Complex calculations or logic
+
+Use the getNextResponseFromSupervisor function to escalate to a more powerful reasoning model.
+
+Be conversational and natural in speech. When escalating, choose the appropriate reasoning_type and provide good context.`,
         ...config,
       },
     });
