@@ -74,7 +74,30 @@ The voice client:
 1. Connects to your backend via WebSocket
 2. Requests a Twilio access token from the backend
 3. Initializes the Twilio Device with the token
-4. Makes WebRTC calls that route through your backend
+4. Generate a Twilio access token:
+   ```bash
+   # From the root directory
+   node generate-token.js
+   
+   # Copy the generated token to your .env file
+   # Update VITE_TWILIO_ACCESS_TOKEN with the token
+   ```
+
+   **⚠️ Important for AU1 Region Users:**
+   If your Twilio account is in the AU1 (Australia) region, ensure your `generate-token.js` includes the region specification:
+   
+   ```javascript
+   const token = new AccessToken(
+     config.accountSid,
+     config.apiKeySid, 
+     config.apiKeySecret,
+     { 
+       identity: config.identity,
+       region: 'au1'  // Critical for AU1 region accounts
+     }
+   );
+   ```
+Makes WebRTC calls that route through your backend
 
 ## Integration with Backend
 
