@@ -1,11 +1,15 @@
 import { RawData, WebSocket } from "ws";
+import OpenAI from "openai";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import functions from "./functionHandlers";
 
 interface Session {
   twilioConn?: WebSocket;
   frontendConn?: WebSocket;
   chatConn?: WebSocket;
-  modelConn?: WebSocket;
+  modelConn?: WebSocket; // Raw WebSocket for voice
+  textModelConn?: WebSocket; // OpenAI SDK WebSocket for text
+  openaiClient?: OpenAI;
   streamSid?: string;
   saved_config?: any;
   lastAssistantItem?: string;
@@ -136,79 +140,144 @@ function handleFrontendMessage(data: RawData) {
   }
 }
 
-function handleChatMessage(data: RawData) {
+async function handleChatMessage(data: RawData) {
   const msg = parseMessage(data);
   if (!msg) return;
 
-  console.log("Chat message received:", msg);
+  console.log("💬 Chat message received:", msg);
 
-  // Handle different chat message types
   switch (msg.type) {
     case "chat.message":
-      const userMessage: {type: 'user' | 'assistant', content: string, timestamp: number, channel: 'voice' | 'text'} = {
-        type: 'user' as const,
-        content: msg.content,
+      await handleTextChatMessage(msg.content);
+      break;
+
+    case "session.update":
+      session.saved_config = msg.session;
+      console.log("📝 Chat session config updated:", msg.session);
+      break;
+
+    default:
+      console.log("❓ Unknown chat message type:", msg.type);
+  }
+}
+
+async function handleTextChatMessage(content: string) {
+  try {
+    console.log("🔤 Processing text message:", content);
+    
+    // Initialize OpenAI client if needed
+    if (!session.openaiClient && session.openAIApiKey) {
+      session.openaiClient = new OpenAI({
+        apiKey: session.openAIApiKey,
+      });
+      console.log("✅ OpenAI REST client initialized for text chat");
+    }
+    
+    if (!session.openaiClient) {
+      console.error("❌ No OpenAI client available for text chat");
+      return;
+    }
+    
+    // Add user message to conversation history
+    const userMessage = {
+      type: 'user' as const,
+      content: content,
+      timestamp: Date.now(),
+      channel: 'text' as const
+    };
+    
+    if (!session.conversationHistory) {
+      session.conversationHistory = [];
+    }
+    session.conversationHistory.push(userMessage);
+    
+    // Forward user message to observability clients
+    if (isOpen(session.frontendConn)) {
+      jsonSend(session.frontendConn, {
+        type: "conversation.item.created",
+        item: {
+          id: `msg_${Date.now()}`,
+          type: "message",
+          role: "user",
+          content: [{ type: "text", text: content }],
+          channel: "text"
+        }
+      });
+    }
+    
+    // Build conversation context for OpenAI REST API
+    const messages: ChatCompletionMessageParam[] = session.conversationHistory.map(msg => ({
+      role: msg.type === 'user' ? 'user' as const : 'assistant' as const,
+      content: msg.content
+    }));
+    
+    console.log("🤖 Calling OpenAI REST API for text response...");
+    
+    // Call OpenAI REST API for text response
+    const completion = await session.openaiClient.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: "You are a helpful AI assistant. Provide clear, concise responses to user questions."
+        },
+        ...messages
+      ],
+      max_tokens: 500,
+      temperature: 0.7,
+    });
+    
+    const assistantResponse = completion.choices[0]?.message?.content;
+    
+    if (assistantResponse) {
+      console.log("✅ Received text response from OpenAI:", assistantResponse.substring(0, 100) + "...");
+      
+      // Add assistant response to conversation history
+      const assistantMessage = {
+        type: 'assistant' as const,
+        content: assistantResponse,
         timestamp: Date.now(),
         channel: 'text' as const
       };
+      session.conversationHistory.push(assistantMessage);
       
-      // Add to conversation history
-      if (!session.conversationHistory) {
-        session.conversationHistory = [];
+      // Send response back to chat client
+      if (isOpen(session.chatConn)) {
+        jsonSend(session.chatConn, {
+          type: "chat.response",
+          content: assistantResponse,
+          timestamp: Date.now()
+        });
       }
-      session.conversationHistory.push(userMessage);
       
-      // Forward to observability clients
+      // Forward assistant response to observability clients
       if (isOpen(session.frontendConn)) {
         jsonSend(session.frontendConn, {
           type: "conversation.item.created",
           item: {
             id: `msg_${Date.now()}`,
             type: "message",
-            role: "user",
-            content: [{ type: "text", text: msg.content }],
+            role: "assistant",
+            content: [{ type: "text", text: assistantResponse }],
             channel: "text"
           }
         });
       }
-      
-      // Connect to model if not already connected
-      if (!isOpen(session.modelConn)) {
-        tryConnectModel();
-      }
-      
-      // Send text message to OpenAI Realtime API
-      if (isOpen(session.modelConn)) {
-        jsonSend(session.modelConn, {
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [{ type: "text", text: msg.content }]
-          }
-        });
-        
-        // Trigger response generation
-        jsonSend(session.modelConn, {
-          type: "response.create",
-          response: {
-            modalities: ["text"],
-            instructions: "Please respond to the user's text message."
-          }
-        });
-      }
-      break;
-      
-    case "session.update":
-      // Handle session configuration updates from chat client
-      session.saved_config = msg.session;
-      if (isOpen(session.modelConn)) {
-        jsonSend(session.modelConn, msg);
-      }
-      break;
-      
-    default:
-      console.log("Unknown chat message type:", msg.type);
+    } else {
+      console.error("❌ No response content from OpenAI");
+    }
+    
+  } catch (error) {
+    console.error("❌ Error in text chat handler:", error);
+    
+    // Send error response to chat client
+    if (isOpen(session.chatConn)) {
+      jsonSend(session.chatConn, {
+        type: "chat.error",
+        error: "Failed to get response from AI",
+        timestamp: Date.now()
+      });
+    }
   }
 }
 

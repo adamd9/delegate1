@@ -60,20 +60,8 @@ const CallInterface = () => {
         const data = JSON.parse(event.data);
         console.log("Received chat event:", data);
         
-        // Handle chat responses
-        if (data.type === "chat.response") {
-          // Create a synthetic transcript item for the chat response
-          const responseItem: Item = {
-            id: `chat_response_${Date.now()}`,
-            object: "realtime.item",
-            type: "message",
-            role: "assistant",
-            content: [{ type: "text", text: data.content }],
-            channel: "text"
-          };
-          
-          setItems(prevItems => [...prevItems, responseItem]);
-        }
+        // Chat WebSocket is used for sending messages only
+        // Responses are handled via logs WebSocket for consistency
       };
 
       newChatWs.onclose = () => {
