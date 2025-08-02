@@ -4,12 +4,13 @@ import React, { useState, useEffect } from "react";
 import TopBar from "@/components/top-bar";
 import ChecklistAndConfig from "@/components/checklist-and-config";
 import SessionConfigurationPanel from "@/components/session-configuration-panel";
-import Transcript from "@/components/transcript";
+import { EnhancedTranscript } from "@/components/enhanced-transcript";
 import FunctionCallsPanel from "@/components/function-calls-panel";
-import ChatInput from "@/components/chat-input";
 import { Item } from "@/components/types";
 import handleRealtimeEvent from "@/lib/handle-realtime-event";
+import handleEnhancedRealtimeEvent from "@/lib/handle-enhanced-realtime-event";
 import PhoneNumberChecklist from "@/components/phone-number-checklist";
+import { useTranscript } from "@/contexts/TranscriptContext";
 
 const CallInterface = () => {
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState("");
@@ -19,6 +20,10 @@ const CallInterface = () => {
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [chatWs, setChatWs] = useState<WebSocket | null>(null);
   const [chatStatus, setChatStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
+  const [userText, setUserText] = useState("");
+  const transcript = useTranscript();
+  
+  const canSendChat = chatStatus === 'connected' && userText.trim().length > 0;
 
   useEffect(() => {
     if (allConfigsReady && !ws) {
@@ -32,7 +37,9 @@ const CallInterface = () => {
       newWs.onmessage = (event) => {
         const data = JSON.parse(event.data);
         console.log("Received logs event:", data);
+        // Handle both old and new transcript systems
         handleRealtimeEvent(data, setItems);
+        handleEnhancedRealtimeEvent(data, transcript);
       };
 
       newWs.onclose = () => {
@@ -88,6 +95,9 @@ const CallInterface = () => {
       };
       console.log("Sending chat message:", chatMessage);
       chatWs.send(JSON.stringify(chatMessage));
+      
+      // Clear input
+      setUserText("");
     } else {
       console.error("Chat WebSocket not connected");
     }
@@ -130,7 +140,12 @@ const CallInterface = () => {
               allConfigsReady={allConfigsReady}
               setAllConfigsReady={setAllConfigsReady}
             />
-            <Transcript items={items} />
+            <EnhancedTranscript
+              userText={userText}
+              setUserText={setUserText}
+              onSendMessage={() => handleSendChatMessage(userText)}
+              canSend={canSendChat}
+            />
           </div>
 
           {/* Right Column: Function Calls */}
@@ -139,14 +154,7 @@ const CallInterface = () => {
           </div>
         </div>
         
-        {/* Chat Input at Bottom */}
-        <div className="mt-4">
-          <ChatInput
-            onSendMessage={handleSendChatMessage}
-            connectionStatus={chatStatus}
-            disabled={!allConfigsReady}
-          />
-        </div>
+        {/* Chat input is now integrated into the enhanced transcript */}
       </div>
     </div>
   );
