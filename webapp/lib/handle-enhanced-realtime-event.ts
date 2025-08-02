@@ -54,32 +54,6 @@ export default function handleEnhancedRealtimeEvent(
           supervisor,
           false
         );
-        
-        // Add breadcrumb for context
-        if (isUser) {
-          addTranscriptBreadcrumb(
-            `📝 User input (${channel})`,
-            {
-              itemId,
-              content: text,
-              channel
-            }
-          );
-        } else {
-          const breadcrumbTitle = supervisor 
-            ? `🧠 Supervisor response (${channel})`
-            : `🤖 Assistant response (${channel})`;
-            
-          addTranscriptBreadcrumb(
-            breadcrumbTitle,
-            {
-              itemId,
-              content: text,
-              channel,
-              supervisor
-            }
-          );
-        }
       }
       break;
 
@@ -115,14 +89,17 @@ export default function handleEnhancedRealtimeEvent(
         console.log("Updating transcription for:", transcriptionItemId, "with:", finalTranscript);
         updateTranscriptMessage(transcriptionItemId, finalTranscript, false);
         
-        // Add breadcrumb for transcription completion
-        addTranscriptBreadcrumb(
-          "🎤 Transcription completed",
-          {
-            itemId: transcriptionItemId,
-            transcript: finalTranscript
-          }
-        );
+        // Only add breadcrumb for transcription completion if it's interesting
+        // (Don't clutter with every transcription update)
+        if (finalTranscript !== "[inaudible]" && finalTranscript.length > 0) {
+          addTranscriptBreadcrumb(
+            "🎤 Transcription completed",
+            {
+              itemId: transcriptionItemId,
+              transcript: finalTranscript
+            }
+          );
+        }
       }
       break;
 

@@ -251,6 +251,16 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
     if (message?.function_call) {
       console.log(`🔧 Function call detected: ${message.function_call.name}`);
       
+      // Send function call start event to frontend observability
+      if (isOpen(session.frontendConn)) {
+        jsonSend(session.frontendConn, {
+          type: "response.function_call_arguments.delta",
+          name: message.function_call.name,
+          arguments: message.function_call.arguments,
+          call_id: `call_${Date.now()}`
+        });
+      }
+      
       try {
         // Find and execute the function
         const functionHandler = functions.find(f => f.schema.name === message.function_call!.name);
@@ -258,8 +268,31 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
           const args = JSON.parse(message.function_call!.arguments);
           console.log(`🧠 Executing ${message.function_call!.name} with args:`, args);
           
-          const functionResult = await functionHandler.handler(args);
+          // Create breadcrumb function for supervisor agent nested function calls
+          const addBreadcrumb = (title: string, data?: any) => {
+            if (isOpen(session.frontendConn)) {
+              jsonSend(session.frontendConn, {
+                type: "response.function_call_arguments.delta",
+                name: title.includes("function call:") ? title.split("function call: ")[1] : title,
+                arguments: JSON.stringify(data || {}),
+                call_id: `supervisor_${Date.now()}`
+              });
+            }
+          };
+          
+          const functionResult = await functionHandler.handler(args, addBreadcrumb);
           console.log(`✅ Function result received (${functionResult.length} chars)`);
+          
+          // Send function call completion event to frontend observability
+          if (isOpen(session.frontendConn)) {
+            jsonSend(session.frontendConn, {
+              type: "response.function_call_arguments.done",
+              name: message.function_call.name,
+              arguments: message.function_call.arguments,
+              call_id: `call_${Date.now()}`,
+              status: "completed"
+            });
+          }
           
           // Parse the supervisor response
           const supervisorData = JSON.parse(functionResult);
