@@ -135,17 +135,21 @@ const CallInterface = () => {
 
           {/* Middle Column: Transcript */}
           <div className="col-span-6 flex flex-col gap-4 h-full overflow-hidden">
-            <PhoneNumberChecklist
-              selectedPhoneNumber={selectedPhoneNumber}
-              allConfigsReady={allConfigsReady}
-              setAllConfigsReady={setAllConfigsReady}
-            />
-            <EnhancedTranscript
-              userText={userText}
-              setUserText={setUserText}
-              onSendMessage={() => handleSendChatMessage(userText)}
-              canSend={canSendChat}
-            />
+            <div className="flex-shrink-0">
+              <PhoneNumberChecklist
+                selectedPhoneNumber={selectedPhoneNumber}
+                allConfigsReady={allConfigsReady}
+                setAllConfigsReady={setAllConfigsReady}
+              />
+            </div>
+            <div className="flex-1 min-h-0">
+              <EnhancedTranscript
+                userText={userText}
+                setUserText={setUserText}
+                onSendMessage={() => handleSendChatMessage(userText)}
+                canSend={canSendChat}
+              />
+            </div>
           </div>
 
           {/* Right Column: Function Calls */}

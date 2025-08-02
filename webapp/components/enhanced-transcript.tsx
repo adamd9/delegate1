@@ -71,27 +71,25 @@ export function EnhancedTranscript({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-white rounded-xl border">
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-gray-200 p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Conversation</h2>
-          <div className="flex gap-2">
-            <button
-              onClick={handleCopyTranscript}
-              className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md flex items-center gap-1 transition-colors"
-            >
-              <ClipboardIcon className="w-4 h-4" />
-              {justCopied ? "Copied!" : "Copy"}
-            </button>
-          </div>
+      <div className="flex items-center justify-between px-6 py-3 border-b bg-white rounded-t-xl">
+        <span className="font-semibold">Conversation</span>
+        <div className="flex gap-2">
+          <button
+            onClick={handleCopyTranscript}
+            className="w-24 text-sm px-3 py-1 rounded-md bg-gray-200 hover:bg-gray-300 flex items-center justify-center gap-1"
+          >
+            <ClipboardIcon className="w-4 h-4" />
+            {justCopied ? "Copied!" : "Copy"}
+          </button>
         </div>
       </div>
 
       {/* Transcript Content */}
       <div
         ref={transcriptRef}
-        className="flex-1 overflow-auto p-4 space-y-4"
+        className="flex-1 overflow-auto p-4 space-y-4 min-h-0"
       >
         {[...transcriptItems]
           .sort((a, b) => a.createdAtMs - b.createdAtMs)
@@ -121,9 +119,9 @@ export function EnhancedTranscript({
               
               const bubbleClasses = `max-w-lg p-3 rounded-lg ${
                 isUser 
-                  ? "bg-blue-600 text-white" 
+                  ? "bg-gray-900 text-white" 
                   : supervisor
-                  ? "bg-purple-100 text-purple-900 border border-purple-200"
+                  ? "bg-purple-50 text-purple-900 border border-purple-200"
                   : "bg-gray-100 text-gray-900"
               }`;
 
@@ -131,7 +129,7 @@ export function EnhancedTranscript({
                 <span className={`inline-block px-2 py-1 text-xs rounded-full mr-2 ${
                   channel === "voice" 
                     ? "bg-green-100 text-green-800" 
-                    : "bg-blue-100 text-blue-800"
+                    : "bg-gray-100 text-gray-800"
                 }`}>
                   {channel}
                 </span>
@@ -148,7 +146,7 @@ export function EnhancedTranscript({
                   <div className="max-w-lg">
                     <div className={bubbleClasses}>
                       <div className={`text-xs mb-1 ${
-                        isUser ? "text-blue-200" : "text-gray-500"
+                        isUser ? "text-gray-300" : "text-gray-500"
                       } font-mono`}>
                         {timestamp}
                         {!isUser && (channelBadge || supervisorBadge)}
@@ -198,7 +196,7 @@ export function EnhancedTranscript({
           })}
       </div>
 
-      {/* Input Area */}
+      {/* Input Area - Fixed at bottom */}
       <div className="flex-shrink-0 border-t border-gray-200 p-4">
         <div className="flex items-center gap-2">
           <input
@@ -212,12 +210,12 @@ export function EnhancedTranscript({
               }
             }}
             placeholder="Type a message..."
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="flex-1 px-4 py-2 focus:outline-none border-0 bg-transparent"
           />
           <button
             onClick={onSendMessage}
             disabled={!canSend || !userText.trim()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="bg-gray-900 text-white rounded-full px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Send
           </button>
