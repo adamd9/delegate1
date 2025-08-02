@@ -179,6 +179,34 @@ TWILIO_AUTH_TOKEN=your_auth_token
 5. Set HTTP method to **POST**
 6. Save the configuration
 
+## Helper Scripts
+
+Delegate 1 includes a collection of utility scripts for managing Twilio integration and debugging. All scripts are organized in the `/scripts/` directory:
+
+### Quick Commands
+
+```bash
+# Generate fresh Twilio access token
+npm run script:token
+
+# List all TwiML Applications
+npm run script:list-apps
+
+# Inspect current TwiML Application configuration
+npm run script:inspect-app
+
+# Debug token issues
+npm run script:validate-token
+npm run script:test-api-key
+```
+
+### Script Categories
+
+- **`/scripts/twilio/`** - TwiML Application and token management
+- **`/scripts/debug/`** - Debugging and testing utilities
+
+For detailed documentation, see [`scripts/README.md`](scripts/README.md).
+
 #### Step 4: Test Phone Integration
 
 1. **Start all services**:

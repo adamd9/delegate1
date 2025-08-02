@@ -18,7 +18,15 @@
     "voice-client:build": "cd voice-client && npm run build",
     "voice-client:serve": "cd voice-client && npm run serve",
     "install:all": "npm install && cd websocket-server && npm install && cd ../webapp && npm install && cd ../voice-client && npm install",
-    "clean": "rm -rf node_modules websocket-server/node_modules webapp/node_modules voice-client/node_modules websocket-server/dist voice-client/dist"
+    "clean": "rm -rf node_modules websocket-server/node_modules webapp/node_modules voice-client/node_modules websocket-server/dist voice-client/dist",
+    "script:token": "node scripts/twilio/generate-token.js",
+    "script:list-apps": "node scripts/twilio/list-twiml-apps.js",
+    "script:inspect-app": "node scripts/twilio/inspect-twiml-app.js",
+    "script:create-app": "node scripts/twilio/create-twiml-app.js",
+    "script:update-app": "node scripts/twilio/update-twiml-app.js",
+    "script:validate-token": "node scripts/debug/validate-token.js",
+    "script:test-api-key": "node scripts/debug/test-api-key.js",
+    "script:test-direct-api": "node scripts/debug/test-direct-api.js"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
