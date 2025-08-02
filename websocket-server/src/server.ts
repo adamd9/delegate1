@@ -53,20 +53,64 @@ app.get("/tools", (req, res) => {
 
 // Access token endpoint for voice client
 app.post("/access-token", (req, res) => {
-  // For now, return a simple response that the voice client can use
-  // In production, you'd generate a real Twilio access token here
-  const clientName = req.body.clientName || `voice-client-${Date.now()}`;
-  
-  // TODO: Generate actual Twilio access token
-  // const AccessToken = require('twilio').jwt.AccessToken;
-  // const VoiceGrant = AccessToken.VoiceGrant;
-  // ... token generation logic
-  
-  res.json({
-    message: "Access token endpoint ready",
-    clientName,
-    note: "This endpoint needs Twilio SDK integration to generate real tokens"
-  });
+  try {
+    const twilio = require('twilio');
+    const AccessToken = twilio.jwt.AccessToken;
+    const VoiceGrant = AccessToken.VoiceGrant;
+    
+    const clientName = req.body.clientName || `voice-client-${Date.now()}`;
+    
+    // Twilio credentials from environment variables only
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const apiKeySid = process.env.TWILIO_API_KEY_SID;
+    const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+    const twimlAppSid = process.env.TWILIO_TWIML_APP_SID;
+    
+    // Validate required environment variables
+    if (!accountSid || !apiKeySid || !apiKeySecret || !twimlAppSid) {
+      console.error('Missing required Twilio environment variables');
+      res.status(500).json({
+        error: 'Server configuration error',
+        message: 'Missing required Twilio credentials in environment variables'
+      });
+      return;
+    }
+    
+    // Create Voice Grant
+    const voiceGrant = new VoiceGrant({
+      incomingAllow: true,
+      outgoingApplicationSid: twimlAppSid
+    });
+    
+    // Create access token with AU1 region
+    const token = new AccessToken(
+      accountSid,
+      apiKeySid,
+      apiKeySecret,
+      { 
+        identity: clientName,
+        region: 'au1'
+      }
+    );
+    
+    token.addGrant(voiceGrant);
+    const jwt = token.toJwt();
+    
+    console.log(`Generated access token for client: ${clientName}`);
+    
+    res.json({
+      token: jwt,
+      identity: clientName,
+      message: "Access token generated successfully"
+    });
+    
+  } catch (error: any) {
+    console.error('Error generating access token:', error);
+    res.status(500).json({
+      error: "Failed to generate access token",
+      message: error?.message || 'Unknown error'
+    });
+  }
 });
 
 let currentCall: WebSocket | null = null;
