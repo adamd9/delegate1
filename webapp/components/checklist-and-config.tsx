@@ -165,9 +165,9 @@ export default function ChecklistAndConfig({
         ),
       },
       {
-        label: "Set up Twilio phone number",
-        done: phoneNumbers.length > 0,
-        description: "Costs around $1.15/month",
+        label: "Set up Twilio phone number (Optional)",
+        done: phoneNumbers.length > 0 || true, // Always considered "done" since it's optional
+        description: phoneNumbers.length > 0 ? "Phone number configured" : "Optional - for traditional phone calls. Voice client works without this.",
         field:
           phoneNumbers.length > 0 ? (
             phoneNumbers.length === 1 ? (
@@ -199,6 +199,7 @@ export default function ChecklistAndConfig({
           ) : (
             <Button
               className="w-full"
+              variant="outline"
               onClick={() =>
                 window.open(
                   "https://console.twilio.com/us1/develop/phone-numbers/manage/incoming",
@@ -206,7 +207,7 @@ export default function ChecklistAndConfig({
                 )
               }
             >
-              Set up Twilio phone number
+              Optional: Add Phone Number
             </Button>
           ),
       },
@@ -307,7 +308,12 @@ export default function ChecklistAndConfig({
         <DialogHeader>
           <DialogTitle>Setup Checklist</DialogTitle>
           <DialogDescription>
-            This sample app requires a few steps before you get started
+            Delegate 1 supports multiple ways to interact with your AI assistant:
+            <br />• <strong>Voice Client</strong>: Browser-based voice calls (works immediately)
+            <br />• <strong>Traditional Phone</strong>: Call a real phone number (requires Twilio phone number)
+            <br />• <strong>Web Chat</strong>: Text-based conversations (works immediately)
+            <br /><br />
+            Complete the required steps below to get started. Phone number setup is optional.
           </DialogDescription>
         </DialogHeader>
 

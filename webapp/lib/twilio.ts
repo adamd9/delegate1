@@ -9,5 +9,8 @@ if (!accountSid || !authToken) {
 }
 
 export const twilioClient =
-  accountSid && authToken ? twilio(accountSid, authToken) : null;
+  accountSid && authToken ? twilio(accountSid, authToken, {
+    region: 'au1',  // AU1 region support for Australian accounts
+    edge: 'sydney'   // Use Sydney edge for better performance
+  }) : null;
 export default twilioClient;
