@@ -64,7 +64,6 @@ export function useSetupChecklist(
     const url = urlToCheck || publicUrl;
     
     if (!url) {
-      console.error("No URL provided for accessibility check");
       setPublicUrlAccessible(false);
       if (setLoading) setNgrokLoading(false);
       return false;
@@ -75,19 +74,15 @@ export function useSetupChecklist(
     try {
       const resTest = await fetch(url + "/public-url");
       if (resTest.ok) {
-        console.log("Public URL accessible:", resTest);
         setPublicUrlAccessible(true);
-        console.log("Public URL accessible:", publicUrlAccessible);
         if (setLoading) setNgrokLoading(false);
         return true;
       } else {
-        console.error("Public URL not accessible:", resTest);
         setPublicUrlAccessible(false);
         if (setLoading) setNgrokLoading(false);
         return false;
       }
     } catch (error) {
-      console.error("Error checking public URL accessibility:", error);
       setPublicUrlAccessible(false);
       if (setLoading) setNgrokLoading(false);
       return false;
@@ -103,12 +98,6 @@ export function useSetupChecklist(
 
     // Function to check if all setup is complete
     const isSetupComplete = () => {
-      console.log("Checking setup complete:", {
-        hasCredentials,
-        backendUp,
-        publicUrl,
-        publicUrlAccessible,
-      });
       return hasCredentials && 
              backendUp && 
              publicUrl && 
@@ -173,7 +162,6 @@ export function useSetupChecklist(
             
             // Check public URL accessibility using our consolidated function
             if (foundPublicUrl) {
-              console.log("[DEBUG] Calling checkPublicUrlAccessibility from polling with URL:", foundPublicUrl);
               const result = await checkPublicUrlAccessibility(foundPublicUrl, false);
               
               // If accessibility check passed, manually check if setup is complete with the updated state
@@ -184,10 +172,7 @@ export function useSetupChecklist(
                                      foundPublicUrl && 
                                      true; // publicUrlAccessible is true since result is true
                 
-                console.log("[DEBUG] Manual setup complete check:", setupComplete);
-                
                 if (setupComplete) {
-                  console.log("[DEBUG] Setup is complete, stopping polling");
                   polling = false;
                   setAllChecksPassed(true);
                 }
