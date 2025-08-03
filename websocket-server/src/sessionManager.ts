@@ -218,7 +218,8 @@ async function handleTextChatMessage(content: string) {
     const allFunctions = getAllFunctions();
     const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
     
-    // Call OpenAI REST API for text response with supervisor agent capability
+    // For now, revert to Chat Completions API until Responses API migration is complete
+    // TODO: Complete Responses API migration based on docs/RESPONSES_API_MIGRATION.md
     const completion = await session.openaiClient.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -297,8 +298,18 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
             });
           }
           
-          // Parse the supervisor response
-          const supervisorData = JSON.parse(functionResult);
+          // Robust supervisor response parsing
+          let supervisorData: any;
+          try {
+            if (typeof functionResult === "string") {
+              supervisorData = JSON.parse(functionResult);
+            } else {
+              supervisorData = functionResult;
+            }
+          } catch (err) {
+            console.error("Failed to parse supervisor response arguments:", functionResult, err);
+            supervisorData = { response: typeof functionResult === "string" ? functionResult : JSON.stringify(functionResult) };
+          }
           const finalResponse = supervisorData.response || supervisorData.error || "Supervisor agent completed.";
           
           // Add supervisor response to conversation history
