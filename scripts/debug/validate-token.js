@@ -55,8 +55,8 @@ function validateToken(token) {
     if (payload.grants?.voice) {
       console.log('   Voice Grant: ✅ Present');
       console.log('   Incoming Allow:', payload.grants.voice.incoming?.allow ? '✅ Yes' : '❌ No');
-      if (payload.grants.voice.outgoingApplicationSid) {
-        console.log('   Outgoing App SID:', payload.grants.voice.outgoingApplicationSid);
+      if (payload.grants.voice.outgoing?.application_sid) {
+        console.log('   Outgoing App SID:', payload.grants.voice.outgoing.application_sid);
       } else {
         console.log('   Outgoing App SID: ❌ Not set');
       }

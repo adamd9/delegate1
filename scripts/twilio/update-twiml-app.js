@@ -50,7 +50,7 @@ async function updateTwiMLApplication() {
     console.log('');
     
     // Use the ngrok URL from backend .env file
-    const newVoiceUrl = 'https://4b3acaa7040f.ngrok-free.app/twiml';
+    const newVoiceUrl = 'https://372966bf2929.ngrok-free.app/twiml';
     
     console.log('🔄 Updating TwiML Application...');
     console.log('   New Voice URL:', newVoiceUrl);
