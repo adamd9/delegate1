@@ -245,14 +245,15 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
       requestBody.previous_response_id = session.previousResponseId;
     }
     
-    // Format user input as a message
+    // Format user input as a message in an array
     const userInput: ResponsesTextInput = {
       type: "message",
       content: content,
       role: "user"
     };
     
-    requestBody.input = userInput;
+    // Input must be a string or array of input items, not an object
+    requestBody.input = [userInput];
     
     // Add debug logs for request
     console.log("[DEBUG] Responses API Request:", JSON.stringify(requestBody, null, 2));
