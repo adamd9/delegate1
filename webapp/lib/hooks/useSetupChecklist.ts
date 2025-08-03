@@ -131,13 +131,19 @@ export function useSetupChecklist(
           setSelectedPhoneNumber(selected.friendlyName || "");
         }
 
-        // 3. Check local server & public URL
+        // 3. Check server & public URL
         let foundPublicUrl = "";
         let previousUrl = publicUrl;
         try {
-          const resLocal = await fetch("http://localhost:8081/public-url");
-          if (resLocal.ok) {
-            const pubData = await resLocal.json();
+          // Check if we have a remote server URL in env
+          const resRemote = process.env.REMOTE_BACKEND;
+          
+          // Use remote server if configured, otherwise use local
+          const serverUrl = resRemote || "http://localhost:8081";
+          const res = await fetch(`${serverUrl}/public-url`);
+          
+          if (res.ok) {
+            const pubData = await res.json();
             foundPublicUrl = pubData?.publicUrl || "";
             setLocalServerUp(true);
             setPublicUrl(foundPublicUrl);
