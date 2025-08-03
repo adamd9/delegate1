@@ -3,7 +3,7 @@ import { ResponsesFunctionCall, ResponsesFunctionCallOutput, ResponsesInputItem,
 import OpenAI from 'openai';
 
 // Knowledge base lookup function for supervisor
-const lookupKnowledgeBaseFunction: FunctionHandler = {
+export const lookupKnowledgeBaseFunction: FunctionHandler = {
   schema: {
     name: "lookupKnowledgeBase",
     type: "function",
@@ -35,7 +35,7 @@ const lookupKnowledgeBaseFunction: FunctionHandler = {
 };
 
 // Get current time function for supervisor
-const getCurrentTimeFunction: FunctionHandler = {
+export const getCurrentTimeFunction: FunctionHandler = {
   schema: {
     name: "getCurrentTime",
     type: "function", 
@@ -262,29 +262,5 @@ Guidelines:
   }
 };
 
-// Supervisor Agent Configuration
-export const supervisorAgent: AgentConfig = {
-  name: "delegate_supervisor", 
-  instructions: `You are a supervisor agent that provides expert guidance and has access to additional research tools.
-
-You are called upon when the base agent needs help with:
-- Complex research queries
-- Detailed analysis tasks  
-- Problem-solving that requires additional context
-- Questions that need knowledge base lookup
-
-You have access to:
-- Knowledge base lookup capabilities
-- Current time/date information
-- Advanced reasoning and analysis capabilities
-
-Always provide comprehensive but concise responses that can be directly relayed to the user.`,
-  voice: "alloy",
-  tools: [
-    lookupKnowledgeBaseFunction,
-    getCurrentTimeFunction,
-    getNextResponseFromSupervisorFunction
-  ],
-  model: "gpt-4o",
-  temperature: 0.7,
-};
+// Import the supervisor agent configuration
+export { supervisorAgentConfig as supervisorAgent } from './supervisorAgentConfig';
