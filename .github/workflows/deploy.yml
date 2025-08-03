@@ -11,20 +11,18 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Set domain based on branch
-        id: set-domain
+      - name: Set domains based on branch
+        id: set-domains
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
             echo "DOMAIN=hk.mdlg.dev" >> $GITHUB_ENV
+            echo "API_DOMAIN=hk.api.mdlg.dev" >> $GITHUB_ENV
           elif [ "${{ github.ref_name }}" = "dev" ]; then
             echo "DOMAIN=hk-dev.mdlg.dev" >> $GITHUB_ENV
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            echo "DOMAIN=hk.api.mdlg.dev" >> $GITHUB_ENV
-          elif [ "${{ github.ref_name }}" = "dev" ]; then
-            echo "DOMAIN=hk-dev.api.mdlg.dev" >> $GITHUB_ENV            
+            echo "API_DOMAIN=hk-dev.api.mdlg.dev" >> $GITHUB_ENV
           fi
           
-      - name: Trigger Docker Server Deployment
+      - name: Trigger Docker Server Deployment for Main Domain
         run: |
           curl -X POST \
             -H "Authorization: token ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}" \
@@ -32,3 +30,12 @@ jobs:
             -H "Content-Type: application/json" \
             https://api.github.com/repos/adamd9/docker-server-dev/dispatches \
             -d '{"event_type": "deploy-service", "client_payload": {"domain": "${{ env.DOMAIN }}", "action": "down-up"}}'
+            
+      - name: Trigger Docker Server Deployment for API Domain
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/adamd9/docker-server-dev/dispatches \
+            -d '{"event_type": "deploy-service", "client_payload": {"domain": "${{ env.API_DOMAIN }}", "action": "down-up"}}'
