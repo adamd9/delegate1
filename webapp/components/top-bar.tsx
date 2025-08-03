@@ -1,9 +1,13 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { BookOpen, FileText } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import Link from "next/link";
 
-const TopBar = () => {
+interface TopBarProps {
+  children?: React.ReactNode;
+}
+
+const TopBar = ({ children }: TopBarProps) => {
   return (
     <div className="flex justify-between items-center px-6 py-4 border-b">
       <div className="flex items-center gap-4">
@@ -17,7 +21,8 @@ const TopBar = () => {
         </svg>
         <h1 className="text-xl font-semibold">OpenAI Call Assistant</h1>
       </div>
-      <div className="flex gap-3">
+      <div className="flex gap-3 items-center">
+        {children}
         <Button variant="ghost" size="sm">
           <Link
             href="https://platform.openai.com/docs/guides/realtime"

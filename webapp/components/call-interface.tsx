@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import TopBar from "@/components/top-bar";
-import ChecklistAndConfig from "@/components/checklist-and-config";
 import SessionConfigurationPanel from "@/components/session-configuration-panel";
 import { EnhancedTranscript } from "@/components/enhanced-transcript";
 import FunctionCallsPanel from "@/components/function-calls-panel";
@@ -105,12 +104,6 @@ const CallInterface = () => {
 
   return (
     <div className="h-screen bg-white flex flex-col">
-      <ChecklistAndConfig
-        ready={allConfigsReady}
-        setReady={setAllConfigsReady}
-        selectedPhoneNumber={selectedPhoneNumber}
-        setSelectedPhoneNumber={setSelectedPhoneNumber}
-      />
       <TopBar />
       <div className="flex-grow p-4 overflow-hidden flex flex-col">
         <div className="grid grid-cols-12 gap-4 flex-grow overflow-hidden">
@@ -138,6 +131,7 @@ const CallInterface = () => {
             <div className="flex-shrink-0">
               <PhoneNumberChecklist
                 selectedPhoneNumber={selectedPhoneNumber}
+                setSelectedPhoneNumber={setSelectedPhoneNumber}
                 allConfigsReady={allConfigsReady}
                 setAllConfigsReady={setAllConfigsReady}
               />

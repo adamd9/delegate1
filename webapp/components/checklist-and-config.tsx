@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Circle, CheckCircle, Loader2 } from "lucide-react";
-import { PhoneNumber } from "@/components/types";
 import {
   Select,
   SelectContent,
@@ -19,184 +18,84 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useSetupChecklist } from "@/lib/hooks/useSetupChecklist";
 
 export default function ChecklistAndConfig({
   ready,
   setReady,
   selectedPhoneNumber,
   setSelectedPhoneNumber,
+  open = !ready,
+  onOpenChange,
 }: {
   ready: boolean;
   setReady: (val: boolean) => void;
   selectedPhoneNumber: string;
   setSelectedPhoneNumber: (val: string) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [hasCredentials, setHasCredentials] = useState(false);
-  const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([]);
-  const [currentNumberSid, setCurrentNumberSid] = useState("");
-  const [currentVoiceUrl, setCurrentVoiceUrl] = useState("");
+  // Use our extracted hook for all the checklist logic
+  const [state, actions] = useSetupChecklist(
+    selectedPhoneNumber,
+    setSelectedPhoneNumber
+  );
 
-  const [publicUrl, setPublicUrl] = useState("");
-  const [localServerUp, setLocalServerUp] = useState(false);
-  const [publicUrlAccessible, setPublicUrlAccessible] = useState(false);
-
-  const [allChecksPassed, setAllChecksPassed] = useState(false);
-  const [webhookLoading, setWebhookLoading] = useState(false);
-  const [ngrokLoading, setNgrokLoading] = useState(false);
-
-  const appendedTwimlUrl = publicUrl ? `${publicUrl}/twiml` : "";
-  const isWebhookMismatch =
-    appendedTwimlUrl && currentVoiceUrl && appendedTwimlUrl !== currentVoiceUrl;
-
+  // Check ngrok when component loads if not ready
   useEffect(() => {
-    let polling = true;
-
-    const pollChecks = async () => {
-      try {
-        // 1. Check credentials
-        let res = await fetch("/api/twilio");
-        if (!res.ok) throw new Error("Failed credentials check");
-        const credData = await res.json();
-        setHasCredentials(!!credData?.credentialsSet);
-
-        // 2. Fetch numbers
-        res = await fetch("/api/twilio/numbers");
-        if (!res.ok) throw new Error("Failed to fetch phone numbers");
-        const numbersData = await res.json();
-        if (Array.isArray(numbersData) && numbersData.length > 0) {
-          setPhoneNumbers(numbersData);
-          // If currentNumberSid not set or not in the list, use first
-          const selected =
-            numbersData.find((p: PhoneNumber) => p.sid === currentNumberSid) ||
-            numbersData[0];
-          setCurrentNumberSid(selected.sid);
-          setCurrentVoiceUrl(selected.voiceUrl || "");
-          setSelectedPhoneNumber(selected.friendlyName || "");
-        }
-
-        // 3. Check local server & public URL
-        let foundPublicUrl = "";
-        try {
-          const resLocal = await fetch("http://localhost:8081/public-url");
-          if (resLocal.ok) {
-            const pubData = await resLocal.json();
-            foundPublicUrl = pubData?.publicUrl || "";
-            setLocalServerUp(true);
-            setPublicUrl(foundPublicUrl);
-          } else {
-            throw new Error("Local server not responding");
-          }
-        } catch {
-          setLocalServerUp(false);
-          setPublicUrl("");
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    pollChecks();
-    const intervalId = setInterval(() => polling && pollChecks(), 1000);
-    return () => {
-      polling = false;
-      clearInterval(intervalId);
-    };
-  }, [currentNumberSid, setSelectedPhoneNumber]);
-
-  const updateWebhook = async () => {
-    if (!currentNumberSid || !appendedTwimlUrl) return;
-    try {
-      setWebhookLoading(true);
-      const res = await fetch("/api/twilio/numbers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phoneNumberSid: currentNumberSid,
-          voiceUrl: appendedTwimlUrl,
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to update webhook");
-      setCurrentVoiceUrl(appendedTwimlUrl);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setWebhookLoading(false);
+    if (!ready && state.localServerUp) {
+      actions.checkNgrok();
     }
-  };
+  }, [state.localServerUp, ready, actions]);
 
-  const checkNgrok = async () => {
-    if (!localServerUp || !publicUrl) return;
-    setNgrokLoading(true);
-    let success = false;
-    for (let i = 0; i < 5; i++) {
-      try {
-        const resTest = await fetch(publicUrl + "/public-url");
-        if (resTest.ok) {
-          setPublicUrlAccessible(true);
-          success = true;
-          break;
-        }
-      } catch {
-        // retry
-      }
-      if (i < 4) {
-        await new Promise((r) => setTimeout(r, 3000));
-      }
+  // Update ready state based on checklist status
+  useEffect(() => {
+    if (!state.allChecksPassed) {
+      setReady(false);
     }
-    if (!success) {
-      setPublicUrlAccessible(false);
-    }
-    setNgrokLoading(false);
-  };
+  }, [state.allChecksPassed, setReady]);
 
-  const checklist = useMemo(() => {
-    return [
-      {
-        label: "Set up Twilio account",
-        done: hasCredentials,
-        description: "Then update account details in webapp/.env",
-        field: (
+  const handleDone = () => setReady(true);
+
+  // Build UI fields for each checklist item
+  const checklistWithFields = state.checklist.map(item => {
+    let field = null;
+    
+    // Add appropriate UI field for each checklist item
+    switch (item.id) {
+      case "twilio-account":
+        field = (
           <Button
             className="w-full"
             onClick={() => window.open("https://console.twilio.com/", "_blank")}
           >
             Open Twilio Console
           </Button>
-        ),
-      },
-      {
-        label: "Set up Twilio phone number (Optional)",
-        done: phoneNumbers.length > 0 || true, // Always considered "done" since it's optional
-        description: phoneNumbers.length > 0 ? "Phone number configured" : "Optional - for traditional phone calls. Voice client works without this.",
-        field:
-          phoneNumbers.length > 0 ? (
-            phoneNumbers.length === 1 ? (
-              <Input value={phoneNumbers[0].friendlyName || ""} disabled />
-            ) : (
-              <Select
-                onValueChange={(value) => {
-                  setCurrentNumberSid(value);
-                  const selected = phoneNumbers.find((p) => p.sid === value);
-                  if (selected) {
-                    setSelectedPhoneNumber(selected.friendlyName || "");
-                    setCurrentVoiceUrl(selected.voiceUrl || "");
-                  }
-                }}
-                value={currentNumberSid}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a phone number" />
-                </SelectTrigger>
-                <SelectContent>
-                  {phoneNumbers.map((phone) => (
-                    <SelectItem key={phone.sid} value={phone.sid}>
-                      {phone.friendlyName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )
+        );
+        break;
+      case "twilio-phone":
+        if (state.phoneNumbers.length > 0) {
+          field = state.phoneNumbers.length === 1 ? (
+            <Input value={state.phoneNumbers[0].friendlyName || ""} disabled />
           ) : (
+            <Select
+              onValueChange={(value) => actions.setCurrentNumberSid(value)}
+              value={state.currentNumberSid}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a phone number" />
+              </SelectTrigger>
+              <SelectContent>
+                {state.phoneNumbers.map((phone) => (
+                  <SelectItem key={phone.sid} value={phone.sid}>
+                    {phone.friendlyName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          );
+        } else {
+          field = (
             <Button
               className="w-full"
               variant="outline"
@@ -209,31 +108,23 @@ export default function ChecklistAndConfig({
             >
               Optional: Add Phone Number
             </Button>
-          ),
-      },
-      {
-        label: "Start local WebSocket server",
-        done: localServerUp,
-        description: "cd websocket-server && npm run dev",
-        field: null,
-      },
-      {
-        label: "Start ngrok",
-        done: publicUrlAccessible,
-        description: "Then set ngrok URL in websocket-server/.env",
-        field: (
+          );
+        }
+        break;
+      case "ngrok":
+        field = (
           <div className="flex items-center gap-2 w-full">
             <div className="flex-1">
-              <Input value={publicUrl} disabled />
+              <Input value={state.publicUrl} disabled />
             </div>
             <div className="flex-1">
               <Button
                 variant="outline"
-                onClick={checkNgrok}
-                disabled={ngrokLoading || !localServerUp || !publicUrl}
+                onClick={actions.checkNgrok}
+                disabled={state.ngrokLoading || !state.localServerUp || !state.publicUrl}
                 className="w-full"
               >
-                {ngrokLoading ? (
+                {state.ngrokLoading ? (
                   <Loader2 className="mr-2 h-4 animate-spin" />
                 ) : (
                   "Check ngrok"
@@ -241,24 +132,21 @@ export default function ChecklistAndConfig({
               </Button>
             </div>
           </div>
-        ),
-      },
-      {
-        label: "Update Twilio webhook URL",
-        done: !!publicUrl && !isWebhookMismatch,
-        description: "Can also be done manually in Twilio console",
-        field: (
+        );
+        break;
+      case "webhook":
+        field = (
           <div className="flex items-center gap-2 w-full">
             <div className="flex-1">
-              <Input value={currentVoiceUrl} disabled className="w-full" />
+              <Input value={state.currentVoiceUrl} disabled className="w-full" />
             </div>
             <div className="flex-1">
               <Button
-                onClick={updateWebhook}
-                disabled={webhookLoading}
+                onClick={actions.updateWebhook}
+                disabled={state.webhookLoading}
                 className="w-full"
               >
-                {webhookLoading ? (
+                {state.webhookLoading ? (
                   <Loader2 className="mr-2 h-4 animate-spin" />
                 ) : (
                   "Update Webhook"
@@ -266,44 +154,31 @@ export default function ChecklistAndConfig({
               </Button>
             </div>
           </div>
-        ),
-      },
-    ];
-  }, [
-    hasCredentials,
-    phoneNumbers,
-    currentNumberSid,
-    localServerUp,
-    publicUrl,
-    publicUrlAccessible,
-    currentVoiceUrl,
-    isWebhookMismatch,
-    appendedTwimlUrl,
-    webhookLoading,
-    ngrokLoading,
-    setSelectedPhoneNumber,
-  ]);
-
-  useEffect(() => {
-    setAllChecksPassed(checklist.every((item) => item.done));
-  }, [checklist]);
-
-  useEffect(() => {
-    if (!ready) {
-      checkNgrok();
+        );
+        break;
     }
-  }, [localServerUp, ready]);
 
-  useEffect(() => {
-    if (!allChecksPassed) {
-      setReady(false);
+    return {
+      ...item,
+      field
+    };
+  });
+
+  // Handle dialog open state
+  const dialogOpen = typeof onOpenChange === 'function' ? open : !ready;
+  const handleOpenChange = (newOpen: boolean) => {
+    if (typeof onOpenChange === 'function') {
+      onOpenChange(newOpen);
+    } else if (newOpen === false) {
+      // Only allow closing if all checks passed or we're forcing it
+      if (state.allChecksPassed) {
+        setReady(true);
+      }
     }
-  }, [allChecksPassed, setReady]);
-
-  const handleDone = () => setReady(true);
+  };
 
   return (
-    <Dialog open={!ready}>
+    <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="w-full max-w-[800px]">
         <DialogHeader>
           <DialogTitle>Setup Checklist</DialogTitle>
@@ -318,7 +193,7 @@ export default function ChecklistAndConfig({
         </DialogHeader>
 
         <div className="mt-4 space-y-0">
-          {checklist.map((item, i) => (
+          {checklistWithFields.map((item, i) => (
             <div
               key={i}
               className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 py-2"
@@ -347,7 +222,7 @@ export default function ChecklistAndConfig({
           <Button
             variant="outline"
             onClick={handleDone}
-            disabled={!allChecksPassed}
+            disabled={!state.allChecksPassed}
           >
             Let's go!
           </Button>
