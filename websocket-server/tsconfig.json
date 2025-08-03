@@ -11,7 +11,8 @@
     "rootDir": "./src",
     "noEmitOnError": true,
     "resolveJsonModule": true, 
-    "incremental": true 
+    "incremental": false,
+    "sourceMap": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

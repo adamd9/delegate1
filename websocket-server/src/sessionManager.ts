@@ -1,6 +1,7 @@
 import { RawData, WebSocket } from "ws";
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { ResponsesInputItem, ResponsesTextInput, ResponsesFunctionCallOutput } from "./types";
 import { getAllFunctions, getDefaultAgent, FunctionHandler } from "./agentConfigs";
 
 interface Session {
@@ -17,6 +18,7 @@ interface Session {
   latestMediaTimestamp?: number;
   openAIApiKey?: string;
   conversationHistory?: Array<{type: 'user' | 'assistant', content: string, timestamp: number, channel: 'voice' | 'text'}>;
+  previousResponseId?: string; // For Responses API conversation tracking
 }
 
 let session: Session = {};
@@ -206,26 +208,14 @@ async function handleTextChatMessage(content: string) {
       });
     }
     
-    // Build conversation context for OpenAI REST API
-    const messages: ChatCompletionMessageParam[] = session.conversationHistory.map(msg => ({
-      role: msg.type === 'user' ? 'user' as const : 'assistant' as const,
-      content: msg.content
-    }));
-    
-    console.log("🤖 Calling OpenAI REST API for text response...");
-    
     // Import function schemas for supervisor agent
     const allFunctions = getAllFunctions();
     const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
     
-    // For now, revert to Chat Completions API until Responses API migration is complete
-    // TODO: Complete Responses API migration based on docs/RESPONSES_API_MIGRATION.md
-    const completion = await session.openaiClient.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: `You are a fast chat AI assistant with access to a supervisor agent for complex queries. 
+    console.log("🤖 Calling OpenAI Responses API for text response...");
+    
+    // Define system instructions
+    const instructions = `You are a fast chat AI assistant with access to a supervisor agent for complex queries. 
 
 For simple conversations, greetings, basic questions, and quick responses, handle them directly.
 
@@ -238,39 +228,73 @@ For complex queries that require:
 
 Use the getNextResponseFromSupervisor function to escalate to a more powerful reasoning model.
 
-Be conversational and helpful. When escalating, choose the appropriate reasoning_type and provide good context.`
-        },
-        ...messages
-      ],
-      functions: functionSchemas,
-      function_call: "auto",
-      max_tokens: 500,
-      temperature: 0.7,
-    });
+Be conversational and helpful. When escalating, choose the appropriate reasoning_type and provide good context.`;
     
-    const message = completion.choices[0]?.message;
+    // Prepare request body for Responses API
+    const requestBody: any = {
+      model: "gpt-4o",
+      instructions: instructions,
+      tools: functionSchemas,
+      max_output_tokens: 500,
+      temperature: 0.7,
+      store: true,
+    };
+    
+    // Add previous response ID if available for conversation continuity
+    if (session.previousResponseId) {
+      requestBody.previous_response_id = session.previousResponseId;
+    }
+    
+    // Format user input as a message
+    const userInput: ResponsesTextInput = {
+      type: "message",
+      content: content,
+      role: "user"
+    };
+    
+    requestBody.input = userInput;
+    
+    // Add debug logs for request
+    console.log("[DEBUG] Responses API Request:", JSON.stringify(requestBody, null, 2));
+    
+    // Call Responses API
+    const response = await session.openaiClient.responses.create(requestBody);
+    
+    // Add debug logs for response
+    console.log("[DEBUG] Responses API Response:", JSON.stringify({
+      id: response.id,
+      output_text: response.output_text,
+      output: response.output
+    }, null, 2));
+    
+    // Store response ID for conversation continuity
+    session.previousResponseId = response.id;
+    
+    // Process function calls from output array
+    const functionCalls = response.output?.filter(output => output.type === "function_call");
     
     // Handle function calls (supervisor agent escalation)
-    if (message?.function_call) {
-      console.log(`🔧 Function call detected: ${message.function_call.name}`);
+    if (functionCalls && functionCalls.length > 0) {
+      const functionCall = functionCalls[0];
+      console.log(`🔧 Function call detected: ${functionCall.name}`);
       
       // Send function call start event to frontend observability
       if (isOpen(session.frontendConn)) {
         jsonSend(session.frontendConn, {
           type: "response.function_call_arguments.delta",
-          name: message.function_call.name,
-          arguments: message.function_call.arguments,
-          call_id: `call_${Date.now()}`
+          name: functionCall.name,
+          arguments: functionCall.arguments,
+          call_id: functionCall.call_id
         });
       }
       
       try {
         // Find and execute the function
         const allFunctions = getAllFunctions();
-        const functionHandler = allFunctions.find((f: FunctionHandler) => f.schema.name === message.function_call!.name);
+        const functionHandler = allFunctions.find((f: FunctionHandler) => f.schema.name === functionCall.name);
         if (functionHandler) {
-          const args = JSON.parse(message.function_call!.arguments);
-          console.log(`🧠 Executing ${message.function_call!.name} with args:`, args);
+          const args = JSON.parse(functionCall.arguments);
+          console.log(`🧠 Executing ${functionCall.name} with args:`, args);
           
           // Create breadcrumb function for supervisor agent nested function calls
           const addBreadcrumb = (title: string, data?: any) => {
@@ -291,9 +315,9 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
           if (isOpen(session.frontendConn)) {
             jsonSend(session.frontendConn, {
               type: "response.function_call_arguments.done",
-              name: message.function_call.name,
-              arguments: message.function_call.arguments,
-              call_id: `call_${Date.now()}`,
+              name: functionCall.name,
+              arguments: functionCall.arguments,
+              call_id: functionCall.call_id,
               status: "completed"
             });
           }
@@ -346,20 +370,20 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
             });
           }
         } else {
-          console.error(`❌ Function handler not found: ${message.function_call!.name}`);
+          console.error(`❌ Function handler not found: ${functionCall.name}`);
         }
       } catch (error) {
         console.error("❌ Error executing function call:", error);
       }
     }
     // Handle regular text responses
-    else if (message?.content) {
-      console.log("✅ Received text response from OpenAI:", message.content.substring(0, 100) + "...");
+    else if (response.output_text) {
+      console.log("✅ Received text response from OpenAI:", response.output_text.substring(0, 100) + "...");
       
       // Add assistant response to conversation history
       const assistantMessage = {
         type: 'assistant' as const,
-        content: message.content,
+        content: response.output_text,
         timestamp: Date.now(),
         channel: 'text' as const
       };
@@ -369,7 +393,7 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
       if (isOpen(session.chatConn)) {
         jsonSend(session.chatConn, {
           type: "chat.response",
-          content: message.content,
+          content: response.output_text,
           timestamp: Date.now()
         });
       }
@@ -382,7 +406,7 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
             id: `msg_${Date.now()}`,
             type: "message",
             role: "assistant",
-            content: [{ type: "text", text: message.content }],
+            content: [{ type: "text", text: response.output_text }],
             channel: "text"
           }
         });
