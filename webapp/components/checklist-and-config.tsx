@@ -52,6 +52,8 @@ export default function ChecklistAndConfig({
   useEffect(() => {
     if (!state.allChecksPassed) {
       setReady(false);
+    } else {
+      setReady(true);
     }
   }, [state.allChecksPassed, setReady]);
 
