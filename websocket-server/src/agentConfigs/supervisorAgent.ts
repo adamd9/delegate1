@@ -1,4 +1,5 @@
 import { AgentConfig, FunctionHandler } from './types';
+import { ResponsesFunctionCall, ResponsesFunctionCallOutput, ResponsesInputItem, ResponsesTextInput, ResponsesOutputItem } from '../types';
 import OpenAI from 'openai';
 
 // Knowledge base lookup function for supervisor
@@ -72,47 +73,103 @@ export async function getSupervisorToolResponse(functionName: string, args: any)
   }
 }
 
-// Handle iterative function calls like reference implementation
+// Handle iterative function calls using Responses API
 export async function handleSupervisorToolCalls(
-  body: any,
-  response: any,
+  instructions: string,
+  input: string | ResponsesInputItem[],
+  tools: any[],
+  previousResponseId?: string,
   addBreadcrumb?: (title: string, data?: any) => void
-): Promise<string> {
-  let currentResponse = response;
+): Promise<{ text: string, responseId: string }> {
+  let currentResponseId = previousResponseId;
   let iterations = 0;
   const maxIterations = 5;
-
-  while (currentResponse.choices?.[0]?.message?.tool_calls && iterations < maxIterations) {
+  let finalText = "";
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  
+  // Initial request
+  let requestBody: any = {
+    model: "gpt-4o",
+    instructions,
+    input,
+    tools,
+    temperature: 0.7,
+    max_output_tokens: 1000,
+    store: true
+  };
+  
+  // If continuing a conversation, include previous_response_id
+  if (currentResponseId) {
+    requestBody.previous_response_id = currentResponseId;
+  }
+  
+  console.log("[DEBUG] Initial Responses API request:", JSON.stringify(requestBody, null, 2));
+  let currentResponse = await openai.responses.create(requestBody);
+  console.log("[DEBUG] Initial Responses API response:", JSON.stringify({
+    id: currentResponse.id,
+    output_text: currentResponse.output_text,
+    output: currentResponse.output,
+    usage: currentResponse.usage
+  }, null, 2));
+  currentResponseId = currentResponse.id;
+  
+  // Process function calls if present
+  while (iterations < maxIterations) {
     iterations++;
+    
+    // Check for function calls in the output
+    const functionCalls = currentResponse.output?.filter(item => 
+      item.type === 'function_call'
+    ) as ResponsesFunctionCall[] | undefined;
+    
+    if (!functionCalls || functionCalls.length === 0) {
+      // No more function calls, we're done
+      finalText = currentResponse.output_text || "No response from supervisor";
+      break;
+    }
+    
     addBreadcrumb?.(`Supervisor Tool Call Iteration ${iterations}`, {
-      tool_calls: currentResponse.choices[0].message.tool_calls
+      function_calls: functionCalls
     });
-
-    const toolCalls = currentResponse.choices[0].message.tool_calls;
-    const toolResults = [];
-
-    for (const toolCall of toolCalls) {
-      const functionName = toolCall.function.name;
-      const args = JSON.parse(toolCall.function.arguments);
+    
+    // Process each function call
+    const functionCallOutputs: ResponsesFunctionCallOutput[] = [];
+    
+    for (const functionCall of functionCalls) {
+      const functionName = functionCall.name;
+      const args = JSON.parse(functionCall.arguments);
       const result = await getSupervisorToolResponse(functionName, args);
       
-      toolResults.push({
-        tool_call_id: toolCall.id,
-        role: "tool" as const,
-        content: result
+      // Add function call output
+      functionCallOutputs.push({
+        type: "function_call_output" as const,
+        call_id: functionCall.call_id,
+        output: result
       });
     }
-
-    // Add assistant message and tool results to conversation
-    body.messages.push(currentResponse.choices[0].message);
-    body.messages.push(...toolResults);
-
-    // Make another API call with updated conversation
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    currentResponse = await openai.chat.completions.create(body);
+    
+    // Make another API call with function call outputs
+    const followUpRequestBody = {
+      model: "gpt-4o",
+      previous_response_id: currentResponseId,
+      input: functionCallOutputs,
+      max_output_tokens: 1000
+    };
+    
+    console.log("[DEBUG] Follow-up Responses API request:", JSON.stringify(followUpRequestBody, null, 2));
+    const followUpResponse = await openai.responses.create(followUpRequestBody);
+    console.log("[DEBUG] Follow-up Responses API response:", JSON.stringify({
+      id: followUpResponse.id,
+      output_text: followUpResponse.output_text,
+      output: followUpResponse.output,
+      usage: followUpResponse.usage
+    }, null, 2));
+    
+    currentResponse = followUpResponse;
+    currentResponseId = currentResponse.id;
   }
-
-  return currentResponse.choices?.[0]?.message?.content || "No response from supervisor";
+  
+  return { text: finalText, responseId: currentResponseId };
 }
 
 // Main supervisor function that escalates to heavy model
@@ -148,8 +205,6 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
         reasoning_type: args.reasoning_type 
       });
 
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      
       const supervisorPrompt = `You are an expert supervisor agent providing guidance to a junior AI assistant. 
 
 The junior agent has escalated this query to you: "${args.query}"
@@ -164,23 +219,36 @@ Guidelines:
 - Provide actionable guidance
 - Format your response for direct relay to the user`;
 
-      const body = {
-        model: "gpt-4o",
-        messages: [
-          { role: "system" as const, content: supervisorPrompt }
-        ],
-        tools: [
-          { type: "function" as const, function: lookupKnowledgeBaseFunction.schema },
-          { type: "function" as const, function: getCurrentTimeFunction.schema }
-        ],
-        temperature: 0.7,
-        max_tokens: 1000
+      const tools = [
+        { 
+          type: "function" as const, 
+          name: lookupKnowledgeBaseFunction.schema.name,
+          description: lookupKnowledgeBaseFunction.schema.description || "",
+          parameters: lookupKnowledgeBaseFunction.schema.parameters
+        },
+        { 
+          type: "function" as const, 
+          name: getCurrentTimeFunction.schema.name,
+          description: getCurrentTimeFunction.schema.description || "",
+          parameters: getCurrentTimeFunction.schema.parameters
+        }
+      ];
+
+      // Initial user input as message input
+      const input: ResponsesTextInput = {
+        type: "message",
+        content: args.query,
+        role: "user"
       };
 
-      const response = await openai.chat.completions.create(body);
-      
-      // Handle any tool calls iteratively
-      const finalResponse = await handleSupervisorToolCalls(body, response, addBreadcrumb);
+      // Handle tool calls using Responses API
+      const { text: finalResponse } = await handleSupervisorToolCalls(
+        supervisorPrompt,
+        [input],
+        tools,
+        undefined,
+        addBreadcrumb
+      );
       
       addBreadcrumb?.("Supervisor Response", { response: finalResponse });
       

@@ -8,6 +8,7 @@ export interface Session {
   streamSid?: string;
 }
 
+// Legacy Chat Completions API types
 export interface FunctionCallItem {
   name: string;
   arguments: string;
@@ -29,3 +30,36 @@ export interface FunctionHandler {
   schema: FunctionSchema;
   handler: (args: any, addBreadcrumb?: (title: string, data?: any) => void) => Promise<string>;
 }
+
+// New Responses API types
+// These types are based on OpenAI SDK v4.67.3
+
+// For input to the Responses API
+export interface ResponsesTextInput {
+  type: "message";
+  content: string;
+  role: "user" | "assistant" | "system" | "developer";
+}
+
+export interface ResponsesFunctionCallOutput {
+  type: "function_call_output";
+  call_id: string;
+  output: string;
+}
+
+export type ResponsesInputItem = ResponsesTextInput | ResponsesFunctionCallOutput;
+
+// For output from the Responses API
+export interface ResponsesFunctionCall {
+  type: "function_call";
+  name: string;
+  call_id: string;
+  arguments: string;
+}
+
+export interface ResponsesTextOutput {
+  type: "message";
+  text: string;
+}
+
+export type ResponsesOutputItem = ResponsesTextOutput | ResponsesFunctionCall;
