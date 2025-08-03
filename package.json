@@ -40,6 +40,5 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "twilio": "^5.8.0"
   }
 }
