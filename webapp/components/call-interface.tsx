@@ -10,6 +10,7 @@ import handleRealtimeEvent from "@/lib/handle-realtime-event";
 import handleEnhancedRealtimeEvent from "@/lib/handle-enhanced-realtime-event";
 import PhoneNumberChecklist from "@/components/phone-number-checklist";
 import { useTranscript } from "@/contexts/TranscriptContext";
+import { getBackendUrl } from "@/lib/get-backend-url";
 
 const CallInterface = () => {
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState("");
@@ -26,7 +27,7 @@ const CallInterface = () => {
 
   useEffect(() => {
     if (allConfigsReady && !ws) {
-      const newWs = new WebSocket("ws://localhost:8081/logs");
+      const newWs = new WebSocket(`ws://${getBackendUrl().replace(/^https?:\/\//, '')}/logs`);
 
       newWs.onopen = () => {
         console.log("Connected to logs websocket");
@@ -55,7 +56,7 @@ const CallInterface = () => {
   useEffect(() => {
     if (allConfigsReady && !chatWs) {
       setChatStatus('connecting');
-      const newChatWs = new WebSocket("ws://localhost:8081/chat");
+      const newChatWs = new WebSocket(`ws://${getBackendUrl().replace(/^https?:\/\//, '')}/chat`);
 
       newChatWs.onopen = () => {
         console.log("Connected to chat websocket");

@@ -15,6 +15,7 @@ import { toolTemplates } from "@/lib/tool-templates";
 import { ToolConfigurationDialog } from "./tool-configuration-dialog";
 import { BackendTag } from "./backend-tag";
 import { useBackendTools } from "@/lib/use-backend-tools";
+import { getBackendUrl } from "@/lib/get-backend-url";
 
 interface SessionConfigurationPanelProps {
   callStatus: string;
@@ -41,7 +42,7 @@ const SessionConfigurationPanel: React.FC<SessionConfigurationPanelProps> = ({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Custom hook to fetch backend tools every 3 seconds
-  const backendTools = useBackendTools("http://localhost:8081/tools", 3000);
+  const backendTools = useBackendTools(`${getBackendUrl()}/tools`, 3000);
 
   // Track changes to determine if there are unsaved modifications
   useEffect(() => {

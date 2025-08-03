@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { getBackendUrl } from '@/lib/get-backend-url';
 import { Device } from '@twilio/voice-sdk';
 
 interface LogEntry {
@@ -15,7 +16,7 @@ export default function VoicePage() {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isInCall, setIsInCall] = useState(false);
-  const [backendUrl, setBackendUrl] = useState('http://localhost:8081');
+  const [backendUrl, setBackendUrl] = useState(getBackendUrl());
   const [logs, setLogs] = useState<LogEntry[]>([]);
   
   const deviceRef = useRef<Device | null>(null);
