@@ -2,6 +2,47 @@
 
 This is a condensed guide for migrating agents from the **Chat Completions API** to the **Responses API**.
 
+## Implementation Learnings
+
+### Key Type Requirements
+
+1. **Message Input Format**: When sending input as messages, use the following structure:
+   ```typescript
+   const input = {
+     type: "message",
+     content: "Your message here",
+     role: "user"  // Required! Must be one of: "user", "assistant", "system", "developer"
+   };
+   ```
+
+2. **Function Call Outputs**: When responding to function calls, ensure proper type definition:
+   ```typescript
+   const functionCallOutputs = [{
+     type: "function_call_output" as const,  // Type assertion helps with TypeScript
+     call_id: functionCall.call_id,
+     output: JSON.stringify(result)
+   }];
+   ```
+
+3. **Debug Logging**: Add debug logs before and after API calls to troubleshoot:
+   ```typescript
+   console.log("[DEBUG] Request:", JSON.stringify(requestBody, null, 2));
+   const response = await openai.responses.create(requestBody);
+   console.log("[DEBUG] Response:", JSON.stringify({
+     id: response.id,
+     output_text: response.output_text,
+     output: response.output
+   }, null, 2));
+   ```
+
+### Common Pitfalls
+
+1. Missing `role` field in message inputs causes a 400 error
+2. Using `text` instead of `content` in message inputs
+3. Not using `as const` type assertion for function call types
+4. Forgetting to include `previous_response_id` in follow-up requests
+5. Not properly handling the output array which contains function calls
+
 ## 1. Endpoint Change
 **From:**
 ```

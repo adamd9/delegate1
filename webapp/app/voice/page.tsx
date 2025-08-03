@@ -100,7 +100,7 @@ export default function VoicePage() {
       
       const device = new Device(accessToken, {
         logLevel: 1,
-        codecPreferences: ['opus', 'pcmu']
+        codecPreferences: ['opus' as any, 'pcmu' as any]
       });
       
       device.on('registered', () => {
@@ -150,8 +150,10 @@ export default function VoicePage() {
       
       // Make a call - for testing, you can call any TwiML app or phone number
       const params = {
-        To: 'client:test', // Call another Twilio client or use a phone number like '+1234567890'
-        From: 'voice-client'
+        params: {
+          To: 'client:test', // Call another Twilio client or use a phone number like '+1234567890'
+          From: 'voice-client'
+        }
       };
       
       const connection = await deviceRef.current.connect(params);
