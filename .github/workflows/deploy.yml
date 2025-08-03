@@ -15,9 +15,13 @@ jobs:
         id: set-domain
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
-            echo "DOMAIN=1.mdlg.dev" >> $GITHUB_ENV
+            echo "DOMAIN=hk.mdlg.dev" >> $GITHUB_ENV
           elif [ "${{ github.ref_name }}" = "dev" ]; then
-            echo "DOMAIN=1-dev.mdlg.dev" >> $GITHUB_ENV
+            echo "DOMAIN=hk-dev.mdlg.dev" >> $GITHUB_ENV
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "DOMAIN=hk.api.mdlg.dev" >> $GITHUB_ENV
+          elif [ "${{ github.ref_name }}" = "dev" ]; then
+            echo "DOMAIN=hk-dev.api.mdlg.dev" >> $GITHUB_ENV            
           fi
           
       - name: Trigger Docker Server Deployment
