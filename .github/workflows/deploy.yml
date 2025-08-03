@@ -24,18 +24,18 @@ jobs:
           
       - name: Trigger Docker Server Deployment for Main Domain
         run: |
-          curl -X POST \
+          curl -f -X POST \
             -H "Authorization: token ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Content-Type: application/json" \
             https://api.github.com/repos/adamd9/docker-server-dev/dispatches \
-            -d '{"event_type": "deploy-service", "client_payload": {"domain": "${{ env.DOMAIN }}", "action": "down-up"}}'
+            -d '{"event_type": "deploy-service", "client_payload": {"domain": "${{ env.DOMAIN }}", "action": "down-up"}}' || exit 1
             
       - name: Trigger Docker Server Deployment for API Domain
         run: |
-          curl -X POST \
+          curl -f -X POST \
             -H "Authorization: token ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Content-Type: application/json" \
             https://api.github.com/repos/adamd9/docker-server-dev/dispatches \
-            -d '{"event_type": "deploy-service", "client_payload": {"domain": "${{ env.API_DOMAIN }}", "action": "down-up"}}'
+            -d '{"event_type": "deploy-service", "client_payload": {"domain": "${{ env.API_DOMAIN }}", "action": "down-up"}}' || exit 1
