@@ -12,9 +12,13 @@ import PhoneNumberChecklist from "@/components/phone-number-checklist";
 import { useTranscript } from "@/contexts/TranscriptContext";
 import { getBackendUrl, getWebSocketUrl } from "@/lib/get-backend-url";
 
+import { useSetupChecklist } from "@/lib/hooks/useSetupChecklist";
+
 const CallInterface = () => {
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState("");
   const [allConfigsReady, setAllConfigsReady] = useState(false);
+  // Use setup checklist at the top level
+  const [setupState, setupActions] = useSetupChecklist(selectedPhoneNumber, setSelectedPhoneNumber);
   const [items, setItems] = useState<Item[]>([]);
   const [callStatus, setCallStatus] = useState("disconnected");
   const [ws, setWs] = useState<WebSocket | null>(null);
@@ -135,6 +139,8 @@ const CallInterface = () => {
                 setSelectedPhoneNumber={setSelectedPhoneNumber}
                 allConfigsReady={allConfigsReady}
                 setAllConfigsReady={setAllConfigsReady}
+                checklist={setupState.checklist}
+                allChecksPassed={setupState.allChecksPassed}
               />
             </div>
             <div className="flex-1 min-h-0">

@@ -135,15 +135,19 @@ export function useSetupChecklist(
         res = await fetch("/api/twilio/numbers");
         if (!res.ok) throw new Error("Failed to fetch phone numbers");
         const numbersData = await res.json();
+        console.log('[useSetupChecklist] /api/twilio/numbers response:', numbersData);
         if (Array.isArray(numbersData) && numbersData.length > 0) {
           setPhoneNumbers(numbersData);
           // If currentNumberSid not set or not in the list, use first
           const selected =
             numbersData.find((p: PhoneNumber) => p.sid === currentNumberSid) ||
             numbersData[0];
+          console.log('[useSetupChecklist] Selected phone number:', selected);
           setCurrentNumberSid(selected.sid);
           setCurrentVoiceUrl(selected.voiceUrl || "");
-          setSelectedPhoneNumber(selected.friendlyName || "");
+          setSelectedPhoneNumber(selected.friendlyName || selected.phoneNumber || "");
+        } else {
+          console.log('[useSetupChecklist] No phone numbers returned from API.');
         }
 
         // 3. Check server & public URL
@@ -240,7 +244,7 @@ export function useSetupChecklist(
       {
         id: "twilio-phone",
         label: "Set up Twilio phone number (Optional)",
-        done: phoneNumbers.length > 0 || true, // Always considered "done" since it's optional
+        done: phoneNumbers.length > 0, // Only done if a phone number is present
         description: phoneNumbers.length > 0 ? "Phone number configured" : "Optional - for traditional phone calls. Voice client works without this.",
       },
       {
@@ -282,9 +286,12 @@ export function useSetupChecklist(
     const selected = phoneNumbers.find((p) => p.sid === sid);
     if (selected) {
       setSelectedPhoneNumber(selected.friendlyName || "");
-      setCurrentVoiceUrl(selected.voiceUrl || "");
     }
   };
+
+  // Debug: Log checklist evaluation
+  console.log('[useSetupChecklist] Checklist items:', checklist);
+  console.log('[useSetupChecklist] allChecksPassed:', checklist.every((item) => item.done));
 
   // Return state and actions
   return [

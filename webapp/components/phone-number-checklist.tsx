@@ -7,13 +7,16 @@ import { AlertCircle, CheckCircle, Circle, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ChecklistAndConfig from "@/components/checklist-and-config";
-import { useSetupChecklist } from "@/lib/hooks/useSetupChecklist";
+
+import type { ChecklistItem } from "@/lib/hooks/useSetupChecklist";
 
 type PhoneNumberChecklistProps = {
   selectedPhoneNumber: string;
   allConfigsReady: boolean;
   setAllConfigsReady: (ready: boolean) => void;
   setSelectedPhoneNumber: (phoneNumber: string) => void;
+  checklist: ChecklistItem[];
+  allChecksPassed: boolean;
 };
 
 const PhoneNumberChecklist: React.FC<PhoneNumberChecklistProps> = ({
@@ -21,18 +24,14 @@ const PhoneNumberChecklist: React.FC<PhoneNumberChecklistProps> = ({
   allConfigsReady,
   setAllConfigsReady,
   setSelectedPhoneNumber,
+  checklist,
+  allChecksPassed,
 }) => {
   const [isVisible, setIsVisible] = useState(true);
   const [showChecklist, setShowChecklist] = useState(false);
-  
-  // Use the setup checklist hook
-  const [setupState, setupActions] = useSetupChecklist(
-    selectedPhoneNumber,
-    setSelectedPhoneNumber
-  );
-  
+
   // Count incomplete items
-  const incompleteCount = setupState.checklist.filter(item => !item.done).length;
+  const incompleteCount = checklist.filter(item => !item.done).length;
 
   return (
     <>
@@ -79,13 +78,13 @@ const PhoneNumberChecklist: React.FC<PhoneNumberChecklistProps> = ({
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="flex items-center gap-2 cursor-pointer" onClick={() => setShowChecklist(true)}>
-                  {setupState.allChecksPassed ? (
+                  {allChecksPassed ? (
                     <CheckCircle className="text-green-500 w-4 h-4" />
                   ) : (
                     <AlertCircle className="text-amber-500 w-4 h-4" />
                   )}
                   <span className="text-sm text-gray-700">
-                    {setupState.allChecksPassed ? "Setup Ready" : `Setup (${incompleteCount})`}
+                    {allChecksPassed ? "Setup Ready" : `Setup (${incompleteCount})`}
                   </span>
                 </div>
               </TooltipTrigger>
@@ -93,7 +92,7 @@ const PhoneNumberChecklist: React.FC<PhoneNumberChecklistProps> = ({
                 <div className="p-2">
                   <p className="font-medium mb-1">Setup Status:</p>
                   <ul className="space-y-1">
-                    {setupState.checklist.map((item) => (
+                    {checklist.map((item: ChecklistItem) => (
                       <li key={item.id} className="flex items-center gap-2 text-sm">
                         {item.done ? (
                           <CheckCircle className="h-3 w-3 text-green-500" />
@@ -112,7 +111,7 @@ const PhoneNumberChecklist: React.FC<PhoneNumberChecklistProps> = ({
             variant="outline"
             size="sm"
             onClick={() => setShowChecklist(true)}
-            className={!setupState.allChecksPassed ? "border-amber-500 text-amber-700" : ""}
+            className={!allChecksPassed ? "border-amber-500 text-amber-700" : ""}
           >
             Checklist
           </Button>
