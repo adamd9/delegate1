@@ -1,174 +1,182 @@
-# OpenAI Responses API vs Chat Completions API Migration Guide
+# Migrating from Chat Completions API to Responses API (Quick Reference)
 
-## Overview
+This is a condensed guide for migrating agents from the **Chat Completions API** to the **Responses API**.
 
-OpenAI introduced the Responses API as a successor to Chat Completions API, combining the best of Chat Completions and Assistants APIs. This document outlines the key differences and migration strategy for Delegate 1.
+## 1. Endpoint Change
+**From:**
+```
+POST https://api.openai.com/v1/chat/completions
+```
+**To:**
+```
+POST https://api.openai.com/v1/responses
+```
 
-## Key Differences
+## 2. Request Parameter Changes
 
-### 1. API Endpoint & Structure
+| Chat Completions API         | Responses API                                      |
+|------------------------------|----------------------------------------------------|
+| `messages`: array of `{ role, content }` | `input`: user message(s) (string or array) |
+| System prompt as first `messages` entry | `instructions`: system-level prompt         |
+| `functions` / `tools` (custom)         | `tools` (same format for custom, plus built-ins) |
+| No conversation state            | `store: true` + `previous_response_id` for multi-turn |
+| `max_tokens`                     | `max_output_tokens`                           |
 
-**Chat Completions API:**
-```typescript
-const completion = await client.chat.completions.create({
-  model: "gpt-4o",
+**Example (Before):**
+```ts
+const response = await openai.chat.completions.create({
+  model: "gpt-4",
   messages: [
     { role: "system", content: "You are a helpful assistant." },
     { role: "user", content: "Hello!" }
+  ]
+});
+```
+
+**Example (After):**
+```ts
+const response = await openai.responses.create({
+  model: "gpt-4.1",
+  instructions: "You are a helpful assistant.",
+  input: "Hello!"
+});
+```
+
+## 3. Response Parsing Changes
+
+| Chat Completions API                       | Responses API                       |
+|---------------------------------------------|---------------------------------------|
+| `response.choices[0].message.content`       | `response.output_text`                |
+| Tool calls in `message.tool_calls`          | Tool calls in `response.output` array (type=`function_call`) |
+| No built-in conversation tracking           | `previous_response_id` continues the same conversation |
+
+## 4. Tool Usage Differences
+
+**Before (Chat Completions):**
+- Parse `tool_calls` from `choices[0].message`
+- Append results as `role: "tool"` message
+- Resend all messages in new request
+
+**After (Responses API):**
+- Parse `function_call` items from `response.output`
+- Send results as `input` items of type `function_call_output` with matching `call_id`
+- Continue with `previous_response_id`
+
+Example follow-up after tool execution:
+```ts
+await openai.responses.create({
+  model: "gpt-4.1",
+  previous_response_id: lastResponse.id,
+  input: [
+    {
+      type: "function_call_output",
+      call_id: toolCall.call_id,
+      output: JSON.stringify({ result: "done" })
+    }
+  ]
+});
+```
+
+It’s necessary to include the original tool call as well as the results as input. Please see step 4: https://platform.openai.com/docs/guides/function-calling?api-mode=responses#function-calling-steps
+
+The actual function call ID sent by an assistant is not enforced, to where you have to absolutely use what the model sent you. You can make up your own.
+
+The issue and primary requirement is that a function_call must be immediately followed by a function_call_output, both with call_id. The purpose of call_id is to pair the return to the calling function and its arguments in the case of parallel tool calls.
+
+Detailed example:
+```
+{
+  "model": "gpt-4o",
+  "input": [
+    {
+      "role": "system",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "You are WeatherPal, a virtual assistant acclaimed for your meteorology expertise and your ability to provide accurate weather conditions across the United States.\nCurrent time of latest input: 2025-03-14T17:22:00Z"
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Toledo Ohio looking hot out right now?"
+        }
+      ]
+    },
+    {
+      "type": "function_call",
+      "call_id": "call_qCYF1LIA9qAK0Nvp24dMqNUP",
+      "name": "get_current_us_weather",
+      "arguments": "{\"us_city\":\"Toledo\"}"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call_qCYF1LIA9qAK0Nvp24dMqNUP",
+      "output": "Toledo, OH - Current conditions: 62F, partly cloudy"
+    }
   ],
-  functions: functionSchemas,
-  function_call: "auto",
-  max_tokens: 500,
-  temperature: 0.7
-});
-
-// Access response
-const message = completion.choices[0]?.message;
-```
-
-**Responses API:**
-```typescript
-const response = await client.responses.create({
-  model: "gpt-4o",
-  input: {
-    messages: [
-      { role: "system", content: "You are a helpful assistant." },
-      { role: "user", content: "Hello!" }
-    ]
+  "tools": [
+    {
+      "type": "function",
+      "name": "get_current_us_weather",
+      "description": "Retrieves the current weather for a specified US city",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "us_city"
+        ],
+        "properties": {
+          "us_city": {
+            "type": "string",
+            "description": "The name of the US city for which to retrieve the current weather"
+          }
+        },
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "name": "get_usa_city_forecast",
+      "description": "Function for 5-day forecast retrieval.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "us_city"
+        ],
+        "properties": {
+          "us_city": {
+            "type": "string",
+            "description": "Major city name, state abbreviation (e.g. Miami, FL)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  ],
+  "text": {
+    "format": {
+      "type": "text"
+    }
   },
-  tools: functionSchemas.map(schema => ({
-    type: "function",
-    name: schema.name,
-    parameters: schema.parameters,
-    strict: true
-  })),
-  max_output_tokens: 500,
-  temperature: 0.7
-});
-
-// Access response
-const message = response.output[0]?.content;
+  "temperature": 1,
+  "top_p": 1,
+  "parallel_tool_calls": true,
+  "reasoning": {},
+  "stream": true,
+  "max_output_tokens": 2048,
+  "store": true
+}
 ```
 
-### 2. Parameter Changes
+## 5. Key Benefits of Responses API
+- Built-in conversation state management
+- Unified interface for text, tools, and built-in capabilities
+- Simplified multi-turn + tool orchestration
 
-| Chat Completions | Responses API | Notes |
-|------------------|---------------|-------|
-| `messages: []` | `input: { messages: [] }` | Messages wrapped in input object |
-| `functions: []` | `tools: []` | Different tool schema format |
-| `function_call: "auto"` | *automatic* | Tool calling is automatic |
-| `max_tokens` | `max_output_tokens` | Parameter renamed |
-| `choices[0].message` | `output[0].content` | Different response structure |
-
-### 3. Tool/Function Calling
-
-**Chat Completions Format:**
-```typescript
-functions: [{
-  name: "get_weather",
-  description: "Get weather info",
-  parameters: {
-    type: "object",
-    properties: { city: { type: "string" } },
-    required: ["city"]
-  }
-}]
-```
-
-**Responses API Format:**
-```typescript
-tools: [{
-  type: "function",
-  name: "get_weather",
-  parameters: {
-    type: "object",
-    properties: { city: { type: "string" } },
-    required: ["city"]
-  },
-  strict: true
-}]
-```
-
-### 4. Built-in Tools (Responses API Only)
-
-The Responses API includes built-in tools:
-- `web_search_preview` - Real-time web search
-- `file_search` - Vector store/RAG integration  
-- `computer_use_preview` - Computer interaction capabilities
-
-### 5. Conversation State Management
-
-**Chat Completions (Manual State):**
-- Must maintain full conversation history
-- Send complete message array with each request
-- Manual tool result handling
-
-**Responses API (Optional Server State):**
-- Can use `store: true` for server-side state management
-- Use `previous_response_id` to continue conversations
-- Automatic tool orchestration
-
-## Migration Strategy for Delegate 1
-
-### Phase 1: Simple Text Chat ✅ (In Progress)
-- **File**: `sessionManager.ts` - `handleTextChatMessage()`
-- **Status**: Migrating basic text responses
-- **Complexity**: Low - no complex function calling
-
-### Phase 2: Supervisor Agent Function Calling
-- **File**: `agentConfigs/supervisorAgent.ts`
-- **Status**: Pending
-- **Complexity**: Medium - preserve manual orchestration for observability
-- **Note**: Keep manual tool calling loop to maintain breadcrumb functionality
-
-### Phase 3: Built-in Tools Integration
-- **Status**: Future
-- **Complexity**: Low-Medium
-- **Options**: Replace custom functions with built-in web search, file search
-
-## Current Implementation Status
-
-### ✅ Completed
-- Agent configuration refactoring
-- Project structure cleanup
-
-### 🔄 In Progress  
-- Simple text chat migration (sessionManager.ts)
-- TypeScript type fixes for Responses API
-
-### ⏳ Pending
-- Supervisor agent migration
-- Response structure updates
-- Built-in tools evaluation
-
-## Important Notes
-
-### Preserving Frontend Compatibility
-- **Requirement**: Don't break existing frontend/observability code
-- **Strategy**: Keep response parsing compatible with current structure
-- **Impact**: May need response transformation layer
-
-### Voice Channel (Unchanged)
-- **OpenAI Realtime API**: Separate from both Chat Completions and Responses APIs
-- **Status**: No changes needed
-- **Reason**: Uses WebSocket connection, different protocol entirely
-
-### Manual vs Automatic Orchestration
-- **Current**: Manual function calling with breadcrumb logging
-- **Responses API**: Automatic orchestration available
-- **Decision**: Keep manual approach initially to preserve observability
-
-## Migration Checklist
-
-- [ ] Fix TypeScript errors in sessionManager.ts
-- [ ] Update response parsing to handle Responses API structure
-- [ ] Test simple text chat functionality
-- [ ] Migrate supervisor agent while preserving manual orchestration
-- [ ] Evaluate built-in tools vs custom functions
-- [ ] Update documentation and examples
-
-## References
-
-- [OpenAI Responses vs Chat Completions Guide](https://platform.openai.com/docs/guides/responses-vs-chat-completions)
-- [Simon Willison's Analysis](https://simonwillison.net/2025/Mar/11/responses-vs-chat-completions/)
-- [OpenAI Python SDK Migration Commit](https://github.com/openai/openai-python/commit/2954945ecc185259cfd7cd33c8cbc818a88e4e1b)
+---
+**Tip:** In multi-turn flows, use `store: true` on the first request, then only send `previous_response_id` and any new `input` items in follow-up calls.
