@@ -43,10 +43,10 @@ export default function ChecklistAndConfig({
 
   // Check ngrok when component loads if not ready
   useEffect(() => {
-    if (!ready && state.localServerUp) {
+    if (!ready && state.backendUp) {
       actions.checkNgrok();
     }
-  }, [state.localServerUp, ready, actions]);
+  }, [state.backendUp, ready, actions]);
 
   // Update ready state based on checklist status
   useEffect(() => {
@@ -123,7 +123,7 @@ export default function ChecklistAndConfig({
               <Button
                 variant="outline"
                 onClick={actions.checkNgrok}
-                disabled={state.ngrokLoading || !state.localServerUp || !state.publicUrl}
+                disabled={state.ngrokLoading || !state.backendUp || !state.publicUrl}
                 className="w-full"
               >
                 {state.ngrokLoading ? (

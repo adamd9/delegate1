@@ -17,7 +17,7 @@ export interface SetupChecklistState {
   currentNumberSid: string;
   currentVoiceUrl: string;
   publicUrl: string;
-  localServerUp: boolean;
+  backendUp: boolean;
   publicUrlAccessible: boolean;
   allChecksPassed: boolean;
   webhookLoading: boolean;
@@ -45,7 +45,7 @@ export function useSetupChecklist(
   const [currentVoiceUrl, setCurrentVoiceUrl] = useState("");
 
   const [publicUrl, setPublicUrl] = useState("");
-  const [localServerUp, setLocalServerUp] = useState(false);
+  const [backendUp, setBackendUp] = useState(false);
   const [publicUrlAccessible, setPublicUrlAccessible] = useState(false);
 
   const [allChecksPassed, setAllChecksPassed] = useState(false);
@@ -62,7 +62,7 @@ export function useSetupChecklist(
     
   // Check ngrok function
   const checkNgrok = async () => {
-    if (!localServerUp || !publicUrl) {
+    if (!backendUp || !publicUrl) {
       setPublicUrlAccessible(false);
       setNgrokLoading(false);
       return;
@@ -103,13 +103,49 @@ export function useSetupChecklist(
       checkNgrok();
       setShouldCheckNgrok(false);
     }
-  }, [shouldCheckNgrok, publicUrl, localServerUp]);
+  }, [shouldCheckNgrok, publicUrl, backendUp]);
 
   // Polling for setup checks
   useEffect(() => {
     let polling = true;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 20; // 20 seconds max
+    let hasShownError = false;
+
+    // Function to check if all setup is complete
+    const isSetupComplete = () => {
+      console.log("Checking setup complete:", {
+        hasCredentials,
+        backendUp,
+        publicUrl,
+        publicUrlAccessible,
+      });
+      return hasCredentials && 
+             backendUp && 
+             publicUrl && 
+             publicUrlAccessible;
+      // Note: phoneNumbers and currentNumberSid are optional
+    };
 
     const pollChecks = async () => {
+      // Stop polling if all checks have passed
+      if (isSetupComplete()) {
+        console.log("All setup checks passed, stopping polling");
+        polling = false;
+        return;
+      }
+      // Check if we've reached max attempts
+      if (attempts >= MAX_ATTEMPTS) {
+        if (!hasShownError) {
+          alert("Setup checks failed after 20 seconds. Please refresh the page to try again.");
+          hasShownError = true;
+        }
+        // Stop the polling completely
+        polling = false;
+        return;
+      }
+      
+      attempts++;
       try {
         // 1. Check credentials
         let res = await fetch("/api/twilio");
@@ -143,7 +179,7 @@ export function useSetupChecklist(
           if (res.ok) {
             const pubData = await res.json();
             foundPublicUrl = pubData?.publicUrl || "";
-            setLocalServerUp(true);
+            setBackendUp(true);
             setPublicUrl(foundPublicUrl);
             
             // If public URL changed, trigger ngrok check
@@ -154,7 +190,8 @@ export function useSetupChecklist(
             throw new Error("Local server not responding");
           }
         } catch {
-          setLocalServerUp(false);
+          console.error("Local server not responding");
+          setBackendUp(false);
           setPublicUrl("");
           setPublicUrlAccessible(false); // Reset ngrok status when server is down
         }
@@ -164,7 +201,13 @@ export function useSetupChecklist(
     };
 
     pollChecks();
-    const intervalId = setInterval(() => polling && pollChecks(), 1000);
+    const intervalId = setInterval(() => {
+      if (polling) {
+        pollChecks();
+      } else {
+        clearInterval(intervalId);
+      }
+    }, 1000);
     return () => {
       polling = false;
       clearInterval(intervalId);
@@ -211,7 +254,7 @@ export function useSetupChecklist(
       {
         id: "websocket-server",
         label: "Start local WebSocket server",
-        done: localServerUp,
+        done: backendUp,
         description: "cd websocket-server && npm run dev",
       },
       {
@@ -230,7 +273,7 @@ export function useSetupChecklist(
   }, [
     hasCredentials,
     phoneNumbers,
-    localServerUp,
+    backendUp,
     publicUrl,
     publicUrlAccessible,
     isWebhookMismatch,
@@ -259,7 +302,7 @@ export function useSetupChecklist(
       currentNumberSid,
       currentVoiceUrl,
       publicUrl,
-      localServerUp,
+      backendUp,
       publicUrlAccessible,
       allChecksPassed,
       webhookLoading,

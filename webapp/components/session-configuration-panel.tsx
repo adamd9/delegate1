@@ -41,8 +41,8 @@ const SessionConfigurationPanel: React.FC<SessionConfigurationPanelProps> = ({
   >("idle");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Custom hook to fetch backend tools every 3 seconds
-  const backendTools = useBackendTools(`${getBackendUrl()}/tools`, 3000);
+  // Fetch backend tools once (no polling since tools are static)
+  const backendTools = useBackendTools(`${getBackendUrl()}/tools`, 0);
 
   // Track changes to determine if there are unsaved modifications
   useEffect(() => {

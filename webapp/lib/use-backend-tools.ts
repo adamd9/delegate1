@@ -20,11 +20,18 @@ export function useBackendTools(url: string, intervalMs: number) {
     };
 
     fetchTools();
-    const intervalId = setInterval(fetchTools, intervalMs);
+    
+    // Only set up polling if intervalMs > 0
+    let intervalId: NodeJS.Timeout | null = null;
+    if (intervalMs > 0) {
+      intervalId = setInterval(fetchTools, intervalMs);
+    }
 
     return () => {
       isMounted = false;
-      clearInterval(intervalId);
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
     };
   }, [url, intervalMs]);
 
