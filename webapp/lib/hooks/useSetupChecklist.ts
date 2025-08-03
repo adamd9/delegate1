@@ -52,58 +52,47 @@ export function useSetupChecklist(
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [ngrokLoading, setNgrokLoading] = useState(false);
   
-  // Flag to trigger ngrok check
-  const [shouldCheckNgrok, setShouldCheckNgrok] = useState(false);
-
   const appendedTwimlUrl = publicUrl ? `${publicUrl}/twiml` : "";
   const isWebhookMismatch = Boolean(
     appendedTwimlUrl && currentVoiceUrl && appendedTwimlUrl !== currentVoiceUrl
   );
     
-  // Check ngrok function
-  const checkNgrok = async () => {
-    if (!backendUp || !publicUrl) {
+  // Single function to check public URL accessibility
+  // This is used both by the polling logic and by direct UI calls
+  const checkPublicUrlAccessibility = async (urlToCheck?: string, setLoading = true) => {
+    // Use provided URL or fall back to state
+    const url = urlToCheck || publicUrl;
+    
+    if (!url) {
+      console.error("No URL provided for accessibility check");
       setPublicUrlAccessible(false);
-      setNgrokLoading(false);
-      return;
+      if (setLoading) setNgrokLoading(false);
+      return false;
     }
     
-    setNgrokLoading(true);
-    let success = false;
+    if (setLoading) setNgrokLoading(true);
     
-    for (let i = 0; i < 5; i++) {
-      try {
-        const resTest = await fetch(publicUrl + "/public-url");
-        if (resTest.ok) {
-          // Just check for a successful response, don't try to parse content
-          setPublicUrlAccessible(true);
-          success = true;
-          break;
-        }
-      } catch (error) {
-        console.error("Error checking ngrok:", error);
-        // retry
+    try {
+      const resTest = await fetch(url + "/public-url");
+      if (resTest.ok) {
+        console.log("Public URL accessible:", resTest);
+        setPublicUrlAccessible(true);
+        console.log("Public URL accessible:", publicUrlAccessible);
+        if (setLoading) setNgrokLoading(false);
+        return true;
+      } else {
+        console.error("Public URL not accessible:", resTest);
+        setPublicUrlAccessible(false);
+        if (setLoading) setNgrokLoading(false);
+        return false;
       }
-      
-      if (i < 4) {
-        await new Promise((r) => setTimeout(r, 3000));
-      }
-    }
-    
-    if (!success) {
+    } catch (error) {
+      console.error("Error checking public URL accessibility:", error);
       setPublicUrlAccessible(false);
+      if (setLoading) setNgrokLoading(false);
+      return false;
     }
-    
-    setNgrokLoading(false);
   };
-
-  // Effect to run ngrok check when triggered
-  useEffect(() => {
-    if (shouldCheckNgrok) {
-      checkNgrok();
-      setShouldCheckNgrok(false);
-    }
-  }, [shouldCheckNgrok, publicUrl, backendUp]);
 
   // Polling for setup checks
   useEffect(() => {
@@ -182,9 +171,9 @@ export function useSetupChecklist(
             setBackendUp(true);
             setPublicUrl(foundPublicUrl);
             
-            // If public URL changed, trigger ngrok check
-            if (foundPublicUrl && foundPublicUrl !== previousUrl) {
-              setShouldCheckNgrok(true);
+            // Check public URL accessibility using our consolidated function
+            if (foundPublicUrl) {
+              await checkPublicUrlAccessibility(foundPublicUrl, false);
             }
           } else {
             throw new Error("Local server not responding");
@@ -313,7 +302,8 @@ export function useSetupChecklist(
     },
     {
       updateWebhook,
-      checkNgrok,
+      // Wrap our function to match the expected type signature
+      checkNgrok: async () => { await checkPublicUrlAccessibility(); },
       setCurrentNumberSid: handlePhoneNumberSelection,
       setSelectedPhoneNumber,
     },
