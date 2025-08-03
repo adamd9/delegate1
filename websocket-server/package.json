@@ -14,22 +14,22 @@
   "license": "ISC",
   "dependencies": {
     "@openai/agents": "^0.0.5",
-    "openai": "^4.67.3",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.12",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "httpdispatcher": "^2.2.0",
+    "openai": "^4.67.3",
     "ts-node": "^10.9.2",
     "twilio": "^5.8.0",
     "typescript": "^5.5.4",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.17",
+    "@types/cors": "^2.8.19",
     "@types/dotenv": "^8.2.0",
-    "@types/express": "^5.0.0",
+    "@types/express": "^5.0.3",
     "nodemon": "^2.0.22"
   }
 }
