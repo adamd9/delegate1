@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { PhoneNumber } from "@/components/types";
+import { getBackendUrl } from "@/lib/get-backend-url";
 
 export interface ChecklistItem {
   id: string;
@@ -135,11 +136,8 @@ export function useSetupChecklist(
         let foundPublicUrl = "";
         let previousUrl = publicUrl;
         try {
-          // Check if we have a remote server URL in env
-          const resRemote = process.env.REMOTE_BACKEND;
-          
-          // Use remote server if configured, otherwise use local
-          const serverUrl = resRemote || "http://localhost:8081";
+          // Use the centralized getBackendUrl utility
+          const serverUrl = getBackendUrl();
           const res = await fetch(`${serverUrl}/public-url`);
           
           if (res.ok) {
