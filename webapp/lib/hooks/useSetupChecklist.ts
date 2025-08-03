@@ -173,7 +173,25 @@ export function useSetupChecklist(
             
             // Check public URL accessibility using our consolidated function
             if (foundPublicUrl) {
-              await checkPublicUrlAccessibility(foundPublicUrl, false);
+              console.log("[DEBUG] Calling checkPublicUrlAccessibility from polling with URL:", foundPublicUrl);
+              const result = await checkPublicUrlAccessibility(foundPublicUrl, false);
+              
+              // If accessibility check passed, manually check if setup is complete with the updated state
+              if (result) {
+                // Use the latest state values directly
+                const setupComplete = hasCredentials && 
+                                     backendUp && 
+                                     foundPublicUrl && 
+                                     true; // publicUrlAccessible is true since result is true
+                
+                console.log("[DEBUG] Manual setup complete check:", setupComplete);
+                
+                if (setupComplete) {
+                  console.log("[DEBUG] Setup is complete, stopping polling");
+                  polling = false;
+                  setAllChecksPassed(true);
+                }
+              }
             }
           } else {
             throw new Error("Local server not responding");
