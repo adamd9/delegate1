@@ -19,6 +19,7 @@
 # misc
 .DS_Store
 *.pem
+public/build-info.json
 
 # debug
 npm-debug.log*
