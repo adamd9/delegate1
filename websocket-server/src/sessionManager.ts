@@ -237,9 +237,6 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
       output: response.output
     }, null, 2));
     
-    // Store response ID for conversation continuity
-    session.previousResponseId = response.id;
-    
     // Process function calls from output array
     const functionCalls = response.output?.filter(output => output.type === "function_call");
     
@@ -280,7 +277,7 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
           
           const functionResult = await functionHandler.handler(args, addBreadcrumb);
           console.log(`✅ Function result received (${functionResult.length} chars)`);
-          
+
           // Send function call completion event to frontend observability
           for (const ws of logsClients) {
             if (isOpen(ws)) jsonSend(ws, {
@@ -291,22 +288,35 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
               status: "completed"
             });
           }
-          
-          // Robust supervisor response parsing
-          let supervisorData: any;
-          try {
-            if (typeof functionResult === "string") {
-              supervisorData = JSON.parse(functionResult);
-            } else {
-              supervisorData = functionResult;
-            }
-          } catch (err) {
-            console.error("Failed to parse supervisor response arguments:", functionResult, err);
-            supervisorData = { response: typeof functionResult === "string" ? functionResult : JSON.stringify(functionResult) };
-          }
-          const finalResponse = supervisorData.response || supervisorData.error || "Supervisor agent completed.";
-          
-          // Add supervisor response to conversation history
+
+          // Follow-up request to complete tool call and have base agent respond
+          const followUpBody = {
+            model: "gpt-4o",
+            previous_response_id: response.id,
+            input: [
+              {
+                type: "function_call_output" as const,
+                call_id: functionCall.call_id,
+                output: typeof functionResult === "string" ? functionResult : JSON.stringify(functionResult)
+              }
+            ],
+            max_output_tokens: 500
+          };
+
+          console.log("[DEBUG] Follow-up Responses API request:", JSON.stringify(followUpBody, null, 2));
+          const followUpResponse = await session.openaiClient.responses.create(followUpBody);
+          console.log("[DEBUG] Follow-up Responses API response:", JSON.stringify({
+            id: followUpResponse.id,
+            output_text: followUpResponse.output_text,
+            output: followUpResponse.output
+          }, null, 2));
+
+          // Update conversation state with new response id
+          session.previousResponseId = followUpResponse.id;
+
+          const finalResponse = followUpResponse.output_text || "Supervisor agent completed.";
+
+          // Add assistant response to conversation history
           const assistantMessage = {
             type: 'assistant' as const,
             content: finalResponse,
@@ -314,18 +324,18 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
             channel: 'text' as const
           };
           session.conversationHistory.push(assistantMessage);
-          
-          // Send supervisor response back to chat client
+
+          // Send response back to chat client
           for (const ws of chatClients) {
             if (isOpen(ws)) jsonSend(ws, {
               type: "chat.response",
               content: finalResponse,
               timestamp: Date.now(),
-              supervisor: supervisorData.escalated || false
+              supervisor: true
             });
           }
-          
-          // Forward supervisor response to observability clients
+
+          // Forward assistant response to observability clients
           for (const ws of logsClients) {
             if (isOpen(ws)) jsonSend(ws, {
               type: "conversation.item.created",
@@ -335,7 +345,7 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
                 role: "assistant",
                 content: [{ type: "text", text: finalResponse }],
                 channel: "text",
-                supervisor: supervisorData.escalated || false
+                supervisor: true
               }
             });
           }
@@ -381,6 +391,8 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
           }
         });
       }
+      // Update conversation state with base agent response id
+      session.previousResponseId = response.id;
       // --- SMS reply window logic ---
       try {
         const text = response?.output_text;
