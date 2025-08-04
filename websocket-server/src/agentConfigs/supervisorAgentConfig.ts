@@ -1,8 +1,5 @@
 import { AgentConfig } from './types';
-import {
-  getCurrentTimeFunction,
-  lookupKnowledgeBaseFunction
-} from './supervisorTools';
+import { getCurrentTimeFunction } from './supervisorTools';
 import { agentPersonality } from "./personality";
 
 // Supervisor Agent Configuration
@@ -25,7 +22,6 @@ Guidelines:
 - Format your response for direct relay to the user.`,
   voice: agentPersonality.voice,
   tools: [
-    lookupKnowledgeBaseFunction,
     getCurrentTimeFunction
   ],
   model: "gpt-4o",
