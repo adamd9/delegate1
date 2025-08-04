@@ -19,15 +19,12 @@ export function getAllFunctions(): FunctionHandler[] {
   
   Object.entries(agents).forEach(([agentName, agent]) => {
     if (!agent.tools || !Array.isArray(agent.tools)) {
-      console.warn(`[getAllFunctions] Agent ${agentName} has no tools or tools is not an array`, agent.tools);
       return;
     }
-    agent.tools.forEach((tool, idx) => {
+    agent.tools.forEach((tool) => {
       if (!tool || !tool.schema) {
-        console.warn(`[getAllFunctions] Tool at index ${idx} in agent ${agentName} is invalid:`, tool);
         return;
       }
-      console.log(`[getAllFunctions] Tool schema for agent ${agentName}:`, tool.schema);
       functionMap.set(tool.schema.name, tool);
     });
   });
