@@ -2,7 +2,8 @@ import { AgentConfig, FunctionHandler } from './types';
 import { supervisorAgentConfig } from './supervisorAgentConfig';
 import { agentPersonality } from "./personality";
 import { ResponsesFunctionCall, ResponsesFunctionCallOutput, ResponsesInputItem, ResponsesTextInput, ResponsesOutputItem } from '../types';
-import OpenAI from 'openai';
+import OpenAI, { ClientOptions } from 'openai';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 
 // Knowledge base lookup function for supervisor
 export const lookupKnowledgeBaseFunction: FunctionHandler = {
@@ -87,7 +88,12 @@ export async function handleSupervisorToolCalls(
   let iterations = 0;
   const maxIterations = 5;
   let finalText = "";
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const options: ClientOptions = { apiKey: process.env.OPENAI_API_KEY };
+  if (process.env.CODEX_CLI === 'true' && process.env.HTTPS_PROXY) {
+    options.httpAgent = new HttpsProxyAgent(process.env.HTTPS_PROXY);
+    console.debug('OpenAI Client', 'Using proxy agent for Codex environment');
+  }
+  const openai = new OpenAI(options);
   
   // Initial request
   let requestBody: any = {
