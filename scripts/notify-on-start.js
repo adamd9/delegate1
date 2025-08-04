@@ -28,10 +28,15 @@ async function notify(msg) {
     return;
   }
   try {
+    // Create Basic Auth header with secret as username, blank password
+    const basicAuth = Buffer.from(`user:${secret}`).toString('base64');
     const resp = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ secret, message: msg }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${basicAuth}`
+      },
+      body: JSON.stringify({ message: msg }),
     });
     if (!resp.ok) {
       console.error('Failed to send notification:', resp.status, await resp.text());
