@@ -148,16 +148,15 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
     console.log("🔤 Processing text message:", content);
     
     // Initialize OpenAI client if needed
-    if (!session.openaiClient && session.openAIApiKey) {
+    if (!session.openaiClient) {
+      if (!process.env.OPENAI_API_KEY) {
+        console.error("❌ No OpenAI API key set in environment");
+        return;
+      }
       session.openaiClient = new OpenAI({
-        apiKey: session.openAIApiKey,
+        apiKey: process.env.OPENAI_API_KEY,
       });
       console.log("✅ OpenAI REST client initialized for text chat");
-    }
-    
-    if (!session.openaiClient) {
-      console.error("❌ No OpenAI client available for text chat");
-      return;
     }
     
     // Add user message to conversation history
