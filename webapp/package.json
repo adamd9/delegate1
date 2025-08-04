@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node ../scripts/notify-on-start.js & next dev",
     "build": "next build",
     "start": "node ../scripts/notify-on-start.js & next start",
     "lint": "next lint"
