@@ -23,7 +23,10 @@
     "script:update-app": "node scripts/twilio/update-twiml-app.js",
     "script:validate-token": "node scripts/debug/validate-token.js",
     "script:test-api-key": "node scripts/debug/test-api-key.js",
-    "script:test-direct-api": "node scripts/debug/test-direct-api.js"
+    "script:test-direct-api": "node scripts/debug/test-direct-api.js",
+    "ask": "node scripts/ask.js",
+    "ask:simple": "npm run ask -- \"What is 2 + 2?\"",
+    "ask:complex": "npm run ask -- \"Please escalate this to the supervisor and tell me our company policy on data privacy.\""
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
