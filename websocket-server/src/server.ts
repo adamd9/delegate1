@@ -110,9 +110,9 @@ app.post("/access-token", (req, res) => {
   }
 });
 
-let currentCall: WebSocket | null = null;
-let currentLogs: WebSocket | null = null;
-let currentChat: WebSocket | null = null;
+const callClients = new Set<WebSocket>();
+const logsClients = new Set<WebSocket>();
+const chatClients = new Set<WebSocket>();
 
 wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
   const url = new URL(req.url || "", `http://${req.headers.host}`);
@@ -126,17 +126,17 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
   const type = parts[0];
 
   if (type === "call") {
-    if (currentCall) currentCall.close();
-    currentCall = ws;
-    handleCallConnection(currentCall, OPENAI_API_KEY);
+    callClients.add(ws);
+    handleCallConnection(ws, OPENAI_API_KEY, callClients);
+    ws.on("close", () => callClients.delete(ws));
   } else if (type === "logs") {
-    if (currentLogs) currentLogs.close();
-    currentLogs = ws;
-    handleFrontendConnection(currentLogs);
+    logsClients.add(ws);
+    handleFrontendConnection(ws, logsClients);
+    ws.on("close", () => logsClients.delete(ws));
   } else if (type === "chat") {
-    if (currentChat) currentChat.close();
-    currentChat = ws;
-    handleChatConnection(currentChat, OPENAI_API_KEY);
+    chatClients.add(ws);
+    handleChatConnection(ws, OPENAI_API_KEY, chatClients, logsClients);
+    ws.on("close", () => chatClients.delete(ws));
   } else {
     ws.close();
   }

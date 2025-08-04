@@ -23,55 +23,27 @@ interface Session {
 
 let session: Session = {};
 
-export function handleCallConnection(ws: WebSocket, openAIApiKey: string) {
-  cleanupConnection(session.twilioConn);
-  session.twilioConn = ws;
+// Sets are now passed in from server.ts
+export function handleCallConnection(ws: WebSocket, openAIApiKey: string, callClients: Set<WebSocket>) {
   session.openAIApiKey = openAIApiKey;
-
-  ws.on("message", handleTwilioMessage);
+  ws.on("message", (data) => handleTwilioMessage(data, callClients));
   ws.on("error", ws.close);
-  ws.on("close", () => {
-    cleanupConnection(session.modelConn);
-    cleanupConnection(session.twilioConn);
-    session.twilioConn = undefined;
-    session.modelConn = undefined;
-    session.streamSid = undefined;
-    session.lastAssistantItem = undefined;
-    session.responseStartTimestamp = undefined;
-    session.latestMediaTimestamp = undefined;
-    if (!session.frontendConn) session = {};
-  });
+  // No session cleanup here; handled by Set in server.ts
 }
 
-export function handleFrontendConnection(ws: WebSocket) {
-  cleanupConnection(session.frontendConn);
-  session.frontendConn = ws;
-
-  ws.on("message", handleFrontendMessage);
-  ws.on("close", () => {
-    cleanupConnection(session.frontendConn);
-    session.frontendConn = undefined;
-    if (!session.twilioConn && !session.modelConn && !session.chatConn) session = {};
-  });
+export function handleFrontendConnection(ws: WebSocket, logsClients: Set<WebSocket>) {
+  ws.on("message", (data) => handleFrontendMessage(data, logsClients));
+  // No session cleanup here; handled by Set in server.ts
 }
 
-export function handleChatConnection(ws: WebSocket, openAIApiKey: string) {
-  cleanupConnection(session.chatConn);
-  session.chatConn = ws;
+export function handleChatConnection(ws: WebSocket, openAIApiKey: string, chatClients: Set<WebSocket>, logsClients: Set<WebSocket>) {
   session.openAIApiKey = openAIApiKey;
-  
-  // Initialize conversation history if not exists
   if (!session.conversationHistory) {
     session.conversationHistory = [];
   }
-
-  ws.on("message", handleChatMessage);
+  ws.on("message", (data) => handleChatMessage(data, chatClients, logsClients));
   ws.on("error", ws.close);
-  ws.on("close", () => {
-    cleanupConnection(session.chatConn);
-    session.chatConn = undefined;
-    if (!session.twilioConn && !session.modelConn && !session.frontendConn) session = {};
-  });
+  // No session cleanup here; handled by Set in server.ts
 }
 
 async function handleFunctionCall(item: { name: string; arguments: string }) {
@@ -103,7 +75,7 @@ async function handleFunctionCall(item: { name: string; arguments: string }) {
   }
 }
 
-function handleTwilioMessage(data: RawData) {
+function handleTwilioMessage(data: RawData, callClients: Set<WebSocket>) {
   const msg = parseMessage(data);
   if (!msg) return;
 
@@ -130,7 +102,7 @@ function handleTwilioMessage(data: RawData) {
   }
 }
 
-function handleFrontendMessage(data: RawData) {
+function handleFrontendMessage(data: RawData, logsClients: Set<WebSocket>) {
   const msg = parseMessage(data);
   if (!msg) return;
 
@@ -143,7 +115,7 @@ function handleFrontendMessage(data: RawData) {
   }
 }
 
-async function handleChatMessage(data: RawData) {
+async function handleChatMessage(data: RawData, chatClients: Set<WebSocket>, logsClients: Set<WebSocket>) {
   const msg = parseMessage(data);
   if (!msg) return;
 
@@ -151,7 +123,7 @@ async function handleChatMessage(data: RawData) {
 
   switch (msg.type) {
     case "chat.message":
-      await handleTextChatMessage(msg.content);
+      await handleTextChatMessage(msg.content, chatClients, logsClients);
       break;
 
     case "session.update":
@@ -164,7 +136,7 @@ async function handleChatMessage(data: RawData) {
   }
 }
 
-async function handleTextChatMessage(content: string) {
+async function handleTextChatMessage(content: string, chatClients: Set<WebSocket>, logsClients: Set<WebSocket>) {
   try {
     console.log("🔤 Processing text message:", content);
     
@@ -195,8 +167,8 @@ async function handleTextChatMessage(content: string) {
     session.conversationHistory.push(userMessage);
     
     // Forward user message to observability clients
-    if (isOpen(session.frontendConn)) {
-      jsonSend(session.frontendConn, {
+    for (const ws of logsClients) {
+      if (isOpen(ws)) jsonSend(ws, {
         type: "conversation.item.created",
         item: {
           id: `msg_${Date.now()}`,
@@ -280,8 +252,8 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
       console.log(`🔧 Function call detected: ${functionCall.name}`);
       
       // Send function call start event to frontend observability
-      if (isOpen(session.frontendConn)) {
-        jsonSend(session.frontendConn, {
+      for (const ws of logsClients) {
+        if (isOpen(ws)) jsonSend(ws, {
           type: "response.function_call_arguments.delta",
           name: functionCall.name,
           arguments: functionCall.arguments,
@@ -299,8 +271,8 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
           
           // Create breadcrumb function for supervisor agent nested function calls
           const addBreadcrumb = (title: string, data?: any) => {
-            if (isOpen(session.frontendConn)) {
-              jsonSend(session.frontendConn, {
+            for (const ws of logsClients) {
+              if (isOpen(ws)) jsonSend(ws, {
                 type: "response.function_call_arguments.delta",
                 name: title.includes("function call:") ? title.split("function call: ")[1] : title,
                 arguments: JSON.stringify(data || {}),
@@ -313,8 +285,8 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
           console.log(`✅ Function result received (${functionResult.length} chars)`);
           
           // Send function call completion event to frontend observability
-          if (isOpen(session.frontendConn)) {
-            jsonSend(session.frontendConn, {
+          for (const ws of logsClients) {
+            if (isOpen(ws)) jsonSend(ws, {
               type: "response.function_call_arguments.done",
               name: functionCall.name,
               arguments: functionCall.arguments,
@@ -347,8 +319,8 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
           session.conversationHistory.push(assistantMessage);
           
           // Send supervisor response back to chat client
-          if (isOpen(session.chatConn)) {
-            jsonSend(session.chatConn, {
+          for (const ws of chatClients) {
+            if (isOpen(ws)) jsonSend(ws, {
               type: "chat.response",
               content: finalResponse,
               timestamp: Date.now(),
@@ -357,8 +329,8 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
           }
           
           // Forward supervisor response to observability clients
-          if (isOpen(session.frontendConn)) {
-            jsonSend(session.frontendConn, {
+          for (const ws of logsClients) {
+            if (isOpen(ws)) jsonSend(ws, {
               type: "conversation.item.created",
               item: {
                 id: `msg_${Date.now()}`,
@@ -391,8 +363,8 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
       session.conversationHistory.push(assistantMessage);
       
       // Send response back to chat client
-      if (isOpen(session.chatConn)) {
-        jsonSend(session.chatConn, {
+      for (const ws of chatClients) {
+        if (isOpen(ws)) jsonSend(ws, {
           type: "chat.response",
           content: response.output_text,
           timestamp: Date.now()
@@ -400,8 +372,8 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
       }
       
       // Forward assistant response to observability clients
-      if (isOpen(session.frontendConn)) {
-        jsonSend(session.frontendConn, {
+      for (const ws of logsClients) {
+        if (isOpen(ws)) jsonSend(ws, {
           type: "conversation.item.created",
           item: {
             id: `msg_${Date.now()}`,
@@ -420,8 +392,8 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
     console.error("❌ Error in text chat handler:", error);
     
     // Send error response to chat client
-    if (isOpen(session.chatConn)) {
-      jsonSend(session.chatConn, {
+    for (const ws of chatClients) {
+      if (isOpen(ws)) jsonSend(ws, {
         type: "chat.error",
         error: "Failed to get response from AI",
         timestamp: Date.now()
@@ -505,18 +477,20 @@ function shouldForwardToFrontend(event: any): boolean {
   return true;
 }
 
-function handleModelMessage(data: RawData) {
+function handleModelMessage(data: RawData, logsClients: Set<WebSocket>, callClients: Set<WebSocket>, chatClients: Set<WebSocket>) {
   const event = parseMessage(data);
   if (!event) return;
 
   // Filter events before forwarding to frontend to preserve chat history
   if (shouldForwardToFrontend(event)) {
-    jsonSend(session.frontendConn, event);
+    for (const ws of logsClients) {
+      if (isOpen(ws)) jsonSend(ws, event);
+    }
   }
 
   switch (event.type) {
     case "input_audio_buffer.speech_started":
-      handleTruncation();
+      handleTruncation(callClients);
       break;
 
     case "response.audio.delta":
@@ -526,16 +500,20 @@ function handleModelMessage(data: RawData) {
         }
         if (event.item_id) session.lastAssistantItem = event.item_id;
 
-        jsonSend(session.twilioConn, {
-          event: "media",
-          streamSid: session.streamSid,
-          media: { payload: event.delta },
-        });
+        for (const ws of callClients) {
+          if (isOpen(ws)) jsonSend(ws, {
+            event: "media",
+            streamSid: session.streamSid,
+            media: { payload: event.delta },
+          });
+        }
 
-        jsonSend(session.twilioConn, {
-          event: "mark",
-          streamSid: session.streamSid,
-        });
+        for (const ws of callClients) {
+          if (isOpen(ws)) jsonSend(ws, {
+            event: "mark",
+            streamSid: session.streamSid,
+          });
+        }
       }
       break;
 
@@ -576,8 +554,8 @@ function handleModelMessage(data: RawData) {
           session.conversationHistory.push(assistantMessage);
           
           // Send response back to chat client
-          if (isOpen(session.chatConn)) {
-            jsonSend(session.chatConn, {
+          for (const ws of chatClients) {
+            if (isOpen(ws)) jsonSend(ws, {
               type: "chat.response",
               content: textContent.text,
               timestamp: Date.now()
@@ -590,7 +568,7 @@ function handleModelMessage(data: RawData) {
   }
 }
 
-function handleTruncation() {
+function handleTruncation(callClients: Set<WebSocket>) {
   if (
     !session.lastAssistantItem ||
     session.responseStartTimestamp === undefined
@@ -601,8 +579,8 @@ function handleTruncation() {
     (session.latestMediaTimestamp || 0) - (session.responseStartTimestamp || 0);
   const audio_end_ms = elapsedMs > 0 ? elapsedMs : 0;
 
-  if (isOpen(session.modelConn)) {
-    jsonSend(session.modelConn, {
+  for (const ws of callClients) {
+    if (isOpen(ws)) jsonSend(ws, {
       type: "conversation.item.truncate",
       item_id: session.lastAssistantItem,
       content_index: 0,
