@@ -2,6 +2,8 @@ import { AgentConfig, FunctionHandler } from './types';
 import { ResponsesFunctionCall, ResponsesFunctionCallOutput, ResponsesInputItem, ResponsesTextInput, ResponsesOutputItem } from '../types';
 import OpenAI from 'openai';
 
+import { agentPersonality } from "./personality";
+
 // Knowledge base lookup function for supervisor
 export const lookupKnowledgeBaseFunction: FunctionHandler = {
   schema: {

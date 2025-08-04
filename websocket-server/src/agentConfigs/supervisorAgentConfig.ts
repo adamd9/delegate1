@@ -4,11 +4,14 @@ import {
   getCurrentTimeFunction, 
   getNextResponseFromSupervisorFunction 
 } from './supervisorAgent';
+import { agentPersonality } from "./personality";
 
 // Supervisor Agent Configuration
 export const supervisorAgentConfig: AgentConfig = {
   name: "delegate_supervisor", 
-  instructions: `You are a supervisor agent that provides expert guidance and has access to additional research tools.
+  instructions: `${agentPersonality.description}
+
+You are a supervisor agent that provides expert guidance and has access to additional research tools.
 
 You are called upon when the base agent needs help with:
 - Complex research queries
@@ -22,7 +25,7 @@ You have access to:
 - Advanced reasoning and analysis capabilities
 
 Always provide comprehensive but concise responses that can be directly relayed to the user.`,
-  voice: "alloy",
+  voice: agentPersonality.voice,
   tools: [
     lookupKnowledgeBaseFunction,
     getCurrentTimeFunction,

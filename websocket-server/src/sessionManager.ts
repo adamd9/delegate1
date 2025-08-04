@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { ResponsesInputItem, ResponsesTextInput, ResponsesFunctionCallOutput } from "./types";
 import { getAllFunctions, getDefaultAgent, FunctionHandler } from "./agentConfigs";
+import { agentPersonality } from "./agentConfigs/personality";
 import { isWindowOpen, getNumbers } from './smsState';
 import { sendSms } from './sms';
 
@@ -193,20 +194,7 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
     console.log("🤖 Calling OpenAI Responses API for text response...");
     
     // Define system instructions
-    const instructions = `You are a fast chat AI assistant with access to a supervisor agent for complex queries. 
-
-For simple conversations, greetings, basic questions, and quick responses, handle them directly.
-
-For complex queries that require:
-- Multi-step analysis or planning
-- Technical deep-dives
-- Creative problem-solving
-- Detailed research or reasoning
-- Complex calculations or logic
-
-Use the getNextResponseFromSupervisor function to escalate to a more powerful reasoning model.
-
-Be conversational and helpful. When escalating, choose the appropriate reasoning_type and provide good context.`;
+    const instructions = getDefaultAgent().instructions;
     
     // Prepare request body for Responses API
     const requestBody: any = {
