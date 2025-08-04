@@ -18,49 +18,46 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useSetupChecklist } from "@/lib/hooks/useSetupChecklist";
+import StatusSingletonChecker from "@/lib/statusSingletonChecker";
 
 export default function ChecklistAndConfig({
   ready,
   setReady,
-  selectedPhoneNumber,
-  setSelectedPhoneNumber,
   open = !ready,
   onOpenChange,
 }: {
   ready: boolean;
   setReady: (val: boolean) => void;
-  selectedPhoneNumber: string;
-  setSelectedPhoneNumber: (val: string) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
-  // Use our extracted hook for all the checklist logic
-  const [state, actions] = useSetupChecklist(
-    selectedPhoneNumber,
-    setSelectedPhoneNumber
-  );
+  // Use singleton checker for checklist logic
+  const [checklistResult, setChecklistResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
-  // Check ngrok when component loads if not ready
+  // Run checklist on mount
   useEffect(() => {
-    if (!ready && state.backendUp) {
-      actions.checkNgrok();
-    }
-  }, [state.backendUp, ready, actions]);
+    setLoading(true);
+    StatusSingletonChecker.runChecklist().then((result) => {
+      setChecklistResult(result);
+      setLoading(false);
+      setReady(result.status === 'success');
+    });
+  }, [setReady]);
 
-  // Update ready state based on checklist status
-  useEffect(() => {
-    if (!state.allChecksPassed) {
-      setReady(false);
-    } else {
-      setReady(true);
-    }
-  }, [state.allChecksPassed, setReady]);
+  const refreshChecklist = () => {
+    setLoading(true);
+    StatusSingletonChecker.runChecklist().then((result) => {
+      setChecklistResult(result);
+      setLoading(false);
+      setReady(result.status === 'success');
+    });
+  };
 
   const handleDone = () => setReady(true);
 
   // Build UI fields for each checklist item
-  const checklistWithFields = state.checklist.map(item => {
+  const checklistWithFields = (checklistResult?.details?.checks || []).map((item: { id: string; label: string; passed: boolean; info: string }, i: number) => {
     let field = null;
     
     // Add appropriate UI field for each checklist item
@@ -76,63 +73,23 @@ export default function ChecklistAndConfig({
         );
         break;
       case "twilio-phone":
-        if (state.phoneNumbers.length > 0) {
-          field = state.phoneNumbers.length === 1 ? (
-            <Input value={state.phoneNumbers[0].friendlyName || ""} disabled />
-          ) : (
-            <Select
-              onValueChange={(value) => actions.setCurrentNumberSid(value)}
-              value={state.currentNumberSid}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select a phone number" />
-              </SelectTrigger>
-              <SelectContent>
-                {state.phoneNumbers.map((phone) => (
-                  <SelectItem key={phone.sid} value={phone.sid}>
-                    {phone.friendlyName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          );
-        } else {
-          field = (
-            <Button
-              className="w-full"
-              variant="outline"
-              onClick={() =>
-                window.open(
-                  "https://console.twilio.com/us1/develop/phone-numbers/manage/incoming",
-                  "_blank"
-                )
-              }
-            >
-              Optional: Add Phone Number
-            </Button>
-          );
-        }
+        field = (
+          <Input value={item.info || ""} disabled />
+        );
         break;
       case "ngrok":
         field = (
           <div className="flex items-center gap-2 w-full">
             <div className="flex-1">
-              <Input value={state.publicUrl} disabled />
+              <Input value={item.info || ""} disabled />
             </div>
-            <div className="flex-1">
-              <Button
-                variant="outline"
-                onClick={actions.checkNgrok}
-                disabled={state.ngrokLoading || !state.backendUp || !state.publicUrl}
-                className="w-full"
-              >
-                {state.ngrokLoading ? (
-                  <Loader2 className="mr-2 h-4 animate-spin" />
-                ) : (
-                  "Check ngrok"
-                )}
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              onClick={refreshChecklist}
+              disabled={loading}
+            >
+              {loading ? <Loader2 className="animate-spin" size={16} /> : "Retry"}
+            </Button>
           </div>
         );
         break;
@@ -140,15 +97,15 @@ export default function ChecklistAndConfig({
         field = (
           <div className="flex items-center gap-2 w-full">
             <div className="flex-1">
-              <Input value={state.currentVoiceUrl} disabled className="w-full" />
+              <Input value={checklistResult.currentVoiceUrl} disabled className="w-full" />
             </div>
             <div className="flex-1">
               <Button
-                onClick={actions.updateWebhook}
-                disabled={state.webhookLoading}
+                onClick={checklistResult.updateWebhook}
+                disabled={checklistResult.webhookLoading}
                 className="w-full"
               >
-                {state.webhookLoading ? (
+                {checklistResult.webhookLoading ? (
                   <Loader2 className="mr-2 h-4 animate-spin" />
                 ) : (
                   "Update Webhook"
@@ -166,14 +123,14 @@ export default function ChecklistAndConfig({
     };
   });
 
-  // Handle dialog open state
+  // Handle dialog open checklistResult
   const dialogOpen = typeof onOpenChange === 'function' ? open : !ready;
   const handleOpenChange = (newOpen: boolean) => {
     if (typeof onOpenChange === 'function') {
       onOpenChange(newOpen);
     } else if (newOpen === false) {
       // Only allow closing if all checks passed or we're forcing it
-      if (state.allChecksPassed) {
+      if (checklistResult.allChecksPassed) {
         setReady(true);
       }
     }
@@ -224,7 +181,7 @@ export default function ChecklistAndConfig({
           <Button
             variant="outline"
             onClick={handleDone}
-            disabled={!state.allChecksPassed}
+            disabled={!checklistResult?.allChecksPassed}
           >
             Let's go!
           </Button>

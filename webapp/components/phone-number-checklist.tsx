@@ -8,22 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ChecklistAndConfig from "@/components/checklist-and-config";
 
-import type { ChecklistItem } from "@/lib/hooks/useSetupChecklist";
+
 
 type PhoneNumberChecklistProps = {
-  selectedPhoneNumber: string;
+  phoneNumber: string;
   allConfigsReady: boolean;
   setAllConfigsReady: (ready: boolean) => void;
-  setSelectedPhoneNumber: (phoneNumber: string) => void;
-  checklist: ChecklistItem[];
+  checklist: any[];
   allChecksPassed: boolean;
 };
 
 const PhoneNumberChecklist: React.FC<PhoneNumberChecklistProps> = ({
-  selectedPhoneNumber,
+  phoneNumber,
   allConfigsReady,
   setAllConfigsReady,
-  setSelectedPhoneNumber,
   checklist,
   allChecksPassed,
 }) => {
@@ -42,8 +40,6 @@ const PhoneNumberChecklist: React.FC<PhoneNumberChecklistProps> = ({
       <ChecklistAndConfig
         ready={allConfigsReady}
         setReady={setAllConfigsReady}
-        selectedPhoneNumber={selectedPhoneNumber}
-        setSelectedPhoneNumber={setSelectedPhoneNumber}
         open={showChecklist}
         onOpenChange={setShowChecklist}
       />
@@ -57,7 +53,7 @@ const PhoneNumberChecklist: React.FC<PhoneNumberChecklistProps> = ({
           <span className="text-sm text-gray-500">Number</span>
           <div className="flex items-center">
             <span className="font-medium w-36">
-              {isVisible ? selectedPhoneNumber || "None" : "••••••••••"}
+              {isVisible ? phoneNumber || "None" : "••••••••••"}
             </span>
             <Button
               variant="ghost"

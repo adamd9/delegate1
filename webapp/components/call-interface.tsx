@@ -12,16 +12,20 @@ import PhoneNumberChecklist from "@/components/phone-number-checklist";
 import { useTranscript } from "@/contexts/TranscriptContext";
 import { getBackendUrl, getWebSocketUrl } from "@/lib/get-backend-url";
 
-import { useSetupChecklist } from "@/lib/hooks/useSetupChecklist";
+
 
 import statusSingletonChecker from "../lib/statusSingletonChecker";
 
 const CallInterface = () => {
-  const [selectedPhoneNumber, setSelectedPhoneNumber] = useState("");
+  // Use singleton checker for setup checklist
+  const [checklistResult, setChecklistResult] = useState<any>(null);
   const [allConfigsReady, setAllConfigsReady] = useState(false);
-  // Use setup checklist at the top level
-  const [setupState, setupActions] = useSetupChecklist(selectedPhoneNumber, setSelectedPhoneNumber);
-  const [items, setItems] = useState<Item[]>([]);
+  useEffect(() => {
+    statusSingletonChecker.runChecklist().then((result) => {
+      setChecklistResult(result);
+      setAllConfigsReady(result.status === 'success');
+    });
+  }, []);
   const [callStatus, setCallStatus] = useState("disconnected");
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [chatWs, setChatWs] = useState<WebSocket | null>(null);
@@ -144,12 +148,11 @@ const CallInterface = () => {
           <div className="col-span-6 flex flex-col gap-4 h-full overflow-hidden">
             <div className="flex-shrink-0">
               <PhoneNumberChecklist
-                selectedPhoneNumber={selectedPhoneNumber}
-                setSelectedPhoneNumber={setSelectedPhoneNumber}
+                phoneNumber={checklistResult?.phoneNumber || ''}
                 allConfigsReady={allConfigsReady}
                 setAllConfigsReady={setAllConfigsReady}
-                checklist={setupState.checklist}
-                allChecksPassed={setupState.allChecksPassed}
+                checklist={checklistResult?.checklist || []}
+                allChecksPassed={checklistResult?.status === 'success'}
               />
             </div>
             <div className="flex-1 min-h-0">
@@ -164,7 +167,7 @@ const CallInterface = () => {
 
           {/* Right Column: Function Calls */}
           <div className="col-span-3 flex flex-col h-full overflow-hidden">
-            <FunctionCallsPanel items={items} ws={ws} />
+            <FunctionCallsPanel items={[]} ws={ws} /> // TODO: Wire up real function call items
           </div>
         </div>
         
