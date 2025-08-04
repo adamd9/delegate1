@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import TopBar from "@/components/top-bar";
 import SessionConfigurationPanel from "@/components/session-configuration-panel";
 import { EnhancedTranscript } from "@/components/enhanced-transcript";
-import FunctionCallsPanel from "@/components/function-calls-panel";
+
 import { Item } from "@/components/types";
 import handleRealtimeEvent from "@/lib/handle-realtime-event";
 import handleEnhancedRealtimeEvent from "@/lib/handle-enhanced-realtime-event";
@@ -124,7 +124,7 @@ const CallInterface = () => {
     <div className="h-screen bg-white flex flex-col">
       <TopBar />
       <div className="flex-grow p-4 overflow-hidden flex flex-col">
-        <div className="grid grid-cols-12 gap-4 flex-grow overflow-hidden">
+        <div className="grid grid-cols-9 gap-4 flex-grow overflow-hidden">
           {/* Left Column */}
           <div className="col-span-3 flex flex-col h-full overflow-hidden">
             <SessionConfigurationPanel
@@ -161,11 +161,6 @@ const CallInterface = () => {
                 canSend={canSendChat}
               />
             </div>
-          </div>
-
-          {/* Right Column: Function Calls */}
-          <div className="col-span-3 flex flex-col h-full overflow-hidden">
-            <FunctionCallsPanel items={[]} ws={ws} /> // TODO: Wire up real function call items
           </div>
         </div>
         
