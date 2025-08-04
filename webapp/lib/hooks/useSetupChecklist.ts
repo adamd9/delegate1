@@ -108,7 +108,7 @@ export function useSetupChecklist(
     const pollChecks = async () => {
       // Stop polling if all checks have passed
       if (isSetupComplete()) {
-        console.log("All setup checks passed, stopping polling");
+        // All setup checks passed, stopping polling (debug log removed)
         polling = false;
         return;
       }
@@ -135,19 +135,19 @@ export function useSetupChecklist(
         res = await fetch("/api/twilio/numbers");
         if (!res.ok) throw new Error("Failed to fetch phone numbers");
         const numbersData = await res.json();
-        console.log('[useSetupChecklist] /api/twilio/numbers response:', numbersData);
+        // [useSetupChecklist] /api/twilio/numbers response: (debug log removed)
         if (Array.isArray(numbersData) && numbersData.length > 0) {
           setPhoneNumbers(numbersData);
           // If currentNumberSid not set or not in the list, use first
           const selected =
             numbersData.find((p: PhoneNumber) => p.sid === currentNumberSid) ||
             numbersData[0];
-          console.log('[useSetupChecklist] Selected phone number:', selected);
+          // [useSetupChecklist] Selected phone number: (debug log removed)
           setCurrentNumberSid(selected.sid);
           setCurrentVoiceUrl(selected.voiceUrl || "");
           setSelectedPhoneNumber(selected.friendlyName || selected.phoneNumber || "");
         } else {
-          console.log('[useSetupChecklist] No phone numbers returned from API.');
+          // [useSetupChecklist] No phone numbers returned from API. (debug log removed)
         }
 
         // 3. Check server & public URL
@@ -186,7 +186,7 @@ export function useSetupChecklist(
             throw new Error("Local server not responding");
           }
         } catch {
-          console.error("Local server not responding");
+          // Local server not responding (debug log removed)
           setBackendUp(false);
           setPublicUrl("");
           setPublicUrlAccessible(false); // Reset ngrok status when server is down
@@ -290,8 +290,8 @@ export function useSetupChecklist(
   };
 
   // Debug: Log checklist evaluation
-  console.log('[useSetupChecklist] Checklist items:', checklist);
-  console.log('[useSetupChecklist] allChecksPassed:', checklist.every((item) => item.done));
+  // [useSetupChecklist] Checklist items: (debug log removed)
+  // [useSetupChecklist] allChecksPassed: (debug log removed)
 
   // Return state and actions
   return [

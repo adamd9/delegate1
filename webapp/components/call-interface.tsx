@@ -14,6 +14,8 @@ import { getBackendUrl, getWebSocketUrl } from "@/lib/get-backend-url";
 
 import { useSetupChecklist } from "@/lib/hooks/useSetupChecklist";
 
+import statusSingletonChecker from "../lib/statusSingletonChecker";
+
 const CallInterface = () => {
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState("");
   const [allConfigsReady, setAllConfigsReady] = useState(false);
@@ -28,6 +30,13 @@ const CallInterface = () => {
   const transcript = useTranscript();
   
   const canSendChat = chatStatus === 'connected' && userText.trim().length > 0;
+
+  // Run singleton checklist on mount, log result
+  useEffect(() => {
+    statusSingletonChecker.runChecklist().then(result => {
+      console.log('[statusSingletonChecker] Webapp checklist result:', result.status, result.details);
+    });
+  }, []);
 
   useEffect(() => {
     if (allConfigsReady && !ws) {
