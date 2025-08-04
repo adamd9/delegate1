@@ -190,16 +190,27 @@ export default function handleEnhancedRealtimeEvent(
       );
 
       // Add breadcrumb for chat response
-      const chatBreadcrumbTitle = chatSupervisor 
+      const chatBreadcrumbTitle = chatSupervisor
         ? "🧠 Supervisor chat response"
         : "💬 Chat response";
-        
+
       addTranscriptBreadcrumb(
         chatBreadcrumbTitle,
         {
           content: event.content,
           timestamp: event.timestamp,
           supervisor: chatSupervisor
+        }
+      );
+      break;
+
+    case "chat.canvas":
+      addTranscriptBreadcrumb(
+        "📝 Canvas response",
+        {
+          content: event.content,
+          timestamp: event.timestamp,
+          supervisor: event.supervisor || false
         }
       );
       break;
