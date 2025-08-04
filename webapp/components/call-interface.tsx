@@ -127,6 +127,11 @@ const CallInterface = () => {
         <div className="grid grid-cols-9 gap-4 flex-grow overflow-hidden">
           {/* Left Column */}
           <div className="col-span-3 flex flex-col h-full overflow-hidden">
+            <PhoneNumberChecklist
+              checklistResult={checklistResult}
+              allConfigsReady={allConfigsReady}
+              setAllConfigsReady={setAllConfigsReady}
+            />
             <SessionConfigurationPanel
               callStatus={callStatus}
               onSave={(config) => {
@@ -146,13 +151,6 @@ const CallInterface = () => {
 
           {/* Middle Column: Transcript */}
           <div className="col-span-6 flex flex-col gap-4 h-full overflow-hidden">
-            <div className="flex-shrink-0">
-              <PhoneNumberChecklist
-                checklistResult={checklistResult}
-                allConfigsReady={allConfigsReady}
-                setAllConfigsReady={setAllConfigsReady}
-              />
-            </div>
             <div className="flex-1 min-h-0">
               <EnhancedTranscript
                 userText={userText}

@@ -26,7 +26,6 @@ const checklist: ChecklistItem[] = checklistResult?.details?.checks || [];
   const allChecksPassed = checklistResult?.status === 'success';
   const phoneNumber = checklistResult?.details?.phoneNumber || '';
   const [isVisible, setIsVisible] = useState(true);
-  const [showChecklist, setShowChecklist] = useState(false);
 
   // Count incomplete items
   const incompleteCount = checklist.filter(item => !item.done && !item.passed).length;
@@ -65,7 +64,7 @@ const checklist: ChecklistItem[] = checklistResult?.details?.checks || [];
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="flex items-center gap-2 cursor-pointer" onClick={() => setShowChecklist(true)}>
+                <div className="flex items-center gap-2 cursor-pointer">
                   {allChecksPassed ? (
                     <CheckCircle className="text-green-500 w-4 h-4" />
                   ) : (
@@ -76,33 +75,8 @@ const checklist: ChecklistItem[] = checklistResult?.details?.checks || [];
                   </span>
                 </div>
               </TooltipTrigger>
-              <TooltipContent>
-                <div className="p-2">
-                  <p className="font-medium mb-1">Setup Status:</p>
-                  <ul className="space-y-1">
-                    {checklist.map((item: ChecklistItem) => (
-                      <li key={item.id} className="flex items-center gap-2 text-sm">
-                        {item.done ? (
-                          <CheckCircle className="h-3 w-3 text-green-500" />
-                        ) : (
-                          <AlertCircle className="h-3 w-3 text-amber-500" />
-                        )}
-                        <span>{item.label}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowChecklist(true)}
-            className={!allChecksPassed ? "border-amber-500 text-amber-700" : ""}
-          >
-            Checklist
-          </Button>
         </div>
       </Card>
     );
