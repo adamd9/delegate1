@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
@@ -40,9 +40,22 @@ const SessionConfigurationPanel: React.FC<SessionConfigurationPanelProps> = ({
     "idle" | "saving" | "saved" | "error"
   >("idle");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [buildInfo, setBuildInfo] = useState<{ commitId: string; commitMessage: string } | null>(
+    null
+  );
 
   // Fetch backend tools once (no polling since tools are static)
   const backendTools = useBackendTools(`${getBackendUrl()}/tools`, 0);
+
+  // Load build metadata
+  useEffect(() => {
+    fetch("/build-info.json")
+      .then((res) => res.json())
+      .then(setBuildInfo)
+      .catch(() => {
+        /* ignore */
+      });
+  }, []);
 
   // Track changes to determine if there are unsaved modifications
   useEffect(() => {
@@ -272,6 +285,14 @@ const SessionConfigurationPanel: React.FC<SessionConfigurationPanelProps> = ({
           </div>
         </ScrollArea>
       </CardContent>
+      <CardFooter className="flex-col items-center text-xs text-muted-foreground">
+        {buildInfo && (
+          <>
+            <div>Commit {buildInfo.commitId}</div>
+            <div>{buildInfo.commitMessage}</div>
+          </>
+        )}
+      </CardFooter>
 
       <ToolConfigurationDialog
         open={openDialog}
