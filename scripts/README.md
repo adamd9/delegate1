@@ -16,6 +16,9 @@ This directory contains utility scripts for managing Twilio Voice integration an
 - **`test-direct-api.js`** - Test direct HTTP API calls to Twilio AU1 region
 - **`validate-token.js`** - Decode and validate Twilio access tokens
 
+### `ask.js` - End-to-end agent test
+- **`ask.js`** - Run a question through the full agent pipeline from the command line
+
 ## 🚀 Quick Usage
 
 ### Generate a Fresh Token
@@ -37,6 +40,12 @@ npm run script:inspect-app
 ```bash
 npm run script:validate-token
 npm run script:test-api-key
+```
+
+### Run an End-to-End Agent Test
+```bash
+npm run ask -- "What is 2 + 2?"      # simple flow
+npm run ask -- "Please escalate this to the supervisor and tell me our company policy on data privacy."  # escalation
 ```
 
 ## 📋 Prerequisites

@@ -1,5 +1,6 @@
 import { RawData, WebSocket } from "ws";
-import OpenAI from "openai";
+import OpenAI, { ClientOptions } from "openai";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { ResponsesTextInput } from "./types";
 import { getAllFunctions, getDefaultAgent, FunctionHandler } from "./agentConfigs";
 import { isWindowOpen, getNumbers } from './smsState';
@@ -151,9 +152,14 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
         console.error("❌ No OpenAI API key set in environment");
         return;
       }
-      session.openaiClient = new OpenAI({
+      const options: ClientOptions = {
         apiKey: process.env.OPENAI_API_KEY,
-      });
+      };
+      if (process.env.CODEX_CLI === 'true' && process.env.HTTPS_PROXY) {
+        options.httpAgent = new HttpsProxyAgent(process.env.HTTPS_PROXY);
+        console.debug('OpenAI Client', 'Using proxy agent for Codex environment');
+      }
+      session.openaiClient = new OpenAI(options);
       console.log("✅ OpenAI REST client initialized for text chat");
     }
     
