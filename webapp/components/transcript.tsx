@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import mobileFix from "./transcript.mobilefix.module.css";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bot, Phone, MessageSquare, Wrench } from "lucide-react";
 import { Item } from "@/components/types";
@@ -94,6 +95,8 @@ const Transcript: React.FC<TranscriptProps> = ({ items }) => {
               );
             })}
             <div ref={scrollRef} />
+            {/* Spacer to prevent input cutoff on mobile */}
+            <div className={mobileFix.transcriptBottomSpacer} />
           </div>
         </ScrollArea>
       </CardContent>

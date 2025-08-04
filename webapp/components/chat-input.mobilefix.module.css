@@ -1,0 +1,29 @@
+.chatInputMobileFixed {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100vw;
+  z-index: 50;
+  background: white;
+  border-top: 1px solid #e5e7eb; /* Tailwind border-gray-200 */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (min-width: 640px) {
+  /* Disable fixed input on desktop/tablet */
+  .chatInputMobileFixed {
+    position: static;
+    width: auto;
+    left: auto;
+    bottom: auto;
+    z-index: auto;
+    padding-bottom: 0;
+  }
+}
+
+/* iOS Safari only media query hack */
+@supports (-webkit-touch-callout: none) {
+  .chatInputMobileFixed {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+  }
+}

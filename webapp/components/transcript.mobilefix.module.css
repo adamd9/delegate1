@@ -1,0 +1,19 @@
+.transcriptBottomSpacer {
+  /* Height matches the fixed chat input height on mobile */
+  height: 80px;
+  /* Use env(safe-area-inset-bottom) for iOS devices */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (min-width: 640px) {
+  .transcriptBottomSpacer {
+    height: 0;
+    padding-bottom: 0;
+  }
+}
+
+@supports (-webkit-touch-callout: none) {
+  .transcriptBottomSpacer {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+  }
+}
