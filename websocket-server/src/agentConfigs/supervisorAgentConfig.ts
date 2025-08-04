@@ -1,8 +1,8 @@
 import { AgentConfig } from './types';
-import { 
-  getCurrentTimeFunction, 
-  getNextResponseFromSupervisorFunction 
-} from './supervisorAgent';
+import {
+  getCurrentTimeFunction,
+  lookupKnowledgeBaseFunction
+} from './supervisorTools';
 import { agentPersonality } from "./personality";
 
 // Supervisor Agent Configuration
@@ -25,8 +25,8 @@ Guidelines:
 - Format your response for direct relay to the user.`,
   voice: agentPersonality.voice,
   tools: [
-    getCurrentTimeFunction,
-    getNextResponseFromSupervisorFunction
+    lookupKnowledgeBaseFunction,
+    getCurrentTimeFunction
   ],
   model: "gpt-4o",
   temperature: 0.7,
