@@ -1,4 +1,5 @@
 import { AgentConfig, FunctionHandler } from './types';
+import { agentPersonality } from "./personality";
 import { ResponsesFunctionCall, ResponsesFunctionCallOutput, ResponsesInputItem, ResponsesTextInput, ResponsesOutputItem } from '../types';
 import OpenAI from 'openai';
 
@@ -205,7 +206,9 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
         reasoning_type: args.reasoning_type 
       });
 
-      const supervisorPrompt = `You are an expert supervisor agent providing guidance to a junior AI assistant. 
+      const supervisorPrompt = `${agentPersonality.description}
+
+You are an expert supervisor agent providing guidance to a junior AI assistant. 
 
 The junior agent has escalated this query to you: "${args.query}"
 ${args.context ? `Additional context: ${args.context}` : ''}
