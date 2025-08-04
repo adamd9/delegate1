@@ -25,13 +25,13 @@ interface Session {
 
 let session: Session = {};
 
-// Sets are now passed in from server.ts
-export function handleCallConnection(ws: WebSocket, openAIApiKey: string, callClients: Set<WebSocket>) {
+export function handleCallConnection(ws: WebSocket, openAIApiKey: string) {
   console.info("📞 New call connection");
   session.openAIApiKey = openAIApiKey;
-  ws.on("message", (data) => handleTwilioMessage(data, callClients));
+  session.twilioConn = ws;
+  ws.on("message", (data) => handleTwilioMessage(data));
   ws.on("error", ws.close);
-  // No session cleanup here; handled by Set in server.ts
+  // Cleanup handled in server.ts on close
 }
 
 export function handleFrontendConnection(ws: WebSocket, logsClients: Set<WebSocket>) {
@@ -78,7 +78,7 @@ async function handleFunctionCall(item: { name: string; arguments: string }) {
   }
 }
 
-function handleTwilioMessage(data: RawData, callClients: Set<WebSocket>) {
+function handleTwilioMessage(data: RawData) {
   const msg = parseMessage(data);
   if (!msg) return;
 
@@ -418,6 +418,14 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
   }
 }
 
+// Explicitly type globalThis for logsClients/chatClients to avoid TS7017
+declare global {
+  // eslint-disable-next-line no-var
+  var logsClients: Set<WebSocket> | undefined;
+  // eslint-disable-next-line no-var
+  var chatClients: Set<WebSocket> | undefined;
+}
+
 function tryConnectModel() {
   // Connect to model if we have either a Twilio connection OR a chat connection
   const hasConnection = (session.twilioConn && session.streamSid) || session.chatConn;
@@ -458,7 +466,7 @@ function tryConnectModel() {
     });
   });
 
-  session.modelConn.on("message", handleModelMessage);
+  session.modelConn.on("message", (data: RawData) => handleModelMessage(data, global.logsClients ?? new Set(), global.chatClients ?? new Set()));
   session.modelConn.on("error", closeModel);
   session.modelConn.on("close", closeModel);
 }
@@ -480,7 +488,7 @@ function shouldForwardToFrontend(event: any): boolean {
   return true;
 }
 
-function handleModelMessage(data: RawData, logsClients: Set<WebSocket>, callClients: Set<WebSocket>, chatClients: Set<WebSocket>) {
+function handleModelMessage(data: RawData, logsClients: Set<WebSocket> = new Set(), chatClients: Set<WebSocket> = new Set()) {
   const event = parseMessage(data);
   if (!event) return;
 
@@ -493,7 +501,7 @@ function handleModelMessage(data: RawData, logsClients: Set<WebSocket>, callClie
 
   switch (event.type) {
     case "input_audio_buffer.speech_started":
-      handleTruncation(callClients);
+      handleTruncation();
       break;
 
     case "response.audio.delta":
@@ -503,16 +511,13 @@ function handleModelMessage(data: RawData, logsClients: Set<WebSocket>, callClie
         }
         if (event.item_id) session.lastAssistantItem = event.item_id;
 
-        for (const ws of callClients) {
-          if (isOpen(ws)) jsonSend(ws, {
+        if (isOpen(session.twilioConn)) {
+          jsonSend(session.twilioConn, {
             event: "media",
             streamSid: session.streamSid,
             media: { payload: event.delta },
           });
-        }
-
-        for (const ws of callClients) {
-          if (isOpen(ws)) jsonSend(ws, {
+          jsonSend(session.twilioConn, {
             event: "mark",
             streamSid: session.streamSid,
           });
@@ -571,7 +576,7 @@ function handleModelMessage(data: RawData, logsClients: Set<WebSocket>, callClie
   }
 }
 
-function handleTruncation(callClients: Set<WebSocket>) {
+function handleTruncation() {
   if (
     !session.lastAssistantItem ||
     session.responseStartTimestamp === undefined
@@ -582,16 +587,13 @@ function handleTruncation(callClients: Set<WebSocket>) {
     (session.latestMediaTimestamp || 0) - (session.responseStartTimestamp || 0);
   const audio_end_ms = elapsedMs > 0 ? elapsedMs : 0;
 
-  for (const ws of callClients) {
-    if (isOpen(ws)) jsonSend(ws, {
+  if (session.twilioConn && session.streamSid) {
+    jsonSend(session.twilioConn, {
       type: "conversation.item.truncate",
       item_id: session.lastAssistantItem,
       content_index: 0,
       audio_end_ms,
     });
-  }
-
-  if (session.twilioConn && session.streamSid) {
     jsonSend(session.twilioConn, {
       event: "clear",
       streamSid: session.streamSid,

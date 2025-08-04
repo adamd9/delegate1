@@ -129,9 +129,13 @@ app.post("/access-token", (req, res) => {
   }
 });
 
-const callClients = new Set<WebSocket>();
+import session from "./sessionSingleton";
+// No callClients Set for call/voice; use single session.twilioConn
 const logsClients = new Set<WebSocket>();
 const chatClients = new Set<WebSocket>();
+// Make available on globalThis for sessionManager event forwarding
+(globalThis as any).logsClients = logsClients;
+(globalThis as any).chatClients = chatClients;
 
 wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
   const url = new URL(req.url || "", `http://${req.headers.host}`);
@@ -145,9 +149,20 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
   const type = parts[0];
 
   if (type === "call") {
-    callClients.add(ws);
-    handleCallConnection(ws, OPENAI_API_KEY, callClients);
-    ws.on("close", () => callClients.delete(ws));
+    // Restore old logic: only one active Twilio connection (session.twilioConn)
+    if (session && session.twilioConn) {
+      try {
+        session.twilioConn.close();
+      } catch (e) {}
+      session.twilioConn = undefined;
+    }
+    session.twilioConn = ws;
+    handleCallConnection(ws, OPENAI_API_KEY);
+    ws.on("close", () => {
+      if (session && session.twilioConn === ws) {
+        session.twilioConn = undefined;
+      }
+    });
   } else if (type === "logs") {
     logsClients.add(ws);
     handleFrontendConnection(ws, logsClients);
