@@ -3,6 +3,8 @@ import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { ResponsesInputItem, ResponsesTextInput, ResponsesFunctionCallOutput } from "./types";
 import { getAllFunctions, getDefaultAgent, FunctionHandler } from "./agentConfigs";
+import { isWindowOpen, getNumbers } from './smsState';
+import { sendSms } from './sms';
 
 interface Session {
   twilioConn?: WebSocket;
@@ -136,7 +138,7 @@ async function handleChatMessage(data: RawData, chatClients: Set<WebSocket>, log
   }
 }
 
-async function handleTextChatMessage(content: string, chatClients: Set<WebSocket>, logsClients: Set<WebSocket>) {
+export async function handleTextChatMessage(content: string, chatClients: Set<WebSocket>, logsClients: Set<WebSocket>) {
   try {
     console.log("🔤 Processing text message:", content);
     
@@ -383,6 +385,16 @@ Be conversational and helpful. When escalating, choose the appropriate reasoning
             channel: "text"
           }
         });
+      }
+      // --- SMS reply window logic ---
+      try {
+        const text = response?.output_text;
+        if (text && isWindowOpen()) {
+          const { smsUserNumber, smsTwilioNumber } = getNumbers();
+          await sendSms(text, smsTwilioNumber, smsUserNumber);
+        }
+      } catch (e) {
+        console.error('sendSms error', e);
       }
     } else {
       console.error("❌ No response content from OpenAI");

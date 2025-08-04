@@ -6,8 +6,9 @@ import http from "http";
 import { readFileSync } from "fs";
 import { join } from "path";
 import cors from "cors";
-import { handleCallConnection, handleFrontendConnection, handleChatConnection } from "./sessionManager";
+import { handleCallConnection, handleFrontendConnection, handleChatConnection, handleTextChatMessage } from "./sessionManager";
 import functions from "./functionHandlers";
+import { openReplyWindow, setNumbers } from './smsState';
 
 dotenv.config();
 
@@ -26,6 +27,23 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 app.use(express.urlencoded({ extended: false }));
+
+// --- Twilio SMS webhook route ---
+app.post('/sms', async (req, res) => {
+  const messageText = req.body?.Body ?? '';
+  const from = req.body?.From ?? '';
+  const to = req.body?.To ?? '';
+
+  setNumbers({ userFrom: from, twilioTo: to });
+  openReplyWindow();
+
+  // Route through the unified, existing chat pipeline (no duplicates)
+  // Use the same session as chat (single-threaded assumption)
+  await handleTextChatMessage(messageText, chatClients, logsClients);
+
+  // Respond immediately to Twilio
+  res.status(200).end();
+});
 
 const twimlPath = join(__dirname, "twiml.xml");
 const twimlTemplate = readFileSync(twimlPath, "utf-8");
