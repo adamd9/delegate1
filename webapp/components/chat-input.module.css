@@ -1,0 +1,20 @@
+.chatInputSafariFix {
+  /* Only apply on iOS Safari */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@supports (height: 100dvh) {
+  .chatInputSafariFix {
+    /* Use dynamic viewport height for containers if needed */
+    min-height: 0;
+  }
+}
+
+/* iOS Safari only media query hack */
+@media not all and (min-resolution: 0.001dpcm) {
+  @supports (-webkit-touch-callout: none) {
+    .chatInputSafariFix {
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+    }
+  }
+}

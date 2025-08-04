@@ -1,9 +1,7 @@
 import { RawData, WebSocket } from "ws";
 import OpenAI from "openai";
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import { ResponsesInputItem, ResponsesTextInput, ResponsesFunctionCallOutput } from "./types";
+import { ResponsesTextInput } from "./types";
 import { getAllFunctions, getDefaultAgent, FunctionHandler } from "./agentConfigs";
-import { agentPersonality } from "./agentConfigs/personality";
 import { isWindowOpen, getNumbers } from './smsState';
 import { sendSms } from './sms';
 
