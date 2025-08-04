@@ -215,14 +215,15 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
       const supervisorPrompt = supervisorAgentInstructions;
 
       const tools = [
-        { 
-          type: "function" as const, 
+        { type: "web_search" as const },
+        {
+          type: "function" as const,
           name: lookupKnowledgeBaseFunction.schema.name,
           description: lookupKnowledgeBaseFunction.schema.description || "",
           parameters: lookupKnowledgeBaseFunction.schema.parameters
         },
-        { 
-          type: "function" as const, 
+        {
+          type: "function" as const,
           name: getCurrentTimeFunction.schema.name,
           description: getCurrentTimeFunction.schema.description || "",
           parameters: getCurrentTimeFunction.schema.parameters
