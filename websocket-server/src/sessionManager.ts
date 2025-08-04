@@ -293,61 +293,107 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
           const followUpBody = {
             model: "gpt-4o",
             previous_response_id: response.id,
+            instructions:
+              "Using the supervisor's result, reply in JSON with keys 'summary' (max two sentences) and 'canvas' (detailed response).",
             input: [
               {
                 type: "function_call_output" as const,
                 call_id: functionCall.call_id,
-                output: typeof functionResult === "string" ? functionResult : JSON.stringify(functionResult)
+                output:
+                  typeof functionResult === "string"
+                    ? functionResult
+                    : JSON.stringify(functionResult)
               }
             ],
-            max_output_tokens: 500
+            max_output_tokens: 1000
           };
 
           console.log("[DEBUG] Follow-up Responses API request:", JSON.stringify(followUpBody, null, 2));
           const followUpResponse = await session.openaiClient.responses.create(followUpBody);
-          console.log("[DEBUG] Follow-up Responses API response:", JSON.stringify({
-            id: followUpResponse.id,
-            output_text: followUpResponse.output_text,
-            output: followUpResponse.output
-          }, null, 2));
+          console.log(
+            "[DEBUG] Follow-up Responses API response:",
+            JSON.stringify(
+              {
+                id: followUpResponse.id,
+                output_text: followUpResponse.output_text,
+                output: followUpResponse.output
+              },
+              null,
+              2
+            )
+          );
 
           // Update conversation state with new response id
           session.previousResponseId = followUpResponse.id;
 
-          const finalResponse = followUpResponse.output_text || "Supervisor agent completed.";
+          // Parse summary and canvas from the response
+          let finalResponse = "Supervisor agent completed.";
+          let canvasMessage = "";
+          try {
+            if (followUpResponse.output_text) {
+              const parsed = JSON.parse(followUpResponse.output_text);
+              finalResponse = parsed.summary || finalResponse;
+              canvasMessage = parsed.canvas || "";
+            }
+          } catch (e) {
+            console.warn("Failed to parse supervisor JSON:", e);
+            finalResponse = followUpResponse.output_text || finalResponse;
+            canvasMessage =
+              typeof functionResult === "string"
+                ? functionResult
+                : JSON.stringify(functionResult);
+          }
 
           // Add assistant response to conversation history
           const assistantMessage = {
-            type: 'assistant' as const,
+            type: "assistant" as const,
             content: finalResponse,
             timestamp: Date.now(),
-            channel: 'text' as const
+            channel: "text" as const
           };
           session.conversationHistory.push(assistantMessage);
 
-          // Send response back to chat client
+          // Send short summary back to chat clients
           for (const ws of chatClients) {
-            if (isOpen(ws)) jsonSend(ws, {
-              type: "chat.response",
-              content: finalResponse,
-              timestamp: Date.now(),
-              supervisor: true
-            });
+            if (isOpen(ws))
+              jsonSend(ws, {
+                type: "chat.response",
+                content: finalResponse,
+                timestamp: Date.now(),
+                supervisor: true
+              });
+            if (canvasMessage) {
+              if (isOpen(ws))
+                jsonSend(ws, {
+                  type: "chat.canvas",
+                  content: canvasMessage,
+                  timestamp: Date.now(),
+                  supervisor: true
+                });
+            }
           }
 
-          // Forward assistant response to observability clients
+          // Forward assistant summary to observability clients
           for (const ws of logsClients) {
-            if (isOpen(ws)) jsonSend(ws, {
-              type: "conversation.item.created",
-              item: {
-                id: `msg_${Date.now()}`,
-                type: "message",
-                role: "assistant",
-                content: [{ type: "text", text: finalResponse }],
-                channel: "text",
+            if (isOpen(ws))
+              jsonSend(ws, {
+                type: "conversation.item.created",
+                item: {
+                  id: `msg_${Date.now()}`,
+                  type: "message",
+                  role: "assistant",
+                  content: [{ type: "text", text: finalResponse }],
+                  channel: "text",
+                  supervisor: true
+                }
+              });
+            if (canvasMessage && isOpen(ws))
+              jsonSend(ws, {
+                type: "chat.canvas",
+                content: canvasMessage,
+                timestamp: Date.now(),
                 supervisor: true
-              }
-            });
+              });
           }
         } else {
           console.error(`❌ Function handler not found: ${functionCall.name}`);
