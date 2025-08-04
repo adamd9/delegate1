@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import TopBar from "@/components/top-bar";
+import { Dialog, DialogTrigger, DialogContent } from "@/components/ui/dialog";
+import { Settings } from "lucide-react";
 import SessionConfigurationPanel from "@/components/session-configuration-panel";
 import { EnhancedTranscript } from "@/components/enhanced-transcript";
 
@@ -120,13 +122,23 @@ const CallInterface = () => {
     }
   };
 
+  const [setupDialogOpen, setSetupDialogOpen] = useState(false);
+
   return (
     <div className="h-screen bg-white flex flex-col">
-      <TopBar />
-      <div className="flex-grow p-4 overflow-hidden flex flex-col">
-        <div className="grid grid-cols-9 gap-4 flex-grow overflow-hidden">
-          {/* Left Column */}
-          <div className="col-span-3 flex flex-col h-full overflow-hidden">
+      <Dialog open={setupDialogOpen} onOpenChange={setSetupDialogOpen}>
+        <TopBar>
+          <DialogTrigger asChild>
+            <button
+              className="p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label="Open setup panel"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+          </DialogTrigger>
+        </TopBar>
+        <DialogContent className="max-w-md w-full sm:max-w-lg">
+          <div className="space-y-5">
             <PhoneNumberChecklist
               checklistResult={checklistResult}
               allConfigsReady={allConfigsReady}
@@ -148,9 +160,9 @@ const CallInterface = () => {
               }}
             />
           </div>
-
-          {/* Middle Column: Transcript */}
-          <div className="col-span-6 flex flex-col gap-4 h-full overflow-hidden">
+        </DialogContent>
+        <div className="flex-grow p-4 overflow-hidden flex flex-col">
+          <div className="w-full h-full flex flex-col gap-4 flex-grow overflow-hidden">
             <div className="flex-1 min-h-0">
               <EnhancedTranscript
                 userText={userText}
@@ -161,9 +173,7 @@ const CallInterface = () => {
             </div>
           </div>
         </div>
-        
-        {/* Chat input is now integrated into the enhanced transcript */}
-      </div>
+      </Dialog>
     </div>
   );
 };
