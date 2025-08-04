@@ -4,11 +4,11 @@ import { ResponsesFunctionCall, ResponsesFunctionCallOutput, ResponsesInputItem,
 import OpenAI, { ClientOptions } from 'openai';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 
-import { lookupKnowledgeBaseFunction, getCurrentTimeFunction } from './supervisorTools';
+import { getCurrentTimeFunction } from './supervisorTools';
 
 // Supervisor tool response handler
 export async function getSupervisorToolResponse(functionName: string, args: any): Promise<string> {
-  const supervisorTools = [lookupKnowledgeBaseFunction, getCurrentTimeFunction];
+  const supervisorTools = [getCurrentTimeFunction];
   const tool = supervisorTools.find(t => t.schema.name === functionName);
   
   if (!tool) {
@@ -169,12 +169,6 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
 
       const tools = [
         { type: "web_search" as const },
-        {
-          type: "function" as const,
-          name: lookupKnowledgeBaseFunction.schema.name,
-          description: lookupKnowledgeBaseFunction.schema.description || "",
-          parameters: lookupKnowledgeBaseFunction.schema.parameters
-        },
         {
           type: "function" as const,
           name: getCurrentTimeFunction.schema.name,
