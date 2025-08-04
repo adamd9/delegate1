@@ -4,8 +4,6 @@
 
 const endpoint = process.env.CALL_MY_PHONE_ENDPOINT;
 const secret = process.env.CALL_MY_PHONE_SECRET;
-const backendUrl = process.env.BACKEND_URL;
-const frontendUrl = process.env.FRONTEND_URL;
 const message = process.env.STARTUP_NOTIFY_MESSAGE || 'Servers started successfully';
 
 async function waitFor(url) {
@@ -50,13 +48,9 @@ async function notify(msg) {
 
 (async () => {
   try {
-    const waits = [];
-    if (backendUrl) waits.push(waitFor(backendUrl));
-    if (frontendUrl) waits.push(waitFor(frontendUrl));
-    await Promise.all(waits);
     await notify(message);
   } catch (err) {
-    console.error('Error waiting for servers:', err.message);
+    console.error('Error sending notification:', err.message);
   }
 })();
 
