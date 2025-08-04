@@ -9,6 +9,7 @@ import cors from "cors";
 import { handleCallConnection, handleFrontendConnection, handleChatConnection, handleTextChatMessage } from "./sessionManager";
 import functions from "./functionHandlers";
 import { openReplyWindow, setNumbers } from './smsState';
+import { getLogs } from "./logBuffer";
 
 dotenv.config();
 
@@ -65,6 +66,11 @@ app.all("/twiml", (req, res) => {
 // New endpoint to list available tools (schemas)
 app.get("/tools", (req, res) => {
   res.json(functions.map((f) => f.schema));
+});
+
+// Endpoint to retrieve latest server logs
+app.get("/logs", (req, res) => {
+  res.type("text/plain").send(getLogs().join("\n"));
 });
 
 // Access token endpoint for voice client
