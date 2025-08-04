@@ -1,4 +1,5 @@
 import { AgentConfig, FunctionHandler } from './types';
+import { supervisorAgentConfig } from './supervisorAgentConfig';
 import { agentPersonality } from "./personality";
 import { ResponsesFunctionCall, ResponsesFunctionCallOutput, ResponsesInputItem, ResponsesTextInput, ResponsesOutputItem } from '../types';
 import OpenAI from 'openai';
@@ -206,21 +207,12 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
         reasoning_type: args.reasoning_type 
       });
 
-      const supervisorPrompt = `${agentPersonality.description}
+      const supervisorAgentInstructions = supervisorAgentConfig.instructions
+      .replace("{{query}}", args.query)
+      .replace("{{context}}", args.context || "")
+      .replace("{{reasoning_type}}", args.reasoning_type);
 
-You are an expert supervisor agent providing guidance to a junior AI assistant. 
-
-The junior agent has escalated this query to you: "${args.query}"
-${args.context ? `Additional context: ${args.context}` : ''}
-Reasoning type requested: ${args.reasoning_type}
-
-Please provide a comprehensive response that the junior agent can relay to the user. You have access to additional tools for research and analysis.
-
-Guidelines:
-- Be thorough but concise
-- Use tools when you need specific information
-- Provide actionable guidance
-- Format your response for direct relay to the user`;
+      const supervisorPrompt = supervisorAgentInstructions;
 
       const tools = [
         { 

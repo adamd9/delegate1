@@ -1,4 +1,4 @@
-// PhoneNumberChecklist.tsx
+// ServiceChecklist.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -10,13 +10,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 
 
-type PhoneNumberChecklistProps = {
+type ServiceChecklistProps = {
   checklistResult: any;
   allConfigsReady: boolean;
   setAllConfigsReady: (ready: boolean) => void;
 };
 
-const PhoneNumberChecklist: React.FC<PhoneNumberChecklistProps> = ({
+const ServiceChecklist: React.FC<ServiceChecklistProps> = ({
   checklistResult,
   allConfigsReady,
   setAllConfigsReady,
@@ -39,39 +39,19 @@ const checklist: ChecklistItem[] = checklistResult?.details?.checks || [];
 
   function renderCard() {
     return (
-      <Card className="flex items-center justify-between p-4">
-        <div className="flex flex-col">
-          <span className="text-sm text-gray-500">Number</span>
-          <div className="flex items-center">
-            <span className="font-medium w-36">
-              {isVisible ? phoneNumber || "None" : "••••••••••"}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsVisible(!isVisible)}
-              className="h-8 w-8"
-            >
-              {isVisible ? (
-                <Eye className="h-4 w-4" />
-              ) : (
-                <EyeOff className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        </div>
+      <Card className="flex items-center justify-between p-4 border-0 shadow-none">
         <div className="flex items-center gap-4">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="flex items-center gap-2 cursor-pointer">
+                <div className="flex items-center gap-2">
                   {allChecksPassed ? (
                     <CheckCircle className="text-green-500 w-4 h-4" />
                   ) : (
                     <AlertCircle className="text-amber-500 w-4 h-4" />
                   )}
                   <span className="text-sm text-gray-700">
-                    {allChecksPassed ? "Setup Ready" : `Setup (${incompleteCount})`}
+                    {allChecksPassed ? "Ready" : `Setup (${incompleteCount})`}
                   </span>
                 </div>
               </TooltipTrigger>
@@ -83,4 +63,4 @@ const checklist: ChecklistItem[] = checklistResult?.details?.checks || [];
   }
 };
 
-export default PhoneNumberChecklist;
+export default ServiceChecklist;

@@ -10,7 +10,7 @@ import { EnhancedTranscript } from "@/components/enhanced-transcript";
 import { Item } from "@/components/types";
 import handleRealtimeEvent from "@/lib/handle-realtime-event";
 import handleEnhancedRealtimeEvent from "@/lib/handle-enhanced-realtime-event";
-import PhoneNumberChecklist from "@/components/phone-number-checklist";
+import ServiceChecklist from "@/components/phone-number-checklist";
 import { useTranscript } from "@/contexts/TranscriptContext";
 import { getBackendUrl, getWebSocketUrl } from "@/lib/get-backend-url";
 
@@ -128,6 +128,11 @@ const CallInterface = () => {
     <div className="h-screen bg-white flex flex-col">
       <Dialog open={setupDialogOpen} onOpenChange={setSetupDialogOpen}>
         <TopBar>
+          <ServiceChecklist
+            checklistResult={checklistResult}
+            allConfigsReady={allConfigsReady}
+            setAllConfigsReady={setAllConfigsReady}
+          />
           <DialogTrigger asChild>
             <button
               className="p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary"
@@ -139,11 +144,7 @@ const CallInterface = () => {
         </TopBar>
         <DialogContent className="max-w-md w-full sm:max-w-lg">
           <div className="space-y-5">
-            <PhoneNumberChecklist
-              checklistResult={checklistResult}
-              allConfigsReady={allConfigsReady}
-              setAllConfigsReady={setAllConfigsReady}
-            />
+
             <SessionConfigurationPanel
               callStatus={callStatus}
               onSave={(config) => {
