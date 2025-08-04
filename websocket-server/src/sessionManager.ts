@@ -27,6 +27,7 @@ let session: Session = {};
 
 // Sets are now passed in from server.ts
 export function handleCallConnection(ws: WebSocket, openAIApiKey: string, callClients: Set<WebSocket>) {
+  console.info("📞 New call connection");
   session.openAIApiKey = openAIApiKey;
   ws.on("message", (data) => handleTwilioMessage(data, callClients));
   ws.on("error", ws.close);
@@ -83,6 +84,8 @@ function handleTwilioMessage(data: RawData, callClients: Set<WebSocket>) {
 
   switch (msg.event) {
     case "start":
+      console.info("📞 Call started");
+      console.debug("📞 Call start event", msg);
       session.streamSid = msg.start.streamSid;
       session.latestMediaTimestamp = 0;
       session.lastAssistantItem = undefined;
@@ -99,6 +102,7 @@ function handleTwilioMessage(data: RawData, callClients: Set<WebSocket>) {
       }
       break;
     case "close":
+      console.info("📞 Call closed");
       closeAllConnections();
       break;
   }
@@ -437,7 +441,7 @@ function tryConnectModel() {
     // Include supervisor agent function for voice channel
     const allFunctions = getAllFunctions();
     const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
-    
+    const agentInstructions = getDefaultAgent().instructions;
     jsonSend(session.modelConn, {
       type: "session.update",
       session: {
@@ -448,20 +452,7 @@ function tryConnectModel() {
         input_audio_format: "g711_ulaw",
         output_audio_format: "g711_ulaw",
         tools: functionSchemas,
-        instructions: `You are a fast voice AI assistant with access to a supervisor agent for complex queries.
-
-For simple conversations, greetings, basic questions, and quick responses, handle them directly with natural speech.
-
-For complex queries that require:
-- Multi-step analysis or planning
-- Technical deep-dives  
-- Creative problem-solving
-- Detailed research or reasoning
-- Complex calculations or logic
-
-Use the getNextResponseFromSupervisor function to escalate to a more powerful reasoning model.
-
-Be conversational and natural in speech. When escalating, choose the appropriate reasoning_type and provide good context.`,
+        instructions: agentInstructions,
         ...config,
       },
     });

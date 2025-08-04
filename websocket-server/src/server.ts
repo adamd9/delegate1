@@ -58,6 +58,7 @@ app.all("/twiml", (req, res) => {
   wsUrl.pathname = `/call`;
 
   const twimlContent = twimlTemplate.replace("{{WS_URL}}", wsUrl.toString());
+  console.debug("TWIML:", twimlContent);
   res.type("text/xml").send(twimlContent);
 });
 
