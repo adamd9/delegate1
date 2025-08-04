@@ -6,43 +6,35 @@ import { Card } from "@/components/ui/card";
 import { AlertCircle, CheckCircle, Circle, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import ChecklistAndConfig from "@/components/checklist-and-config";
+
 
 
 
 type PhoneNumberChecklistProps = {
-  phoneNumber: string;
+  checklistResult: any;
   allConfigsReady: boolean;
   setAllConfigsReady: (ready: boolean) => void;
-  checklist: any[];
-  allChecksPassed: boolean;
 };
 
 const PhoneNumberChecklist: React.FC<PhoneNumberChecklistProps> = ({
-  phoneNumber,
+  checklistResult,
   allConfigsReady,
   setAllConfigsReady,
-  checklist,
-  allChecksPassed,
 }) => {
+  type ChecklistItem = { id: string; label: string; passed: boolean; info: string; done?: boolean; description?: string };
+const checklist: ChecklistItem[] = checklistResult?.details?.checks || [];
+  const allChecksPassed = checklistResult?.status === 'success';
+  const phoneNumber = checklistResult?.details?.phoneNumber || '';
   const [isVisible, setIsVisible] = useState(true);
   const [showChecklist, setShowChecklist] = useState(false);
 
   // Count incomplete items
-  const incompleteCount = checklist.filter(item => !item.done).length;
+  const incompleteCount = checklist.filter(item => !item.done && !item.passed).length;
 
   return (
     <>
       {/* Phone number card */}
       {renderCard()}
-      
-      {/* Checklist modal */}
-      <ChecklistAndConfig
-        ready={allConfigsReady}
-        setReady={setAllConfigsReady}
-        open={showChecklist}
-        onOpenChange={setShowChecklist}
-      />
     </>
   );
 

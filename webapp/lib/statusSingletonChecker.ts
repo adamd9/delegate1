@@ -9,13 +9,26 @@ interface ChecklistResult {
   details?: any;
 }
 
+import { EventEmitter } from 'events';
+
 class StatusSingletonChecker {
+  private emitter = new EventEmitter();
   private status: ChecklistStatus = 'not_started';
   private result: ChecklistResult | null = null;
   private promise: Promise<ChecklistResult> | null = null;
 
   public getStatus(): ChecklistStatus {
     return this.status;
+  }
+
+  public onUpdate(cb: (result: ChecklistResult | null) => void) {
+    console.debug('[StatusSingletonChecker] onUpdate: subscribing', cb);
+    this.emitter.on('update', cb);
+  }
+
+  public offUpdate(cb: (result: ChecklistResult | null) => void) {
+    console.debug('[StatusSingletonChecker] offUpdate: unsubscribing', cb);
+    this.emitter.off('update', cb);
   }
 
   public async runChecklist(): Promise<ChecklistResult> {
@@ -43,12 +56,15 @@ class StatusSingletonChecker {
           this.status = result.passed ? 'success' : 'error';
           this.result = { status: this.status, details: { checks: result.checks } };
           console.log('[statusSingletonChecker] Checklist result:', this.status, this.result.details);
+          console.debug('[StatusSingletonChecker] emitting update event', this.result);
+this.emitter.emit('update', this.result);
           resolve(this.result);
         }
       } catch (err) {
         this.status = 'error';
         this.result = { status: 'error', details: err };
         console.error('[statusSingletonChecker] Checklist error:', err);
+        this.emitter.emit('update', this.result!);
         resolve(this.result!);
       }
     });
@@ -163,4 +179,31 @@ if (isWebhookMismatch) passed = false;
 }
 
 const singleton = new StatusSingletonChecker();
+
+// Simulate an async success checklist result for UI testing
+(singleton as any).simulateSuccessCheck = function() {
+  setTimeout(() => {
+    const fakeResult = {
+      status: 'success',
+      details: {
+        checks: [
+          { id: 'twilio-account', label: 'Set up Twilio account', passed: true },
+          { id: 'twilio-phone', label: 'Set up Twilio phone number (Optional)', passed: true },
+          { id: 'webhook', label: 'Webhook URL configured', passed: true },
+        ],
+        phoneNumber: '+1234567890',
+      },
+    };
+    this.result = fakeResult;
+    this.status = 'success';
+    this.emitter.emit('update', fakeResult);
+    console.log('[StatusSingletonChecker] Simulated success result emitted');
+  }, 1500);
+};
+
+// Expose singleton for browser testing
+if (typeof window !== 'undefined') {
+  (window as any).StatusSingletonChecker = singleton;
+}
+
 export default singleton;

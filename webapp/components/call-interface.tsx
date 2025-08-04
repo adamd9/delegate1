@@ -55,7 +55,7 @@ const CallInterface = () => {
         const data = JSON.parse(event.data);
         console.log("Received logs event:", data);
         // Handle both old and new transcript systems
-        handleRealtimeEvent(data, setItems);
+        // handleRealtimeEvent(data, setItems); // setItems is not defined, removed
         handleEnhancedRealtimeEvent(data, transcript);
       };
 
@@ -148,11 +148,9 @@ const CallInterface = () => {
           <div className="col-span-6 flex flex-col gap-4 h-full overflow-hidden">
             <div className="flex-shrink-0">
               <PhoneNumberChecklist
-                phoneNumber={checklistResult?.phoneNumber || ''}
+                checklistResult={checklistResult}
                 allConfigsReady={allConfigsReady}
                 setAllConfigsReady={setAllConfigsReady}
-                checklist={checklistResult?.checklist || []}
-                allChecksPassed={checklistResult?.status === 'success'}
               />
             </div>
             <div className="flex-1 min-h-0">
