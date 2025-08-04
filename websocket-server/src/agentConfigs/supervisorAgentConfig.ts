@@ -27,7 +27,6 @@ You have access to:
 Always provide comprehensive but concise responses that can be directly relayed to the user.`,
   voice: agentPersonality.voice,
   tools: [
-    lookupKnowledgeBaseFunction,
     getCurrentTimeFunction,
     getNextResponseFromSupervisorFunction
   ],
