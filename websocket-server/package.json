@@ -7,8 +7,9 @@
     "build": "tsc && npm run copy-assets",
     "copy-assets": "cp src/twiml.xml dist/",
     "start": "node ../scripts/notify-on-start.js & node dist/server.js",
-    "dev": "nodemon --watch 'src/**/*' --watch '.env' --ext 'ts,js,xml,env' --exec 'ts-node' src/server.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node scripts/localtunnel.js & nodemon --watch 'src/**/*' --watch '.env' --ext 'ts,js,xml,env' --exec 'ts-node' src/server.ts",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "tunnel": "node scripts/localtunnel.js"
   },
   "keywords": [],
   "author": "",
@@ -32,6 +33,7 @@
     "@types/cors": "^2.8.19",
     "@types/dotenv": "^8.2.0",
     "@types/express": "^5.0.3",
+    "localtunnel": "^2.0.2",
     "nodemon": "^2.0.22"
   }
 }
