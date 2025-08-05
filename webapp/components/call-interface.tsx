@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import TopBar from "@/components/top-bar";
-import { Dialog, DialogTrigger, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogTrigger, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Settings, Mic } from "lucide-react";
 import VoiceMiniApp from "@/components/voice-mini-app";
 import SessionConfigurationPanel from "@/components/session-configuration-panel";
@@ -130,6 +130,10 @@ const CallInterface = () => {
     <div className="h-screen bg-white flex flex-col">
       <Dialog open={voiceAppOpen} onOpenChange={setVoiceAppOpen}>
         <DialogContent className="max-w-sm w-full">
+          {/* Accessibility: DialogTitle for screen readers */}
+          <span style={{position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', border: 0}}>
+            <DialogTitle>Voice Mini App</DialogTitle>
+          </span>
           <VoiceMiniApp />
         </DialogContent>
       </Dialog>
@@ -157,6 +161,10 @@ const CallInterface = () => {
           </DialogTrigger>
         </TopBar>
         <DialogContent className="max-w-md w-full sm:max-w-lg">
+          {/* Accessibility: DialogTitle for screen readers */}
+          <span style={{position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', border: 0}}>
+            <DialogTitle>Session Settings</DialogTitle>
+          </span>
           <div className="space-y-5">
 
             <SessionConfigurationPanel
