@@ -192,7 +192,7 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
     
     // Import function schemas for supervisor agent
     const allFunctions = getAllFunctions();
-    const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
+    const functionSchemas = allFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: true }));
     
     console.log("🤖 Calling OpenAI Responses API for text response...");
     
@@ -290,7 +290,7 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
           }
 
           // Follow-up request to complete tool call and have base agent respond
-          const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
+          const functionSchemas = allFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: true }));
           const followUpBody = {
             model: "gpt-4o",
             previous_response_id: response.id,
@@ -468,7 +468,7 @@ function tryConnectModel() {
     
     // Include supervisor agent function for voice channel
     const allFunctions = getAllFunctions();
-    const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
+    const functionSchemas = allFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: true }));
     const agentInstructions = getDefaultAgent().instructions;
     jsonSend(session.modelConn, {
       type: "session.update",
