@@ -24,6 +24,10 @@ The voice client is now integrated into the main webapp and accessible at:
 http://localhost:3000/voice
 ```
 
+An additional "Voice Mini-App" button in the top bar opens a lightweight overlay
+that connects directly to OpenAI's Realtime API over WebRTC. Set `OPENAI_API_KEY`
+in your `.env` file to enable this client.
+
 ## Usage
 
 1. **Start the webapp**: `npm run dev` from the webapp directory
