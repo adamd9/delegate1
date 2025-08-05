@@ -26,27 +26,20 @@ jobs:
         working-directory: webapp
         run: npm run build
 
+      - name: List build output directories
+        run: |
+          ls -la webapp/.next       
+
       - name: Upload webapp build artifact
         uses: actions/upload-artifact@v4
         with:
           name: webapp-build
           path: |
             webapp/.next/**
-            webapp/out/**
 
       - name: Install dependencies (websocket-server)
         working-directory: websocket-server
         run: npm ci
-
-      - name: Build websocket-server
-        working-directory: websocket-server
-        run: npm run build
-
-      - name: Upload websocket-server build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: websocket-server-build
-          path: websocket-server/dist
 
   trigger-dockerserver-deploy:
     needs: build
