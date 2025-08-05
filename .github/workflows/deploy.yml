@@ -62,7 +62,7 @@ jobs:
         with:
           token: ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}
           repository: adamd9/docker-server-dev
-          event-type: deploy-hk-dev
+          event-type: deploy-hk
           client-payload: '{}'
 
       - name: Trigger Docker Server Deployment for API Domain
