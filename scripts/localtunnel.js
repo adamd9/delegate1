@@ -2,10 +2,8 @@
 
 // scripts/localtunnel.js
 // Starts localtunnel for backend server if CODEX_CLI is 'true'.
-import { HttpProxyAgent } from 'http-proxy-agent';
-
+const { HttpProxyAgent } = require('http-proxy-agent');
 const localtunnel = require('localtunnel');
-const fetch = require('node-fetch');
 const fs = require('fs');
 
 const PORT = process.env.PORT || 8081;
@@ -16,7 +14,7 @@ const agent = new HttpProxyAgent(process.env.HTTP_PROXY);
 
 async function getTunnelPassword() {
   try {
-    const res = await fetch('ipv4.icanhazip.com', { agent });
+    const res = await fetch('http://ipv4.icanhazip.com', { agent });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
     return text.trim();
