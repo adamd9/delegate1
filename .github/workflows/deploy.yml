@@ -48,7 +48,7 @@ jobs:
           name: websocket-server-build
           path: websocket-server/dist
 
-  deploy:
+  trigger-dockerserver-deploy:
     needs: build
     runs-on: ubuntu-latest
     steps:

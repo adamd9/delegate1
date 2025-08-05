@@ -3,11 +3,6 @@
 const { spawn } = require('child_process');
 const path = require('path');
 
-if (process.env.CODEX_CLI !== 'true') {
-  console.log('[spawn-localtunnel] Skipped: CODEX_CLI is not "true"');
-  process.exit(0);
-}
-
 const scriptPath = path.join(__dirname, '..', 'localtunnel.js');
 const lt = spawn('node', [scriptPath], {
   detached: true,
