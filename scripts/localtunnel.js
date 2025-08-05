@@ -35,10 +35,10 @@ try {
     console.warn(`[localtunnel] CODEX_PROXY_CERT set but file does not exist: ${CODEX_PROXY_CERT}`);
     }
     // Fetch password
-    const password = await getTunnelPassword();
-    if (password) {
-    console.log(`\n[localtunnel] Tunnel password: ${password}`);
-    }
+    // const password = await getTunnelPassword();
+    // if (password) {
+    // console.log(`\n[localtunnel] Tunnel password: ${password}`);
+    // }
     const tunnel = await localtunnel(ltOptions);
     console.log(`\n[localtunnel] Public URL: ${tunnel.url}`);
     tunnel.on('close', () => {
