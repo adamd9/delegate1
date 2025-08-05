@@ -17,7 +17,7 @@ export const sendCanvas: FunctionHandler = {
         content: { type: "string" },
         title: { type: "string" }
       },
-      required: ["content"],
+      required: ["content", "title"],
       additionalProperties: false
     }
   },

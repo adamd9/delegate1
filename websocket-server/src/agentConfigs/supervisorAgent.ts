@@ -149,7 +149,7 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
           description: "Type of reasoning needed: 'research', 'analysis', 'problem_solving', or 'general'"
         }
       },
-      required: ["query", "reasoning_type"],
+      required: ["query", "context", "reasoning_type"],
       additionalProperties: false
     }
   },

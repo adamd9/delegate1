@@ -18,6 +18,7 @@ export const getWeatherFunction: FunctionHandler = {
         },
       },
       required: ["latitude", "longitude"],
+      additionalProperties: false
     },
   },
   handler: async (args: { latitude: number; longitude: number }) => {
