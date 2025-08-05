@@ -24,33 +24,29 @@ async function getTunnelPassword() {
   }
 }
 
-if (CODEX_CLI === 'true') {
-  (async () => {
-    try {
-      // Prepare localtunnel options
-      const ltOptions = { port: PORT, subdomain: undefined };
-      if (CODEX_PROXY_CERT && fs.existsSync(CODEX_PROXY_CERT)) {
-        ltOptions.local_ca = CODEX_PROXY_CERT;
-        console.log(`[localtunnel] Using local_ca: ${CODEX_PROXY_CERT}`);
-      } else if (CODEX_PROXY_CERT) {
-        console.warn(`[localtunnel] CODEX_PROXY_CERT set but file does not exist: ${CODEX_PROXY_CERT}`);
-      }
-      // Fetch password
-      const password = await getTunnelPassword();
-      if (password) {
-        console.log(`\n[localtunnel] Tunnel password: ${password}`);
-      }
-      const tunnel = await localtunnel(ltOptions);
-      console.log(`\n[localtunnel] Public URL: ${tunnel.url}`);
-      tunnel.on('close', () => {
-        console.log('[localtunnel] Tunnel closed');
-      });
-      // Keep process alive
-    } catch (err) {
-      console.error('[localtunnel] Failed to start:', err);
-      process.exit(1);
+(async () => {
+try {
+    // Prepare localtunnel options
+    const ltOptions = { port: PORT, subdomain: undefined };
+    if (CODEX_PROXY_CERT && fs.existsSync(CODEX_PROXY_CERT)) {
+    ltOptions.local_ca = CODEX_PROXY_CERT;
+    console.log(`[localtunnel] Using local_ca: ${CODEX_PROXY_CERT}`);
+    } else if (CODEX_PROXY_CERT) {
+    console.warn(`[localtunnel] CODEX_PROXY_CERT set but file does not exist: ${CODEX_PROXY_CERT}`);
     }
-  })();
-} else {
-  console.log('[localtunnel] Skipped: CODEX_CLI is not "true"');
+    // Fetch password
+    const password = await getTunnelPassword();
+    if (password) {
+    console.log(`\n[localtunnel] Tunnel password: ${password}`);
+    }
+    const tunnel = await localtunnel(ltOptions);
+    console.log(`\n[localtunnel] Public URL: ${tunnel.url}`);
+    tunnel.on('close', () => {
+    console.log('[localtunnel] Tunnel closed');
+    });
+    // Keep process alive
+} catch (err) {
+    console.error('[localtunnel] Failed to start:', err);
+    process.exit(1);
 }
+})();
