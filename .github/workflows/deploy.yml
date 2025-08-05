@@ -31,8 +31,8 @@ jobs:
         with:
           name: webapp-build
           path: |
-            webapp/.next
-            webapp/out
+            webapp/.next/**
+            webapp/out/**
 
       - name: Install dependencies (websocket-server)
         working-directory: websocket-server
