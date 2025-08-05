@@ -3,8 +3,7 @@
 import React, { useState, useEffect } from "react";
 import TopBar from "@/components/top-bar";
 import { Dialog, DialogTrigger, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Settings, Mic } from "lucide-react";
-import VoiceMiniApp from "@/components/voice-mini-app";
+import { Settings } from "lucide-react";
 import SessionConfigurationPanel from "@/components/session-configuration-panel";
 import { EnhancedTranscript } from "@/components/enhanced-transcript";
 
@@ -34,7 +33,6 @@ const CallInterface = () => {
   const [chatWs, setChatWs] = useState<WebSocket | null>(null);
   const [chatStatus, setChatStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [userText, setUserText] = useState("");
-  const [voiceAppOpen, setVoiceAppOpen] = useState(false);
   const transcript = useTranscript();
   
   const canSendChat = chatStatus === 'connected' && userText.trim().length > 0;
@@ -128,15 +126,6 @@ const CallInterface = () => {
 
   return (
     <div className="h-screen bg-white flex flex-col">
-      <Dialog open={voiceAppOpen} onOpenChange={setVoiceAppOpen}>
-        <DialogContent className="max-w-sm w-full">
-          {/* Accessibility: DialogTitle for screen readers */}
-          <span style={{position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', border: 0}}>
-            <DialogTitle>Voice Mini App</DialogTitle>
-          </span>
-          <VoiceMiniApp />
-        </DialogContent>
-      </Dialog>
       <Dialog open={setupDialogOpen} onOpenChange={setSetupDialogOpen}>
         <TopBar>
           <ServiceChecklist
@@ -144,13 +133,6 @@ const CallInterface = () => {
             allConfigsReady={allConfigsReady}
             setAllConfigsReady={setAllConfigsReady}
           />
-          <button
-            className="p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary"
-            aria-label="Open voice mini app"
-            onClick={() => setVoiceAppOpen(true)}
-          >
-            <Mic className="w-5 h-5" />
-          </button>
           <DialogTrigger asChild>
             <button
               className="p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary"
