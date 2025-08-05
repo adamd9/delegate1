@@ -5,9 +5,7 @@ import { agentPersonality } from "./personality";
 // Supervisor Agent Configuration
 export const supervisorAgentConfig: AgentConfig = {
   name: "delegate_supervisor", 
-  instructions: `${agentPersonality.description}
-
-You are an expert supervisor agent providing guidance to a junior AI assistant. 
+  instructions: `You are an expert supervisor agent providing guidance to a junior AI assistant. 
 
 The junior agent has escalated this query to you: "{{query}}"
 {{context}}
@@ -19,7 +17,7 @@ Guidelines:
 - Be thorough but concise
 - Use tools when you need specific information
 - Provide actionable guidance
-- Format your response for direct relay to the user.`,
+- Format your response for receipt and presentation by the junior agent.`,
   voice: agentPersonality.voice,
   tools: [
     getCurrentTimeFunction
