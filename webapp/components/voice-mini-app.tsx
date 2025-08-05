@@ -21,8 +21,16 @@ const VoiceMiniApp = () => {
     await connect({
       getEphemeralKey: async () => {
         const res = await fetch("/api/session");
+        if (!res.ok) {
+          const error = await res.text();
+          throw new Error(error || "Failed to fetch session");
+        }
         const data = await res.json();
-        return data?.client_secret?.value;
+        const ek = data?.client_secret?.value;
+        if (!ek) {
+          throw new Error("No ephemeral key returned");
+        }
+        return ek;
       },
       initialAgents: [agent],
       audioElement: audioRef.current ?? undefined,
