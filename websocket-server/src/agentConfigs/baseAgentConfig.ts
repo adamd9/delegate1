@@ -1,5 +1,5 @@
 import { AgentConfig } from './types';
-import { getWeatherFunction } from './baseAgent';
+import { getWeatherFunction, sendCanvas } from './baseAgent';
 import { agentPersonality } from "./personality";
 
 // Base Agent Configuration
@@ -22,7 +22,7 @@ Use the getNextResponseFromSupervisor function to escalate to a more powerful re
 
 Be conversational and natural in speech. When escalating, choose the appropriate reasoning_type and provide good context.`,
   voice: agentPersonality.voice,
-  tools: [getWeatherFunction],
+  tools: [getWeatherFunction, sendCanvas],
   model: "gpt-4o-realtime-preview-2024-10-01",
   temperature: 0.8,
 };

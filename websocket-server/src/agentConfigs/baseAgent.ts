@@ -1,4 +1,5 @@
 import { AgentConfig, FunctionHandler } from './types';
+import { sendCanvas } from './canvasTool';
 
 // Weather function - basic utility function
 export const getWeatherFunction: FunctionHandler = {
@@ -31,3 +32,4 @@ export const getWeatherFunction: FunctionHandler = {
 
 // Import the base agent configuration
 export { baseAgentConfig as baseAgent } from './baseAgentConfig';
+export { sendCanvas };
