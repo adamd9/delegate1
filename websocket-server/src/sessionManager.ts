@@ -290,11 +290,12 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
           }
 
           // Follow-up request to complete tool call and have base agent respond
+          const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
           const followUpBody = {
             model: "gpt-4o",
             previous_response_id: response.id,
             instructions:
-              "Using the supervisor's result, provide a concise plain-text answer in two or three sentences.",
+              "Using the supervisor's result, provide a concise plain-text answer in two or three sentences. If important details would be lost, use the sendCanvas tool to deliver the full response.",
             input: [
               {
                 type: "function_call_output" as const,
@@ -305,6 +306,7 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
                     : JSON.stringify(functionResult)
               }
             ],
+            tools: functionSchemas,
             max_output_tokens: 500
           };
 
