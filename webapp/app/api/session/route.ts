@@ -15,6 +15,16 @@ export async function GET() {
         }),
       }
     );
+    if (!response.ok) {
+      let errorBody;
+      try {
+        errorBody = await response.json();
+      } catch (e) {
+        errorBody = { error: response.statusText || 'Unknown error' };
+      }
+      console.error("Upstream API error:", response.status, errorBody);
+      return NextResponse.json(errorBody, { status: response.status });
+    }
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
