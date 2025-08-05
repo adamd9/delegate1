@@ -366,6 +366,15 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
                 }
               });
           }
+          // --- SMS reply window logic ---
+          try {
+            if (isWindowOpen()) {
+              const { smsUserNumber, smsTwilioNumber } = getNumbers();
+              await sendSms(finalResponse, smsTwilioNumber, smsUserNumber);
+            }
+          } catch (e) {
+            console.error('sendSms error', e);
+          }
         } else {
           console.error(`❌ Function handler not found: ${functionCall.name}`);
         }
