@@ -1,26 +1,37 @@
+import { NextResponse } from "next/server";
+
 export async function GET() {
   try {
-    const r = await fetch("https://api.openai.com/v1/realtime/sessions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-realtime-preview-2025-06-03",
-        voice: "verse",
-      }),
-    });
-
-    if (!r.ok) {
-      const error = await r.text();
-      return Response.json({ error }, { status: 500 });
+    const response = await fetch(
+      "https://api.openai.com/v1/realtime/sessions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-realtime-preview-2025-06-03",
+        }),
+      }
+    );
+    if (!response.ok) {
+      let errorBody;
+      try {
+        errorBody = await response.json();
+      } catch (e) {
+        errorBody = { error: response.statusText || 'Unknown error' };
+      }
+      console.error("Upstream API error:", response.status, errorBody);
+      return NextResponse.json(errorBody, { status: response.status });
     }
-
-    const data = await r.json();
-    return Response.json(data);
+    const data = await response.json();
+    return NextResponse.json(data);
   } catch (error) {
-    console.error("Error creating realtime session:", error);
-    return Response.json({ error: "Internal server error" }, { status: 500 });
+    console.error("Error in /session:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
