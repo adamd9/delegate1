@@ -7,9 +7,50 @@ on:
       - dev
 
 jobs:
-  trigger-deployment:
+  build:
     runs-on: ubuntu-latest
-    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies (webapp)
+        working-directory: webapp
+        run: npm ci
+
+      - name: Build webapp
+        working-directory: webapp
+        run: npm run build
+
+      - name: Upload webapp build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: webapp-build
+          path: |
+            webapp/.next
+            webapp/out
+
+      - name: Install dependencies (websocket-server)
+        working-directory: websocket-server
+        run: npm ci
+
+      - name: Build websocket-server
+        working-directory: websocket-server
+        run: npm run build
+
+      - name: Upload websocket-server build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: websocket-server-build
+          path: websocket-server/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
     steps:
       - name: Set domains based on branch
         id: set-domains
@@ -21,21 +62,19 @@ jobs:
             echo "DOMAIN=hk-dev.mdlg.dev" >> $GITHUB_ENV
             echo "API_DOMAIN=hk-dev.api.mdlg.dev" >> $GITHUB_ENV
           fi
-          
+
       - name: Trigger Docker Server Deployment for Main Domain
-        run: |
-          curl -f -X POST \
-            -H "Authorization: token ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Content-Type: application/json" \
-            https://api.github.com/repos/adamd9/docker-server-dev/dispatches \
-            -d '{"event_type": "deploy-service", "client_payload": {"domain": "${{ env.DOMAIN }}", "action": "down-up"}}' || exit 1
-            
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}
+          repository: adamd9/docker-server-dev
+          event-type: deploy-service
+          client-payload: '{"domain": "${{ env.DOMAIN }}"}'
+
       - name: Trigger Docker Server Deployment for API Domain
-        run: |
-          curl -f -X POST \
-            -H "Authorization: token ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Content-Type: application/json" \
-            https://api.github.com/repos/adamd9/docker-server-dev/dispatches \
-            -d '{"event_type": "deploy-service", "client_payload": {"domain": "${{ env.API_DOMAIN }}", "action": "down-up"}}' || exit 1
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}
+          repository: adamd9/docker-server-dev
+          event-type: deploy-service
+          client-payload: '{"domain": "${{ env.API_DOMAIN }}"}'
