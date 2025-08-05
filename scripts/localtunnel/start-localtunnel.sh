@@ -2,11 +2,6 @@
 # Run localtunnel.js in background, show startup info, then detach.
 set -euo pipefail
 
-if [ "${CODEX_CLI:-}" != "true" ]; then
-  echo "[start-localtunnel] Skipped: CODEX_CLI is not 'true'"
-  exit 0
-fi
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="$SCRIPT_DIR/localtunnel.log"
 
