@@ -33,8 +33,9 @@ jobs:
       - name: Upload webapp build artifact
         uses: actions/upload-artifact@v4
         with:
+          if-no-files-found: error
           name: webapp-build
-          path: webapp/.next
+          path: webapp/.next/
 
       - name: Install dependencies (websocket-server)
         working-directory: websocket-server
