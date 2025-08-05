@@ -47,6 +47,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "http-proxy-agent": "^7.0.2",
+    "localtunnel": "^2.0.2",
     "twilio": "^5.8.0"
   }
 }
