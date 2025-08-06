@@ -66,7 +66,7 @@ jobs:
         run: npm run build
 
       - name: List backend build output directories
-        run: ls -la websocket-server/build
+        run: ls -la websocket-server/dist
 
       - name: Upload backend build artifact
         uses: actions/upload-artifact@v4
