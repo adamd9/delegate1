@@ -39,6 +39,7 @@ jobs:
           path: |
             webapp/.next
             webapp/package.json
+            scripts
 
       - name: Install dependencies (websocket-server)
         working-directory: websocket-server
