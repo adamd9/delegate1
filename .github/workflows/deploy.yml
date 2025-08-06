@@ -113,3 +113,30 @@ jobs:
           repository: adamd9/docker-server-dev
           event-type: deploy-hk
           client-payload: '{"frontendDomain": "${{ env.DOMAIN }}", "backendDomain": "${{ env.API_DOMAIN }}"}'
+
+      - name: Wait for backend API to be up
+        run: |
+          for i in {1..30}; do
+            if curl -sSf "https://${{ env.API_DOMAIN }}/public-url"; then
+              echo "Backend API is up!"
+              exit 0
+            fi
+            echo "Waiting for backend API..."
+            sleep 10
+          done
+          echo "Backend API did not become available in time."
+          exit 1
+
+      - name: Wait for frontend to be up
+        run: |
+          for i in {1..30}; do
+            if curl -sSf "https://${{ env.DOMAIN }}/"; then
+              echo "Frontend is up!"
+              exit 0
+            fi
+            echo "Waiting for frontend..."
+            sleep 10
+          done
+          echo "Frontend did not become available in time."
+          exit 1
+          exit 1
