@@ -19,7 +19,13 @@ interface Session {
   responseStartTimestamp?: number;
   latestMediaTimestamp?: number;
   openAIApiKey?: string;
-  conversationHistory?: Array<{type: 'user' | 'assistant', content: string, timestamp: number, channel: 'voice' | 'text'}>;
+  conversationHistory?: Array<{
+    type: 'user' | 'assistant',
+    content: string,
+    timestamp: number,
+    channel: 'voice' | 'text',
+    supervisor?: boolean
+  }>;
   previousResponseId?: string; // For Responses API conversation tracking
 }
 
@@ -35,6 +41,23 @@ export function handleCallConnection(ws: WebSocket, openAIApiKey: string) {
 }
 
 export function handleFrontendConnection(ws: WebSocket, logsClients: Set<WebSocket>) {
+  // On new frontend connection, replay existing conversation history
+  if (session.conversationHistory) {
+    for (const msg of session.conversationHistory) {
+      jsonSend(ws, {
+        type: "conversation.item.created",
+        item: {
+          id: `msg_${msg.timestamp}`,
+          type: "message",
+          role: msg.type,
+          content: [{ type: "text", text: msg.content }],
+          channel: msg.channel,
+          supervisor: msg.supervisor,
+        },
+      });
+    }
+  }
+
   ws.on("message", (data) => handleFrontendMessage(data, logsClients));
   // No session cleanup here; handled by Set in server.ts
 }
@@ -43,6 +66,17 @@ export function handleChatConnection(ws: WebSocket, openAIApiKey: string, chatCl
   session.openAIApiKey = openAIApiKey;
   if (!session.conversationHistory) {
     session.conversationHistory = [];
+  }
+  // Optional: send existing assistant messages to new chat client
+  for (const msg of session.conversationHistory) {
+    if (msg.type === 'assistant') {
+      jsonSend(ws, {
+        type: "chat.response",
+        content: msg.content,
+        timestamp: msg.timestamp,
+        supervisor: msg.supervisor,
+      });
+    }
   }
   ws.on("message", (data) => handleChatMessage(data, chatClients, logsClients));
   ws.on("error", ws.close);
@@ -168,7 +202,8 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
       type: 'user' as const,
       content: content,
       timestamp: Date.now(),
-      channel: 'text' as const
+      channel: 'text' as const,
+      supervisor: false
     };
     
     if (!session.conversationHistory) {
@@ -336,7 +371,8 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
             type: "assistant" as const,
             content: finalResponse,
             timestamp: Date.now(),
-            channel: "text" as const
+            channel: "text" as const,
+            supervisor: true
           };
           session.conversationHistory.push(assistantMessage);
 
@@ -391,7 +427,8 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
         type: 'assistant' as const,
         content: response.output_text,
         timestamp: Date.now(),
-        channel: 'text' as const
+        channel: 'text' as const,
+        supervisor: false
       };
       session.conversationHistory.push(assistantMessage);
       
@@ -582,11 +619,12 @@ function handleModelMessage(data: RawData, logsClients: Set<WebSocket> = new Set
           if (!session.conversationHistory) {
             session.conversationHistory = [];
           }
-          const assistantMessage: {type: 'user' | 'assistant', content: string, timestamp: number, channel: 'voice' | 'text'} = {
+          const assistantMessage: {type: 'user' | 'assistant', content: string, timestamp: number, channel: 'voice' | 'text', supervisor?: boolean} = {
             type: 'assistant' as const,
             content: textContent.text,
             timestamp: Date.now(),
-            channel: 'text' as const
+            channel: 'text' as const,
+            supervisor: false
           };
           session.conversationHistory.push(assistantMessage);
           
