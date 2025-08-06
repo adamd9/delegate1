@@ -58,15 +58,15 @@ jobs:
           node-version: 24
 
       - name: Install dependencies (backend)
-        working-directory: backend
+        working-directory: websocket-server
         run: npm ci
 
       - name: Build backend
-        working-directory: backend
+        working-directory: websocket-server
         run: npm run build
 
       - name: List backend build output directories
-        run: ls -la backend/build
+        run: ls -la websocket-server/build
 
       - name: Upload backend build artifact
         uses: actions/upload-artifact@v4
@@ -75,9 +75,9 @@ jobs:
           include-hidden-files: true
           name: backend-build
           path: |
-            backend/dist
-            backend/package.json
-            backend/scripts
+            websocket-server/dist
+            websocket-server/package.json
+            websocket-server/scripts
 
   trigger-dockerserver-deploy:
     needs: [build-frontend, build-backend]
@@ -102,11 +102,3 @@ jobs:
           repository: adamd9/docker-server-dev
           event-type: deploy-hk
           client-payload: '{}'
-
-      - name: Trigger Docker Server Deployment for API Domain
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}
-          repository: adamd9/docker-server-dev
-          event-type: deploy-service
-          client-payload: '{"domain": "${{ env.API_DOMAIN }}"}'
