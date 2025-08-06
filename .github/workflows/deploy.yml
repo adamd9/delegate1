@@ -6,7 +6,30 @@ on:
       - '**'  # Trigger on all branches
 
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      should_continue: ${{ steps.check.outputs.should_continue }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Check if first commit on branch
+        id: check
+        run: |
+          echo "DEBUG: Branch name: ${{ github.ref_name }}"
+          COMMITS_ON_BRANCH=$(git rev-list --count HEAD)
+          echo "DEBUG: Commits on branch: $COMMITS_ON_BRANCH"
+          if [ "$COMMITS_ON_BRANCH" -eq 1 ]; then
+            echo "should_continue=false" >> $GITHUB_OUTPUT
+            echo "DEBUG: should_continue set to false (first commit on branch)"
+          else
+            echo "should_continue=true" >> $GITHUB_OUTPUT
+            echo "DEBUG: should_continue set to true (not first commit)"
+          fi
+
   build-frontend:
+    needs: [precheck]
+    if: needs.precheck.outputs.should_continue == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -47,6 +70,8 @@ jobs:
         run: npm ci
 
   build-backend:
+    needs: [precheck]
+    if: needs.precheck.outputs.should_continue == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -80,18 +105,12 @@ jobs:
             websocket-server/scripts
 
   trigger-dockerserver-deploy:
-    needs: [build-frontend, build-backend]
+    needs: [precheck, build-frontend, build-backend]
+    if: needs.precheck.outputs.should_continue == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Check if first commit on branch
-        id: first_commit_check
-        run: |
-          # Get the number of commits on this branch
-          COMMITS_ON_BRANCH=$(git rev-list --count HEAD)
-          echo "commits_on_branch=$COMMITS_ON_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Set domains based on branch
         id: set-domains
@@ -107,7 +126,7 @@ jobs:
 
       - name: Trigger Docker Server Deployment for Main Domain
         id: trigger_deploy
-        if: steps.first_commit_check.outputs.commits_on_branch != '1'
+        if: success()
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}
@@ -126,8 +145,8 @@ jobs:
         shell: bash
 
   wait-backend-health:
-    needs: [trigger-dockerserver-deploy]
-    if: needs.trigger-dockerserver-deploy.outputs.deployed == 'true'
+    needs: [precheck, trigger-dockerserver-deploy]
+    if: needs.precheck.outputs.should_continue == 'true' && needs.trigger-dockerserver-deploy.outputs.deployed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Wait 5 minutes for deployment
@@ -146,8 +165,8 @@ jobs:
           exit 1
 
   wait-frontend-health:
-    needs: [trigger-dockerserver-deploy]
-    if: needs.trigger-dockerserver-deploy.outputs.deployed == 'true'
+    needs: [precheck, trigger-dockerserver-deploy]
+    if: needs.precheck.outputs.should_continue == 'true' && needs.trigger-dockerserver-deploy.outputs.deployed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Wait 5 minutes for deployment
