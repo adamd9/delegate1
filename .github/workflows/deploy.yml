@@ -83,6 +83,16 @@ jobs:
     needs: [build-frontend, build-backend]
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check if first commit on branch
+        id: first_commit_check
+        run: |
+          # Get the number of commits on this branch
+          COMMITS_ON_BRANCH=$(git rev-list --count HEAD)
+          echo "commits_on_branch=$COMMITS_ON_BRANCH" >> $GITHUB_OUTPUT
+
       - name: Set domains based on branch
         id: set-domains
         run: |
@@ -96,6 +106,7 @@ jobs:
           fi
 
       - name: Trigger Docker Server Deployment for Main Domain
+        if: steps.first_commit_check.outputs.commits_on_branch != '1'
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}
