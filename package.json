@@ -4,10 +4,6 @@
   "description": "Single-threaded, multi-channel AI assistant with voice, text, and phone capabilities",
   "private": true,
   "scripts": {
-    "generate-build-info": "node scripts/write-build-info.js",
-    "predev": "npm run generate-build-info",
-    "prebuild": "npm run generate-build-info",
-    "prestart": "npm run generate-build-info",
     "dev": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\"",
     "dev:core": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\"",
     "start": "concurrently \"npm run backend:start\" \"npm run frontend:start\"",
