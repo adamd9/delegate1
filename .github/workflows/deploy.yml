@@ -24,6 +24,8 @@ jobs:
 
       - name: Build webapp
         working-directory: webapp
+        env:
+          NEXT_PUBLIC_REMOTE_BACKEND: ${{ github.ref_name == 'main' && 'https://hk.api.mdlg.dev' || 'https://hk-dev.api.mdlg.dev' }}
         run: npm run build
 
       - name: List build output directories
