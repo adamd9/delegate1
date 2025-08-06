@@ -11,7 +11,7 @@ function getGitInfo() {
 function writeBuildInfo() {
   try {
     const info = getGitInfo();
-    const outputPath = path.resolve(__dirname, '../webapp/public/build-info.json');
+    const outputPath = path.resolve(__dirname, '../public/build-info.json');
     fs.writeFileSync(outputPath, JSON.stringify(info, null, 2));
     console.log('Build info written to', outputPath);
   } catch (err) {

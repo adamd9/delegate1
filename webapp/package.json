@@ -3,13 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "generate-build-info": "node ../scripts/write-build-info.js",
-    "predev": "npm run generate-build-info",
-    "prebuild": "npm run generate-build-info",
-    "prestart": "npm run generate-build-info",
-    "dev": "node ../scripts/notify-on-start.js & next dev",
-    "build": "next build",
-    "start": "node ../scripts/notify-on-start.js & next start",
+    "generate-build-info": "node ./scripts/write-build-info.js",
+    "dev": "node ./scripts/notify-on-start.js & next dev",
+    "build": "npm run generate-build-info && next build",
+    "start": "node ./scripts/notify-on-start.js & next start",
     "lint": "next lint"
   },
   "dependencies": {
