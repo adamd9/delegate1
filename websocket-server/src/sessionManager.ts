@@ -477,7 +477,7 @@ function tryConnectModel() {
     
     // Include supervisor agent function for voice channel
     const allFunctions = getAllFunctions();
-    const functionSchemas = allFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: true }));
+    const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
     const agentInstructions = getDefaultAgent().instructions;
     jsonSend(session.modelConn, {
       type: "session.update",
