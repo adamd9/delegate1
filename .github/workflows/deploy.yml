@@ -106,6 +106,7 @@ jobs:
           fi
 
       - name: Trigger Docker Server Deployment for Main Domain
+        id: trigger_deploy
         if: steps.first_commit_check.outputs.commits_on_branch != '1'
         uses: peter-evans/repository-dispatch@v3
         with:
@@ -114,8 +115,19 @@ jobs:
           event-type: deploy-hk
           client-payload: '{"frontendDomain": "${{ env.DOMAIN }}", "backendDomain": "${{ env.API_DOMAIN }}"}'
 
+      - name: Set deployed output
+        id: set_deployed_output
+        run: |
+          if [ "${{ steps.trigger_deploy.outcome }}" = "success" ]; then
+            echo "deployed=true" >> $GITHUB_OUTPUT
+          else
+            echo "deployed=false" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
   wait-backend-health:
     needs: [trigger-dockerserver-deploy]
+    if: needs.trigger-dockerserver-deploy.outputs.deployed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Wait 5 minutes for deployment
@@ -135,6 +147,7 @@ jobs:
 
   wait-frontend-health:
     needs: [trigger-dockerserver-deploy]
+    if: needs.trigger-dockerserver-deploy.outputs.deployed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Wait 5 minutes for deployment
