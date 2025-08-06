@@ -101,4 +101,4 @@ jobs:
           token: ${{ secrets.DOCKER_SERVER_ACTIONS_TOKEN }}
           repository: adamd9/docker-server-dev
           event-type: deploy-hk
-          client-payload: '{}'
+          client-payload: '{"frontendDomain": "${{ env.DOMAIN }}", "backendDomain": "${{ env.API_DOMAIN }}"}'
