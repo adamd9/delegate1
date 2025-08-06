@@ -474,7 +474,7 @@ function tryConnectModel() {
 
   session.modelConn.on("open", () => {
     const config = session.saved_config || {};
-    
+
     // Include supervisor agent function for voice channel
     const allFunctions = getAllFunctions();
     const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
@@ -493,6 +493,17 @@ function tryConnectModel() {
         ...config,
       },
     });
+
+    // Send a friendly greeting when a Twilio caller connects
+    if (session.twilioConn) {
+      const greetingInstructions = `${agentInstructions}\nGreet the caller briefly before awaiting input.`;
+      jsonSend(session.modelConn, {
+        type: "response.create",
+        response: {
+          instructions: greetingInstructions,
+        },
+      });
+    }
   });
 
   session.modelConn.on("message", (data: RawData) => handleModelMessage(data, global.logsClients ?? new Set(), global.chatClients ?? new Set()));
