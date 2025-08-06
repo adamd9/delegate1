@@ -3,11 +3,10 @@ name: Deploy to Server
 on:
   push:
     branches:
-      - main
-      - dev
+      - '**'  # Trigger on all branches
 
 jobs:
-  build:
+  build-frontend:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -29,8 +28,7 @@ jobs:
         run: npm run build
 
       - name: List build output directories
-        run: |
-          ls -la webapp/.next       
+        run: ls -la webapp/.next       
 
       - name: Upload webapp build artifact
         uses: actions/upload-artifact@v4
@@ -48,8 +46,41 @@ jobs:
         working-directory: websocket-server
         run: npm ci
 
+  build-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies (backend)
+        working-directory: backend
+        run: npm ci
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: List backend build output directories
+        run: ls -la backend/build
+
+      - name: Upload backend build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          if-no-files-found: error
+          include-hidden-files: true
+          name: backend-build
+          path: |
+            backend/dist
+            backend/package.json
+            backend/scripts
+
   trigger-dockerserver-deploy:
-    needs: build
+    needs: [build-frontend, build-backend]
     runs-on: ubuntu-latest
     steps:
       - name: Set domains based on branch
@@ -58,7 +89,8 @@ jobs:
           if [ "${{ github.ref_name }}" = "main" ]; then
             echo "DOMAIN=hk.mdlg.dev" >> $GITHUB_ENV
             echo "API_DOMAIN=hk.api.mdlg.dev" >> $GITHUB_ENV
-          elif [ "${{ github.ref_name }}" = "dev" ]; then
+          else
+            # All non-main branches use dev domains
             echo "DOMAIN=hk-dev.mdlg.dev" >> $GITHUB_ENV
             echo "API_DOMAIN=hk-dev.api.mdlg.dev" >> $GITHUB_ENV
           fi
