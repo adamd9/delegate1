@@ -114,7 +114,13 @@ jobs:
           event-type: deploy-hk
           client-payload: '{"frontendDomain": "${{ env.DOMAIN }}", "backendDomain": "${{ env.API_DOMAIN }}"}'
 
-      - name: Wait for backend API to be up
+  wait-backend-health:
+    needs: [trigger-dockerserver-deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait 5 minutes for deployment
+        run: sleep 300
+      - name: Check backend API health
         run: |
           for i in {1..30}; do
             if curl -sSf "https://${{ env.API_DOMAIN }}/public-url"; then
@@ -127,7 +133,13 @@ jobs:
           echo "Backend API did not become available in time."
           exit 1
 
-      - name: Wait for frontend to be up
+  wait-frontend-health:
+    needs: [trigger-dockerserver-deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait 5 minutes for deployment
+        run: sleep 300
+      - name: Check frontend health
         run: |
           for i in {1..30}; do
             if curl -sSf "https://${{ env.DOMAIN }}/"; then
@@ -139,4 +151,5 @@ jobs:
           done
           echo "Frontend did not become available in time."
           exit 1
+
           exit 1
