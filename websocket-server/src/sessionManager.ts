@@ -289,7 +289,13 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
           call_id: functionCall.call_id
         });
       }
-      
+
+      // --- SMS placeholder for tool call ---
+      if (isWindowOpen()) {
+        const { smsUserNumber, smsTwilioNumber } = getNumbers();
+        sendSms('...', smsTwilioNumber, smsUserNumber).catch(e => console.error('sendSms error', e));
+      }
+
       try {
         // Find and execute the function
         const allFunctions = getAllFunctions();
@@ -307,6 +313,11 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
                 arguments: JSON.stringify(data || {}),
                 call_id: `supervisor_${Date.now()}`
               });
+            }
+            // --- SMS placeholder for nested tool call ---
+            if (isWindowOpen()) {
+              const { smsUserNumber, smsTwilioNumber } = getNumbers();
+              sendSms('...', smsTwilioNumber, smsUserNumber).catch(e => console.error('sendSms error', e));
             }
           };
           
