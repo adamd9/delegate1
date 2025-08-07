@@ -2,7 +2,7 @@ import { RawData, WebSocket } from "ws";
 import OpenAI, { ClientOptions } from "openai";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { ResponsesTextInput } from "./types";
-import { getAllFunctions, getDefaultAgent, FunctionHandler } from "./agentConfigs";
+import { getAgent, getDefaultAgent, FunctionHandler } from "./agentConfigs";
 import { isSmsWindowOpen, getNumbers } from './smsState';
 import { sendSms } from './sms';
 
@@ -85,8 +85,10 @@ export function handleChatConnection(ws: WebSocket, openAIApiKey: string, chatCl
 
 async function handleFunctionCall(item: { name: string; arguments: string }) {
   console.log("Handling function call:", item);
-  const allFunctions = getAllFunctions();
-  const func = allFunctions.find((f: FunctionHandler) => f.schema.name === item.name);
+  const baseFunctions = getAgent('base').tools.filter((t: any): t is FunctionHandler =>
+    t && 'schema' in t && 'handler' in t
+  );
+  const func = baseFunctions.find((f: FunctionHandler) => f.schema.name === item.name);
   if (!func) {
     throw new Error(`No handler found for function: ${item.name}`);
   }
@@ -225,9 +227,12 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
       });
     }
     
-    // Import function schemas for supervisor agent
-    const allFunctions = getAllFunctions();
-    const functionSchemas = allFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: true }));
+    // Import function schemas for base agent only
+    const baseFunctions = getAgent('base').tools.filter((t: any): t is FunctionHandler =>
+      t && 'schema' in t && 'handler' in t
+    );
+    const functionSchemas = baseFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: true }));
+    const tools = functionSchemas;
     
     console.log("🤖 Calling OpenAI Responses API for text response...");
     
@@ -238,7 +243,7 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
     const requestBody: any = {
       model: "gpt-4o",
       instructions: instructions,
-      tools: functionSchemas,
+      tools,
       max_output_tokens: 500,
       temperature: 0.7,
       store: true,
@@ -297,9 +302,11 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
       }
 
       try {
-        // Find and execute the function
-        const allFunctions = getAllFunctions();
-        const functionHandler = allFunctions.find((f: FunctionHandler) => f.schema.name === functionCall.name);
+        // Find and execute the function from the base agent's toolset
+        const baseFunctions = getAgent('base').tools.filter((t: any): t is FunctionHandler =>
+          t && 'schema' in t && 'handler' in t
+        );
+        const functionHandler = baseFunctions.find((f: FunctionHandler) => f.schema.name === functionCall.name);
         if (functionHandler) {
           const args = JSON.parse(functionCall.arguments);
           console.log(`🧠 Executing ${functionCall.name} with args:`, args);
@@ -336,7 +343,8 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
           }
 
           // Follow-up request to complete tool call and have base agent respond
-          const functionSchemas = allFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: true }));
+          const functionSchemas = baseFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: true }));
+          const tools = functionSchemas;
           const followUpBody = {
             model: "gpt-4o",
             previous_response_id: response.id,
@@ -352,7 +360,7 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
                     : JSON.stringify(functionResult)
               }
             ],
-            tools: functionSchemas,
+            tools,
             max_output_tokens: 500
           };
 
@@ -523,9 +531,12 @@ function tryConnectModel() {
   session.modelConn.on("open", () => {
     const config = session.saved_config || {};
 
-    // Include supervisor agent function for voice channel
-    const allFunctions = getAllFunctions();
-    const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
+    // Include only base agent functions for voice channel
+    const baseFunctions = getAgent('base').tools.filter((t: any): t is FunctionHandler =>
+      t && 'schema' in t && 'handler' in t
+    );
+    const functionSchemas = baseFunctions.map((f: FunctionHandler) => f.schema);
+    const tools = functionSchemas;
     const agentInstructions = getDefaultAgent().instructions;
     jsonSend(session.modelConn, {
       type: "session.update",
@@ -536,7 +547,7 @@ function tryConnectModel() {
         input_audio_transcription: { model: "whisper-1" },
         input_audio_format: "g711_ulaw",
         output_audio_format: "g711_ulaw",
-        tools: functionSchemas,
+        tools,
         instructions: agentInstructions,
         ...config,
       },
