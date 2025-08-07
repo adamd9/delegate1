@@ -148,7 +148,6 @@ jobs:
 
   wait-backend-health:
     needs: [precheck, trigger-dockerserver-deploy]
-    if: needs.precheck.outputs.should_continue == 'true' && needs.trigger-dockerserver-deploy.outputs.deployed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Wait 5 minutes for deployment
@@ -168,7 +167,6 @@ jobs:
 
   wait-frontend-health:
     needs: [precheck, trigger-dockerserver-deploy]
-    if: needs.precheck.outputs.should_continue == 'true' && needs.trigger-dockerserver-deploy.outputs.deployed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Wait 5 minutes for deployment
