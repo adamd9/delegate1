@@ -19,14 +19,17 @@ jobs:
         id: check
         run: |
           echo "DEBUG: Branch name: ${{ github.ref_name }}"
-          COMMITS_ON_BRANCH=$(git rev-list --count HEAD)
-          echo "DEBUG: Commits on branch: $COMMITS_ON_BRANCH"
-          if [ "$COMMITS_ON_BRANCH" -eq 1 ]; then
+          # Fetch main branch to ensure we have the latest data
+          git fetch origin main --quiet
+          # Count commits that are on this branch but not on main
+          UNIQUE_COMMITS=$(git rev-list --count origin/main..HEAD)
+          echo "DEBUG: Unique commits not on main: $UNIQUE_COMMITS"
+          if [ "$UNIQUE_COMMITS" -eq 0 ]; then
             echo "should_continue=false" >> $GITHUB_OUTPUT
-            echo "DEBUG: should_continue set to false (first commit on branch)"
+            echo "DEBUG: should_continue set to false (no unique commits on branch)"
           else
             echo "should_continue=true" >> $GITHUB_OUTPUT
-            echo "DEBUG: should_continue set to true (not first commit)"
+            echo "DEBUG: should_continue set to true ($UNIQUE_COMMITS unique commits found)"
           fi
 
   build-frontend:
