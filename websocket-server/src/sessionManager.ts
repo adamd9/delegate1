@@ -3,7 +3,7 @@ import OpenAI, { ClientOptions } from "openai";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { ResponsesTextInput } from "./types";
 import { getAllFunctions, getDefaultAgent, FunctionHandler } from "./agentConfigs";
-import { isWindowOpen, getNumbers } from './smsState';
+import { isSmsWindowOpen, getNumbers } from './smsState';
 import { sendSms } from './sms';
 
 interface Session {
@@ -291,7 +291,7 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
       }
 
       // --- SMS placeholder for tool call ---
-      if (isWindowOpen()) {
+      if (isSmsWindowOpen()) {
         const { smsUserNumber, smsTwilioNumber } = getNumbers();
         sendSms('...', smsTwilioNumber, smsUserNumber).catch(e => console.error('sendSms error', e));
       }
@@ -315,9 +315,9 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
               });
             }
             // --- SMS placeholder for nested tool call ---
-            if (isWindowOpen()) {
+            if (isSmsWindowOpen()) {
               const { smsUserNumber, smsTwilioNumber } = getNumbers();
-              sendSms('...', smsTwilioNumber, smsUserNumber).catch(e => console.error('sendSms error', e));
+              sendSms('......', smsTwilioNumber, smsUserNumber).catch(e => console.error('sendSms error', e));
             }
           };
           
@@ -415,7 +415,7 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
           }
           // --- SMS reply window logic ---
           try {
-            if (isWindowOpen()) {
+            if (isSmsWindowOpen()) {
               const { smsUserNumber, smsTwilioNumber } = getNumbers();
               await sendSms(finalResponse, smsTwilioNumber, smsUserNumber);
             }
@@ -470,7 +470,7 @@ export async function handleTextChatMessage(content: string, chatClients: Set<We
       // --- SMS reply window logic ---
       try {
         const text = response?.output_text;
-        if (text && isWindowOpen()) {
+        if (text && isSmsWindowOpen()) {
           const { smsUserNumber, smsTwilioNumber } = getNumbers();
           await sendSms(text, smsTwilioNumber, smsUserNumber);
         }
