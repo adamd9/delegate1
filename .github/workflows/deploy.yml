@@ -110,6 +110,9 @@ jobs:
     needs: [precheck, build-frontend, build-backend]
     if: needs.precheck.outputs.should_continue == 'true'
     runs-on: ubuntu-latest
+    outputs:
+      domain: ${{ env.DOMAIN }}
+      api_domain: ${{ env.API_DOMAIN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -155,7 +158,7 @@ jobs:
       - name: Check backend API health
         run: |
           for i in {1..30}; do
-            if curl -sSf "https://${{ env.API_DOMAIN }}/public-url"; then
+            if curl -sSf "https://${{ needs.trigger-dockerserver-deploy.outputs.api_domain }}/public-url"; then
               echo "Backend API is up!"
               exit 0
             fi
@@ -174,7 +177,7 @@ jobs:
       - name: Check frontend health
         run: |
           for i in {1..30}; do
-            if curl -sSf "https://${{ env.DOMAIN }}/"; then
+            if curl -sSf "https://${{ needs.trigger-dockerserver-deploy.outputs.domain }}/"; then
               echo "Frontend is up!"
               exit 0
             fi
