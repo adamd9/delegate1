@@ -15,7 +15,7 @@ export function openReplyWindow(nowMs = Date.now()) {
   smsReplyUntil = nowMs + replyWindowMs;
 }
 
-export function isWindowOpen(nowMs = Date.now()) {
+export function isSmsWindowOpen(nowMs = Date.now()) {
   return nowMs < smsReplyUntil;
 }
 
