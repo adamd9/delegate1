@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "generate-build-info": "node ./scripts/write-build-info.js",
-    "dev": "node ./scripts/notify-on-start.js & next dev",
+    "dev": "next dev",
     "build": "npm run generate-build-info && next build",
-    "start": "node ./scripts/notify-on-start.js & next start",
+    "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
