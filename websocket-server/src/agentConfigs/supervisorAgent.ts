@@ -5,6 +5,7 @@ import OpenAI, { ClientOptions } from 'openai';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 
 import { getCurrentTimeFunction } from './supervisorTools';
+import { loadRemoteMcpTools } from '../remoteMcpTools';
 
 // Supervisor tool response handler
 export async function getSupervisorToolResponse(functionName: string, args: any): Promise<string> {
@@ -174,7 +175,8 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
           name: getCurrentTimeFunction.schema.name,
           description: getCurrentTimeFunction.schema.description || "",
           parameters: getCurrentTimeFunction.schema.parameters
-        }
+        },
+        ...loadRemoteMcpTools()
       ];
 
       // Initial user input as message input
