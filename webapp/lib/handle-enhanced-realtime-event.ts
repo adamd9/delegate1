@@ -4,6 +4,8 @@ import { TranscriptContextValue } from "@/types/transcript";
 // update the same UI message instead of diverging across different item_ids
 let currentVoiceUserItemId: string | null = null;
 let lastFinalizedVoiceUserItemId: string | null = null;
+// De-dupe function-call request breadcrumbs (streaming deltas) by call_id
+const seenFunctionCallRequestBreadcrumbs = new Set<string>();
 
 // Helper function to extract text content from conversation items
 function extractMessageText(content: any[] = []): string {
@@ -274,18 +276,29 @@ export default function handleEnhancedRealtimeEvent(
       break;
     }
 
-    // Function calls
-    case "response.function_call_arguments.delta":
-      // Suppress delta breadcrumbs to avoid noisy spam and undefined names
-      // You can re-enable with a guard if you want to visualize streaming args
-      // if (event?.name) {
-      //   addTranscriptBreadcrumb(`🔧 Function call: ${event.name}`, {
-      //     name: event.name,
-      //     arguments: event.arguments,
-      //     call_id: event.call_id,
-      //   });
-      // }
+    // Function call request (early breadcrumb)
+    case "response.function_call_arguments.delta": {
+      const safeName = event?.name || (event?.call_id ? `call ${event.call_id}` : "function");
+      // Parse arguments for readability; tolerate non-JSON
+      let parsedArgs: any = event?.arguments;
+      try {
+        if (typeof parsedArgs === "string") parsedArgs = JSON.parse(parsedArgs);
+      } catch {}
+      // De-duplicate: add once per call_id to avoid delta spam
+      const callId: string = event?.call_id || `${safeName}:${JSON.stringify(parsedArgs ?? {})}`;
+      if (!seenFunctionCallRequestBreadcrumbs.has(callId)) {
+        seenFunctionCallRequestBreadcrumbs.add(callId);
+        addTranscriptBreadcrumb(
+          `🛠️ Function call requested: ${safeName}`,
+          {
+            name: event?.name,
+            call_id: event?.call_id,
+            arguments: parsedArgs ?? event?.arguments,
+          }
+        );
+      }
       break;
+    }
 
     case "response.function_call_arguments.done": {
       const safeName = event?.name || (event?.call_id ? `call ${event.call_id}` : "function");
