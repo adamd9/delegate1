@@ -6,7 +6,7 @@ import http from "http";
 import { readFileSync } from "fs";
 import { join } from "path";
 import cors from "cors";
-import { handleCallConnection, handleFrontendConnection, handleChatConnection, handleTextChatMessage } from "./sessionManager";
+import { handleCallConnection, handleLogsConnection, handleChatConnection, handleTextChatMessage } from "./sessionManager";
 import functions from "./functionHandlers";
 import { openReplyWindow, setNumbers } from './smsState';
 import { getLogs } from "./logBuffer";
@@ -170,8 +170,10 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
       }
     });
   } else if (type === "logs") {
+    // Observability stream for the web frontend. The handler replays
+    // existing conversation history and forwards realtime events.
     logsClients.add(ws);
-    handleFrontendConnection(ws, logsClients);
+    handleLogsConnection(ws, logsClients);
     ws.on("close", () => logsClients.delete(ws));
   } else if (type === "chat") {
     chatClients.add(ws);
