@@ -29,6 +29,17 @@ interface Session {
   previousResponseId?: string; // For Responses API conversation tracking
 }
 
+let session: Session = {};
+
+export function handleCallConnection(ws: WebSocket, openAIApiKey: string) {
+  console.info("📞 New call connection");
+  session.openAIApiKey = openAIApiKey;
+  session.twilioConn = ws;
+  ws.on("message", (data) => handleTwilioMessage(data));
+  ws.on("error", ws.close);
+  // Cleanup handled in server.ts on close
+}
+
 // Normalize SMS webhook into the unified chat pipeline
 // - Records phone numbers for reply routing via `smsState`
 // - Ensures the reply window is open
@@ -47,17 +58,6 @@ export async function handleSmsWebhook(
   }
 
   await handleTextChatMessage(messageText, chatClients, logsClients);
-}
-
-let session: Session = {};
-
-export function handleCallConnection(ws: WebSocket, openAIApiKey: string) {
-  console.info("📞 New call connection");
-  session.openAIApiKey = openAIApiKey;
-  session.twilioConn = ws;
-  ws.on("message", (data) => handleTwilioMessage(data));
-  ws.on("error", ws.close);
-  // Cleanup handled in server.ts on close
 }
 
 export function handleLogsConnection(ws: WebSocket, logsClients: Set<WebSocket>) {
