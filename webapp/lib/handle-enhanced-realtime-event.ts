@@ -29,30 +29,67 @@ export default function handleEnhancedRealtimeEvent(
   console.log("Enhanced event handler:", event.type, event);
 
   switch (event.type) {
-    // Main conversation item handler - handles both user and assistant messages
+    // Main conversation item handler - handles both user/assistant messages and function_call items
     case "conversation.item.created":
-      if (!event.item || event.item.type !== 'message') return;
-      
-      const { id: itemId, role, content = [] } = event.item;
-      const channel = event.item.channel || "voice";
-      const supervisor = event.item.supervisor || false;
-      
-      if (itemId && role) {
-        const isUser = role === "user";
-        let text = extractMessageText(content);
+      if (!event.item) return;
+      if (event.item.type === 'message') {
+        const { id: itemId, role, content = [] } = event.item;
+        const channel = event.item.channel || "voice";
+        const supervisor = event.item.supervisor || false;
         
-        // Handle empty user messages (transcribing)
-        if (isUser && !text) {
-          text = "[Transcribing...]";
+        if (itemId && role) {
+          const isUser = role === "user";
+          let text = extractMessageText(content);
+          
+          // Handle empty user messages (transcribing)
+          if (isUser && !text) {
+            text = "[Transcribing...]";
+          }
+          
+          addTranscriptMessage(
+            itemId,
+            role,
+            text,
+            channel,
+            supervisor,
+            false
+          );
         }
-        
-        addTranscriptMessage(
-          itemId,
-          role,
-          text,
-          channel,
-          supervisor,
-          false
+      } else if (event.item.type === 'function_call') {
+        const safeName = event.item.name || (event.item.call_id ? `call ${event.item.call_id}` : 'function');
+        let parsedArgs: any = event.item.arguments;
+        try {
+          // Arguments may be a JSON string; attempt to parse
+          if (typeof parsedArgs === 'string') parsedArgs = JSON.parse(parsedArgs);
+        } catch {}
+        addTranscriptBreadcrumb(
+          `🔧 Function call: ${safeName}`,
+          {
+            name: event.item.name,
+            call_id: event.item.call_id,
+            arguments: parsedArgs,
+            status: event.item.status || 'created',
+          }
+        );
+      }
+      break;
+
+    case "conversation.item.completed":
+      if (!event.item) return;
+      if (event.item.type === 'function_call') {
+        const safeName = event.item.name || (event.item.call_id ? `call ${event.item.call_id}` : 'function');
+        let parsedArgs: any = event.item.arguments;
+        try {
+          if (typeof parsedArgs === 'string') parsedArgs = JSON.parse(parsedArgs);
+        } catch {}
+        addTranscriptBreadcrumb(
+          `✅ Function call completed: ${safeName}`,
+          {
+            name: event.item.name,
+            call_id: event.item.call_id,
+            arguments: parsedArgs,
+            status: 'completed',
+          }
         );
       }
       break;
@@ -64,6 +101,21 @@ export default function handleEnhancedRealtimeEvent(
           event.item.id,
           event.item.content[0].text,
           false
+        );
+      } else if (event.item?.type === 'function_call') {
+        const safeName = event.item.name || (event.item.call_id ? `call ${event.item.call_id}` : 'function');
+        let parsedArgs: any = event.item.arguments;
+        try {
+          if (typeof parsedArgs === 'string') parsedArgs = JSON.parse(parsedArgs);
+        } catch {}
+        addTranscriptBreadcrumb(
+          `✅ Function call completed: ${safeName}`,
+          {
+            name: event.item.name,
+            call_id: event.item.call_id,
+            arguments: parsedArgs,
+            status: event.item.status || 'completed',
+          }
         );
       }
       break;
@@ -105,27 +157,30 @@ export default function handleEnhancedRealtimeEvent(
 
     // Function calls
     case "response.function_call_arguments.delta":
-      addTranscriptBreadcrumb(
-        `🔧 Function call: ${event.name}`,
-        {
-          name: event.name,
-          arguments: event.arguments,
-          call_id: event.call_id
-        }
-      );
+      // Suppress delta breadcrumbs to avoid noisy spam and undefined names
+      // You can re-enable with a guard if you want to visualize streaming args
+      // if (event?.name) {
+      //   addTranscriptBreadcrumb(`🔧 Function call: ${event.name}`, {
+      //     name: event.name,
+      //     arguments: event.arguments,
+      //     call_id: event.call_id,
+      //   });
+      // }
       break;
 
-    case "response.function_call_arguments.done":
+    case "response.function_call_arguments.done": {
+      const safeName = event?.name || (event?.call_id ? `call ${event.call_id}` : "function");
       addTranscriptBreadcrumb(
-        `✅ Function call completed: ${event.name}`,
+        `✅ Function call completed: ${safeName}`,
         {
-          name: event.name,
-          arguments: event.arguments,
-          call_id: event.call_id,
-          status: "completed"
+          name: event?.name,
+          arguments: event?.arguments,
+          call_id: event?.call_id,
+          status: "completed",
         }
       );
       break;
+    }
 
     // Session events
     case "session.created":

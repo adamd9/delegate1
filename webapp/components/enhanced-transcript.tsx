@@ -20,7 +20,8 @@ export function EnhancedTranscript({
 }: EnhancedTranscriptProps) {
   const { transcriptItems, toggleTranscriptItemExpand } = useTranscript();
   const transcriptRef = useRef<HTMLDivElement | null>(null);
-  const [prevLogs, setPrevLogs] = useState(transcriptItems);
+  // Track previous items in a ref to avoid triggering re-renders
+  const prevLogsRef = useRef(transcriptItems);
   const [justCopied, setJustCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -31,11 +32,12 @@ export function EnhancedTranscript({
   }
 
   useEffect(() => {
+    const prevLogs = prevLogsRef.current;
     const hasNewMessage = transcriptItems.length > prevLogs.length;
     const hasUpdatedMessage = transcriptItems.some((newItem, index) => {
       const oldItem = prevLogs[index];
       return (
-        oldItem &&
+        !!oldItem &&
         (newItem.title !== oldItem.title || newItem.data !== oldItem.data)
       );
     });
@@ -44,8 +46,9 @@ export function EnhancedTranscript({
       scrollToBottom();
     }
 
-    setPrevLogs(transcriptItems);
-  }, [transcriptItems, prevLogs]);
+    // Update ref without causing another render
+    prevLogsRef.current = transcriptItems;
+  }, [transcriptItems]);
 
   const handleCopyTranscript = async () => {
     const transcriptText = transcriptItems
