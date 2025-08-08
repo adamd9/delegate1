@@ -6,7 +6,10 @@ import http from "http";
 import { readFileSync } from "fs";
 import { join } from "path";
 import cors from "cors";
-import { handleCallConnection, handleLogsConnection, handleChatConnection, handleSmsWebhook } from "./sessionManager";
+import { establishCallSocket } from "./session/call";
+import { establishLogsSocket } from "./session/logs";
+import { establishChatSocket } from "./session/chat";
+import { processSmsWebhook } from "./session/sms";
 import functions from "./functionHandlers";
 import { getLogs } from "./logBuffer";
 
@@ -35,7 +38,7 @@ app.post('/sms', async (req, res) => {
   const to = req.body?.To ?? '';
 
   // Normalize SMS into the unified session-managed chat flow
-  await handleSmsWebhook({ messageText, from, to }, chatClients, logsClients);
+  await processSmsWebhook({ messageText, from, to }, chatClients, logsClients);
 
   // Respond immediately to Twilio
   res.status(200).end();
@@ -158,7 +161,7 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
       session.twilioConn = undefined;
     }
     session.twilioConn = ws;
-    handleCallConnection(ws, OPENAI_API_KEY);
+    establishCallSocket(ws, OPENAI_API_KEY);
     ws.on("close", () => {
       if (session && session.twilioConn === ws) {
         session.twilioConn = undefined;
@@ -168,11 +171,11 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     // Observability stream for the web frontend. The handler replays
     // existing conversation history and forwards realtime events.
     logsClients.add(ws);
-    handleLogsConnection(ws, logsClients);
+    establishLogsSocket(ws, logsClients);
     ws.on("close", () => logsClients.delete(ws));
   } else if (type === "chat") {
     chatClients.add(ws);
-    handleChatConnection(ws, OPENAI_API_KEY, chatClients, logsClients);
+    establishChatSocket(ws, OPENAI_API_KEY, chatClients, logsClients);
     ws.on("close", () => chatClients.delete(ws));
   } else {
     ws.close();

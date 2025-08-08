@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Enable TypeScript support for importing backend modules
 require('../websocket-server/node_modules/ts-node/register');
-const { handleTextChatMessage } = require('../websocket-server/src/sessionManager');
+const { handleTextChatMessage } = require('../websocket-server/src/session/chat');
 const WebSocket = require('../websocket-server/node_modules/ws');
 
 class MockWebSocket {

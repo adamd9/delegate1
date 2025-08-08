@@ -36,6 +36,20 @@ npm run script:list-apps
 npm run script:inspect-app
 ```
 
+### Auto-Update DEV TwiML Application after ngrok restart
+```bash
+# Ensure websocket-server/.env has PUBLIC_URL and TWILIO_TWIML_APP_SID set
+# Example: PUBLIC_URL=https://<your-ngrok>.ngrok-free.app
+
+# Run the updater (reads websocket-server/.env)
+npm run script:update-app
+
+# Optional: specify a custom .env path
+node scripts/twilio/update-twiml-app.js --env path/to/.env
+```
+
+This will set the TwiML App Voice URL to `${PUBLIC_URL}/twiml` using AU1 region (`edge: sydney`).
+
 ### Debug Token Issues
 ```bash
 npm run script:validate-token
@@ -58,11 +72,13 @@ TWILIO_ACCOUNT_SID=AC...
 TWILIO_API_KEY_SID=SK...
 TWILIO_API_KEY_SECRET=...
 TWILIO_TWIML_APP_SID=AP...
+PUBLIC_URL=https://<your-ngrok>.ngrok-free.app
 ```
 
 ### For Scripts:
-Scripts read credentials directly from the code (for development convenience).
-In production, these should be moved to environment variables.
+- Scripts now read from `websocket-server/.env` where applicable (e.g., update-twiml-app).
+- Install once at repo root: `npm install dotenv`.
+- For production, migrate secrets to environment variables or a secret manager.
 
 ## 🔧 Manual Usage
 
