@@ -6,9 +6,8 @@ import http from "http";
 import { readFileSync } from "fs";
 import { join } from "path";
 import cors from "cors";
-import { handleCallConnection, handleLogsConnection, handleChatConnection, handleTextChatMessage } from "./sessionManager";
+import { handleCallConnection, handleLogsConnection, handleChatConnection, handleTextChatMessage, handleSmsWebhook } from "./sessionManager";
 import functions from "./functionHandlers";
-import { openReplyWindow, setNumbers } from './smsState';
 import { getLogs } from "./logBuffer";
 
 dotenv.config();
@@ -35,12 +34,8 @@ app.post('/sms', async (req, res) => {
   const from = req.body?.From ?? '';
   const to = req.body?.To ?? '';
 
-  setNumbers({ userFrom: from, twilioTo: to });
-  openReplyWindow();
-
-  // Route through the unified, existing chat pipeline (no duplicates)
-  // Use the same session as chat (single-threaded assumption)
-  await handleTextChatMessage(messageText, chatClients, logsClients);
+  // Normalize SMS into the unified session-managed chat flow
+  await handleSmsWebhook({ messageText, from, to }, chatClients, logsClients);
 
   // Respond immediately to Twilio
   res.status(200).end();
