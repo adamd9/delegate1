@@ -183,6 +183,7 @@ export function processRealtimeModelEvent(
       }
       break;
     case "response.output_item.done": {
+      console.log("[VOICE][ASSISTANT][FINAL-VOICE]", event);
       const { item } = event;
       if (item.type === "function_call") {
         handleFunctionCall(item)

@@ -103,7 +103,7 @@ export async function handleTextChatMessage(
     }
     // Import function schemas for supervisor agent
     const allFunctions = getAllFunctions();
-    const functionSchemas = allFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: true }));
+    const functionSchemas = allFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
     console.log("🤖 Calling OpenAI Responses API for text response...");
     // Define system instructions
     const instructions = getDefaultAgent().instructions;
@@ -188,7 +188,7 @@ export async function handleTextChatMessage(
                 status: "completed",
               });
           }
-          const fnSchemas = allFns.map((f: FunctionHandler) => ({ ...f.schema, strict: true }));
+          const fnSchemas = allFns.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
           const followUpBody = {
             model: "gpt-4o",
             previous_response_id: response.id,
