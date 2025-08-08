@@ -290,3 +290,84 @@ PUBLIC_URL=https://your-ngrok-url.ngrok.io
 4. **Real-time Observability**: Complete visibility into agent behavior
 5. **Production Ready**: Secure token management and error handling
 6. **Future Proof**: Foundation for advanced supervisor agent patterns
+
+## Supervisor Escalation: Shared vs Duplicated Logic
+
+This documents the current supervisor escalation flow and calls out shared versus duplicated logic. References are to code in `websocket-server/src/`.
+
+### Shared Logic
+
+- **Unified Tool Registry** (`agentConfigs/index.ts`):
+  - `getAllFunctions()` merges tools from both agents (base and supervisor) into a single set of `FunctionHandler`s used across channels.
+  - Ensures consistent tool exposure for voice, text, and supervisor flows.
+
+- **Tool Definition Shape** (`agentConfigs/types.ts`):
+  - Single `FunctionHandler` type with `schema` + `handler(args, addBreadcrumb)` contract used everywhere.
+
+- **Base Agent + Supervisor Tool Exposure** (`agentConfigs/agents.ts`):
+  - Base agent is extended to include `getNextResponseFromSupervisorFunction`, so the fast agent can escalate via a single tool.
+
+- **Text/SMS Function-Call Pipeline** (`sessionManager.ts`):
+  - `handleTextChatMessage()` calls OpenAI Responses, detects `function_call`, executes the handler, then performs a follow-up Responses call with `function_call_output`.
+  - Uses `addBreadcrumb()` to emit nested supervisor tool-call breadcrumbs to `logsClients` and optionally via SMS.
+  - Shared `conversationHistory[]` is updated for both user and assistant messages; responses broadcast to `chatClients`.
+
+- **sendCanvas Tool** (`agentConfigs/canvasTool.ts`):
+  - Shared utility tool to send rich content to both `chatClients` and `logsClients`.
+
+### Duplicated or Divergent Logic
+
+- **OpenAI Client Usage**:
+  - Text/SMS flow initializes `session.openaiClient` in `handleTextChatMessage()` for Responses API with proxy support.
+  - Supervisor flow (`agentConfigs/supervisorAgent.ts` → `handleSupervisorToolCalls`) constructs its own `OpenAI` client with similar proxy logic and its own Responses loop.
+  - Result: two similar but separate Response-calling implementations.
+
+- **Function-Call Execution Loops**:
+  - Text/SMS: single function call → handler → one follow-up Responses call.
+  - Supervisor: iterative loop over `function_call` → execute tool → follow-up → repeat until no calls or `maxIterations`.
+  - Overlap exists in building follow-up `function_call_output` requests.
+
+- **Voice Function Calls vs Text/SMS**:
+  - Voice (`handleModelMessage()` + `handleFunctionCall()`): executes function via `getAllFunctions()` and sends the output back to the Realtime WS (`conversation.item.create` + `response.create`).
+  - Text/SMS: executes function via `getAllFunctions()` but uses Responses API follow-up to produce assistant text and updates `conversationHistory[]` and `chatClients`.
+  - Behavior differs across channels; shared registry, but response plumbing is separate.
+
+- **Breadcrumb → SMS Hook**:
+  - SMS notifications in `sessionManager.ts` are placeholders (`'...'`, `'......'`) guarded by `isSmsWindowOpen()`/`getNumbers()`; emitted during function-call and nested calls.
+  - Logic exists only in Text/SMS pathway; Voice pathway lacks a parallel hook.
+
+- **Conversation Continuity Tokens**:
+  - `session.previousResponseId` is tracked in `sessionManager.ts` and passed to Responses for continuity.
+  - `handleSupervisorToolCalls()` accepts `previousResponseId` but is currently invoked with `undefined` (no continuity threading from session).
+
+### Current Supervisor Flow Summary
+
+- **Escalation Entry Point**: `getNextResponseFromSupervisorFunction` (`agentConfigs/supervisorAgent.ts`)
+  - Base agent exposes this tool; the fast agent triggers it via function call.
+  - Builds supervisor instructions from `supervisorAgentConfig.instructions` and invokes `handleSupervisorToolCalls()` with tools: `web_search` and `getCurrentTimeFunction`.
+
+- **Supervisor Execution**: `handleSupervisorToolCalls()`
+  - Creates its own `OpenAI` client; submits an initial Responses request; iteratively handles `function_call` outputs until completion.
+  - Emits breadcrumbs via provided `addBreadcrumb()` (wired by `sessionManager.ts` to `logsClients` and optional SMS).
+  - Returns final text back to the fast agent flow.
+
+- **Fast Agent Completion** (`sessionManager.ts`)
+  - After the supervisor tool returns, a follow-up Responses call constructs the final user-facing answer, updates `conversationHistory[]`, and broadcasts to `chatClients` with `supervisor: true`.
+
+### Recommendations to Reduce Duplication
+
+- **Shared Responses Client/Executor**:
+  - Extract a `responsesExecutor` module to centralize: client construction (API key, proxy), initial call, function-call extraction, and follow-up submission.
+  - Provide two strategies: (a) single-call with optional follow-up (Text/SMS), (b) iterative loop (Supervisor). Share common request building and `function_call_output` handling.
+
+- **Thread Conversation Continuity**:
+  - Pass `session.previousResponseId` into `handleSupervisorToolCalls()` to maintain context continuity across escalations.
+
+- **Unify Breadcrumb Emission**:
+  - Move `addBreadcrumb` to a shared utility that emits to `logsClients` and, if configured, to SMS with templated messages instead of placeholders.
+
+- **Align Voice Function Responses with Text History**:
+  - When voice triggers a `function_call` that yields text, also append to `conversationHistory[]` and optionally relay to `chatClients` for a unified transcript.
+
+- **Tool Catalog Hygiene**:
+  - Keep `getAllFunctions()` as the single source of truth; avoid embedding tool lists inline in multiple places. Ensure supervisor-only tools remain namespaced but still accessible for union listing where appropriate.
