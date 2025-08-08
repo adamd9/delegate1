@@ -10,6 +10,9 @@ declare global {
   var chatClients: Set<WebSocket> | undefined;
 }
 
+// Accumulator for assistant voice transcript text by item id (server logs only)
+const assistantVoiceByItem = new Map<string, string>();
+
 export function establishCallSocket(ws: WebSocket, openAIApiKey: string) {
   console.info("📞 New call connection");
   session.openAIApiKey = openAIApiKey;
@@ -131,6 +134,31 @@ export function processRealtimeModelEvent(
   }
 
   switch (event.type) {
+    case "conversation.item.input_audio_transcription.completed": {
+      // Final user ASR transcript (voice) — log once to server console
+      const transcript: string = (event.transcript || event.text || "").toString();
+      if (transcript) {
+        console.log("[VOICE][USER][FINAL]", transcript);
+      }
+      break;
+    }
+    case "response.audio_transcript.delta": {
+      // Streaming assistant voice transcript text; accumulate by item_id for final logging
+      const id = event.item_id;
+      const delta: string = event.delta || "";
+      if (id && delta) {
+        assistantVoiceByItem.set(id, (assistantVoiceByItem.get(id) || "") + delta);
+      }
+      break;
+    }
+    case "response.output_text.done": {
+      // Assistant produced final text output (may be during a voice call)
+      const txt: string = (event.text || "").toString();
+      if (txt) {
+        console.log("[VOICE][ASSISTANT][FINAL-TEXT]", txt);
+      }
+      break;
+    }
     case "input_audio_buffer.speech_started":
       handleTruncation();
       break;
@@ -174,8 +202,16 @@ export function processRealtimeModelEvent(
             console.error("Error handling function call:", err);
           });
       } else if (item.type === "message" && item.role === "assistant") {
-        // Handle text responses from assistant
+        // Handle text responses from assistant (and log voice-only assembled transcript)
         const textContent = item.content?.find((c: any) => c.type === "text");
+        if (textContent) {
+          // Log final assistant text for observability
+          try {
+            if (typeof textContent.text === "string" && textContent.text.trim()) {
+              console.log("[VOICE][ASSISTANT][FINAL-TEXT]", textContent.text);
+            }
+          } catch {}
+        }
         if (textContent && session.chatConn) {
           // Add to conversation history
           if (!session.conversationHistory) {
@@ -195,6 +231,22 @@ export function processRealtimeModelEvent(
               content: textContent.text,
               timestamp: Date.now(),
             });
+          }
+        } else if (!textContent) {
+          // If no text content, log the assembled voice transcript for this item if available
+          const id = item.id;
+          const assembled = id ? (assistantVoiceByItem.get(id) || "") : "";
+          if (assembled.trim()) {
+            console.log("[VOICE][ASSISTANT][FINAL-VOICE]", assembled);
+            // Also log the raw response payload for debugging/inspection
+            try {
+              const raw = JSON.stringify({ event_type: event.type, item }, null, 2);
+              const trimmed = raw.length > 2000 ? raw.slice(0, 2000) + "…" : raw;
+              console.log("[VOICE][ASSISTANT][FINAL-VOICE][RAW]", trimmed);
+            } catch {
+              console.log("[VOICE][ASSISTANT][FINAL-VOICE][RAW] <unserializable>");
+            }
+            if (id) assistantVoiceByItem.delete(id);
           }
         }
       }
