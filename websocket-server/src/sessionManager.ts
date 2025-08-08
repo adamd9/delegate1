@@ -3,7 +3,7 @@ import OpenAI, { ClientOptions } from "openai";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { ResponsesTextInput } from "./types";
 import { getAllFunctions, getDefaultAgent, FunctionHandler } from "./agentConfigs";
-import { isSmsWindowOpen, getNumbers } from './smsState';
+import { isSmsWindowOpen, getNumbers, openReplyWindow, setNumbers } from './smsState';
 import { sendSms } from './sms';
 
 interface Session {
@@ -27,6 +27,26 @@ interface Session {
     supervisor?: boolean
   }>;
   previousResponseId?: string; // For Responses API conversation tracking
+}
+
+// Normalize SMS webhook into the unified chat pipeline
+// - Records phone numbers for reply routing via `smsState`
+// - Ensures the reply window is open
+// - Forwards the inbound text to the chat handler
+export async function handleSmsWebhook(
+  params: { messageText: string; from: string; to: string },
+  chatClients: Set<WebSocket>,
+  logsClients: Set<WebSocket>
+) {
+  const { messageText, from, to } = params;
+  try {
+    setNumbers({ userFrom: from, twilioTo: to });
+    openReplyWindow();
+  } catch (e) {
+    console.warn('⚠️ SMS setup warning:', e);
+  }
+
+  await handleTextChatMessage(messageText, chatClients, logsClients);
 }
 
 let session: Session = {};
