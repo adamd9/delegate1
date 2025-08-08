@@ -179,7 +179,23 @@ TWILIO_AUTH_TOKEN=your_auth_token
 5. Set HTTP method to **POST**
 6. Save the configuration
 
-## Helper Scripts
+### Auto-Update TwiML App after ngrok Restarts
+
+When ngrok gives you a new URL, you can auto-update the TwiML app using the following command:
+
+```bash
+npm run script:update-app
+```
+
+This script reads `TWILIO_TWIML_APP_SID` and `PUBLIC_URL` from `websocket-server/.env` and sets the TwiML App Voice URL to `${PUBLIC_URL}/twiml` (AU1 region, `edge: sydney`).
+
+Optional custom env path:
+
+```bash
+node scripts/twilio/update-twiml-app.js --env path/to/.env
+```
+
+### Helper Scripts
 
 Delegate 1 includes a collection of utility scripts for managing Twilio integration and debugging. All scripts are organized in the `/scripts/` directory:
 
@@ -198,6 +214,22 @@ npm run script:inspect-app
 # Debug token issues
 npm run script:validate-token
 npm run script:test-api-key
+```
+
+### Auto-update TwiML App after ngrok restarts
+
+When ngrok gives you a new URL, update `PUBLIC_URL` in `websocket-server/.env`, then run:
+
+```bash
+npm run script:update-app
+```
+
+The script reads `TWILIO_TWIML_APP_SID` and `PUBLIC_URL` from `websocket-server/.env` and sets the TwiML App Voice URL to `${PUBLIC_URL}/twiml` (AU1 region, `edge: sydney`).
+
+Optional custom env path:
+
+```bash
+node scripts/twilio/update-twiml-app.js --env path/to/.env
 ```
 
 ### Script Categories
