@@ -40,8 +40,10 @@ export function handleCallConnection(ws: WebSocket, openAIApiKey: string) {
   // Cleanup handled in server.ts on close
 }
 
-export function handleFrontendConnection(ws: WebSocket, logsClients: Set<WebSocket>) {
-  // On new frontend connection, replay existing conversation history
+export function handleLogsConnection(ws: WebSocket, logsClients: Set<WebSocket>) {
+  // On new logs/observability connection, replay existing conversation history
+  // so the UI can immediately render the current transcript without waiting
+  // for new events. This stream is consumed by the web frontend at `/logs`.
   if (session.conversationHistory) {
     for (const msg of session.conversationHistory) {
       jsonSend(ws, {
@@ -58,7 +60,9 @@ export function handleFrontendConnection(ws: WebSocket, logsClients: Set<WebSock
     }
   }
 
-  ws.on("message", (data) => handleFrontendMessage(data, logsClients));
+  // While `/logs` is primarily for outbound events, the UI may also send
+  // control messages (e.g. session.update). We pass them along here.
+  ws.on("message", (data) => handleLogsMessage(data, logsClients));
   // No session cleanup here; handled by Set in server.ts
 }
 
@@ -142,7 +146,7 @@ function handleTwilioMessage(data: RawData) {
   }
 }
 
-function handleFrontendMessage(data: RawData, logsClients: Set<WebSocket>) {
+function handleLogsMessage(data: RawData, logsClients: Set<WebSocket>) {
   const msg = parseMessage(data);
   if (!msg) return;
 
