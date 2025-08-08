@@ -6,7 +6,7 @@ import http from "http";
 import { readFileSync } from "fs";
 import { join } from "path";
 import cors from "cors";
-import { handleCallConnection, handleLogsConnection, handleChatConnection, handleTextChatMessage, handleSmsWebhook } from "./sessionManager";
+import { handleCallConnection, handleLogsConnection, handleChatConnection, handleSmsWebhook } from "./sessionManager";
 import functions from "./functionHandlers";
 import { getLogs } from "./logBuffer";
 
