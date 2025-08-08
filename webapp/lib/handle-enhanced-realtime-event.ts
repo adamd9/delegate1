@@ -1,5 +1,10 @@
 import { TranscriptContextValue } from "@/types/transcript";
 
+// Track the current user voice message ID so interim and final transcripts
+// update the same UI message instead of diverging across different item_ids
+let currentVoiceUserItemId: string | null = null;
+let lastFinalizedVoiceUserItemId: string | null = null;
+
 // Helper function to extract text content from conversation items
 function extractMessageText(content: any[] = []): string {
   if (!Array.isArray(content)) return "";
@@ -34,11 +39,11 @@ export default function handleEnhancedRealtimeEvent(
       if (!event.item) return;
       if (event.item.type === 'message') {
         const { id: itemId, role, content = [] } = event.item;
-        const channel = event.item.channel || "voice";
+        const isUser = role === "user";
+        const channel = event.item.channel || (isUser ? "voice" : "text");
         const supervisor = event.item.supervisor || false;
         
         if (itemId && role) {
-          const isUser = role === "user";
           let text = extractMessageText(content);
           
           // Handle empty user messages (transcribing)
@@ -54,6 +59,11 @@ export default function handleEnhancedRealtimeEvent(
             supervisor,
             false
           );
+
+          // If this is a user voice message, remember its id for transcript updates
+          if (isUser && channel === "voice") {
+            currentVoiceUserItemId = itemId;
+          }
         }
       } else if (event.item.type === 'function_call') {
         const safeName = event.item.name || (event.item.call_id ? `call ${event.item.call_id}` : 'function');
@@ -62,6 +72,18 @@ export default function handleEnhancedRealtimeEvent(
           // Arguments may be a JSON string; attempt to parse
           if (typeof parsedArgs === 'string') parsedArgs = JSON.parse(parsedArgs);
         } catch {}
+        // If the function includes a normalized query, reflect it in the last finalized user voice message
+        if (parsedArgs && typeof parsedArgs.query === 'string' && lastFinalizedVoiceUserItemId) {
+          updateTranscriptMessage(lastFinalizedVoiceUserItemId, parsedArgs.query, false);
+          addTranscriptBreadcrumb(
+            "📝 Normalized user query",
+            {
+              itemId: lastFinalizedVoiceUserItemId,
+              query: parsedArgs.query,
+              source: safeName,
+            }
+          );
+        }
         addTranscriptBreadcrumb(
           `🔧 Function call: ${safeName}`,
           {
@@ -74,6 +96,60 @@ export default function handleEnhancedRealtimeEvent(
       }
       break;
 
+    // User voice transcription streaming (input side)
+    case "conversation.item.input_audio_transcription.delta": {
+      const id = event.item_id;
+      const delta: string = event.delta || "";
+      if (!id || !delta) break;
+      currentVoiceUserItemId = id;
+      // Ensure a user voice message exists, then append delta
+      addTranscriptMessage(
+        id,
+        "user",
+        "",
+        "voice",
+        false,
+        false
+      );
+      updateTranscriptMessage(id, delta, true);
+      break;
+    }
+
+    // Assistant text streaming (non-voice)
+    case "response.output_text.delta": {
+      const id = event.item_id || event.response_id;
+      const delta: string = event.delta || "";
+      if (!id || !delta) break;
+      // Ensure assistant message exists, then append delta
+      addTranscriptMessage(
+        id,
+        "assistant",
+        "",
+        "text",
+        false,
+        false
+      );
+      updateTranscriptMessage(id, delta, true);
+      break;
+    }
+
+    case "response.output_text.done": {
+      const id = event.item_id || event.response_id;
+      const text: string = event.text || "";
+      if (!id || !text) break;
+      // Replace with final text
+      addTranscriptMessage(
+        id,
+        "assistant",
+        "",
+        "text",
+        false,
+        false
+      );
+      updateTranscriptMessage(id, text, false);
+      break;
+    }
+
     case "conversation.item.completed":
       if (!event.item) return;
       if (event.item.type === 'function_call') {
@@ -82,6 +158,17 @@ export default function handleEnhancedRealtimeEvent(
         try {
           if (typeof parsedArgs === 'string') parsedArgs = JSON.parse(parsedArgs);
         } catch {}
+        if (parsedArgs && typeof parsedArgs.query === 'string' && lastFinalizedVoiceUserItemId) {
+          updateTranscriptMessage(lastFinalizedVoiceUserItemId, parsedArgs.query, false);
+          addTranscriptBreadcrumb(
+            "📝 Normalized user query",
+            {
+              itemId: lastFinalizedVoiceUserItemId,
+              query: parsedArgs.query,
+              source: safeName,
+            }
+          );
+        }
         addTranscriptBreadcrumb(
           `✅ Function call completed: ${safeName}`,
           {
@@ -97,11 +184,18 @@ export default function handleEnhancedRealtimeEvent(
     // Response deltas (streaming)
     case "response.output_item.done":
       if (event.item?.content?.[0]?.text) {
-        updateTranscriptMessage(
-          event.item.id,
-          event.item.content[0].text,
+        const id = event.item.id;
+        const text = event.item.content[0].text;
+        // Ensure assistant message exists, then set final text
+        addTranscriptMessage(
+          id,
+          "assistant",
+          "",
+          "text",
+          false,
           false
         );
+        updateTranscriptMessage(id, text, false);
       } else if (event.item?.type === 'function_call') {
         const safeName = event.item.name || (event.item.call_id ? `call ${event.item.call_id}` : 'function');
         let parsedArgs: any = event.item.arguments;
@@ -121,39 +215,64 @@ export default function handleEnhancedRealtimeEvent(
       break;
 
     case "response.audio_transcript.delta":
-      if (event.delta) {
-        updateTranscriptMessage(
-          event.item_id || `voice_${Date.now()}`,
-          event.delta,
-          true
-        );
-      }
-      break;
-
-    // Voice transcription completion
-    case "conversation.item.input_audio_transcription.completed":
-      const transcriptionItemId = event.item_id;
-      const finalTranscript = !event.transcript || event.transcript === "\n"
-        ? "[inaudible]"
-        : event.transcript;
-      
-      if (transcriptionItemId) {
-        console.log("Updating transcription for:", transcriptionItemId, "with:", finalTranscript);
-        updateTranscriptMessage(transcriptionItemId, finalTranscript, false);
-        
-        // Only add breadcrumb for transcription completion if it's interesting
-        // (Don't clutter with every transcription update)
-        if (finalTranscript !== "[inaudible]" && finalTranscript.length > 0) {
-          addTranscriptBreadcrumb(
-            "🎤 Transcription completed",
-            {
-              itemId: transcriptionItemId,
-              transcript: finalTranscript
-            }
+      // This is the MODEL's spoken audio transcript (assistant output)
+      if (typeof event?.delta === 'string' && event.delta.length > 0) {
+        const targetId = event.item_id; // assistant item id
+        if (targetId) {
+          // Ensure an assistant message exists, then append delta
+          addTranscriptMessage(
+            targetId,
+            "assistant",
+            "",
+            "voice",
+            false,
+            false
+          );
+          updateTranscriptMessage(
+            targetId,
+            event.delta,
+            true
           );
         }
       }
       break;
+
+    // Voice transcription completion
+    case "conversation.item.input_audio_transcription.completed": {
+      const transcriptionItemId = event.item_id;
+      const finalTranscript = !event.transcript || event.transcript === "\n"
+        ? "[inaudible]"
+        : event.transcript;
+
+      const targetId = currentVoiceUserItemId || transcriptionItemId;
+      if (targetId) {
+        // Ensure the message exists before updating to final text
+        addTranscriptMessage(
+          targetId,
+          "user",
+          "",
+          "voice",
+          false,
+          false
+        );
+        console.log("Updating transcription for:", targetId, "with:", finalTranscript);
+        updateTranscriptMessage(targetId, finalTranscript, false);
+
+        if (finalTranscript !== "[inaudible]" && finalTranscript.length > 0) {
+          addTranscriptBreadcrumb(
+            "🎤 Transcription completed",
+            {
+              itemId: targetId,
+              transcript: finalTranscript,
+            }
+          );
+        }
+        // Clear current voice pointer after finalization
+        currentVoiceUserItemId = null;
+        lastFinalizedVoiceUserItemId = targetId;
+      }
+      break;
+    }
 
     // Function calls
     case "response.function_call_arguments.delta":
@@ -170,6 +289,22 @@ export default function handleEnhancedRealtimeEvent(
 
     case "response.function_call_arguments.done": {
       const safeName = event?.name || (event?.call_id ? `call ${event.call_id}` : "function");
+      // Try to parse arguments to capture normalized user query
+      let parsedArgs: any = event?.arguments;
+      try {
+        if (typeof parsedArgs === 'string') parsedArgs = JSON.parse(parsedArgs);
+      } catch {}
+      if (parsedArgs && typeof parsedArgs.query === 'string' && lastFinalizedVoiceUserItemId) {
+        updateTranscriptMessage(lastFinalizedVoiceUserItemId, parsedArgs.query, false);
+        addTranscriptBreadcrumb(
+          "📝 Normalized user query",
+          {
+            itemId: lastFinalizedVoiceUserItemId,
+            query: parsedArgs.query,
+            source: safeName,
+          }
+        );
+      }
       addTranscriptBreadcrumb(
         `✅ Function call completed: ${safeName}`,
         {
