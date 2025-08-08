@@ -86,6 +86,7 @@ export function establishRealtimeModelConnection() {
         modalities: ["text", "audio"],
         turn_detection: { type: "server_vad" },
         voice: "ballad",
+        speed: 1.3,
         input_audio_transcription: { model: "whisper-1" },
         input_audio_format: "g711_ulaw",
         output_audio_format: "g711_ulaw",
