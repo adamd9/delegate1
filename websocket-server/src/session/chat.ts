@@ -285,6 +285,79 @@ export async function handleTextChatMessage(
                     status: "completed",
                   });
               }
+              // Solution A: confirm tool execution with Responses API to elicit a concise final text
+              try {
+                const confirmBody: any = {
+                  model: "gpt-4o",
+                  previous_response_id: followUpResponse.id,
+                  input: [
+                    {
+                      type: "function_call",
+                      call_id: canvasCall.call_id,
+                      name: canvasCall.name,
+                      arguments: canvasCall.arguments,
+                    },
+                    {
+                      type: "function_call_output",
+                      call_id: canvasCall.call_id,
+                      output: JSON.stringify({ status: "sent" }),
+                    },
+                  ],
+                  instructions:
+                    "Provide a concise plain-text confirmation (1-2 sentences) that the canvas has been sent, optionally summarizing what was included.",
+                  max_output_tokens: 300,
+                };
+                console.log("[DEBUG] Canvas confirm Responses API request:", JSON.stringify(confirmBody, null, 2));
+                const confirmResponse = await session.openaiClient.responses.create(confirmBody);
+                console.log(
+                  "[DEBUG] Canvas confirm Responses API response:",
+                  JSON.stringify(
+                    { id: confirmResponse.id, output_text: confirmResponse.output_text, output: confirmResponse.output },
+                    null,
+                    2
+                  )
+                );
+                session.previousResponseId = confirmResponse.id;
+                const extraCalls = confirmResponse.output?.filter((o: any) => o.type === "function_call");
+                if (extraCalls && extraCalls.length > 0) {
+                  console.warn("[WARN] Confirmation response still contained tool calls; not looping further.", extraCalls.map((c: any) => c.name));
+                }
+                const confirmText = confirmResponse.output_text || `I've sent the detailed content to your canvas: ${title}.`;
+                // Persist and deliver the confirmation text
+                const confirmMsg = {
+                  type: "assistant" as const,
+                  content: confirmText,
+                  timestamp: Date.now(),
+                  channel: "text" as const,
+                  supervisor: true,
+                };
+                session.conversationHistory.push(confirmMsg);
+                for (const ws of chatClients) {
+                  if (isOpen(ws))
+                    jsonSend(ws, {
+                      type: "chat.response",
+                      content: confirmText,
+                      timestamp: Date.now(),
+                      supervisor: true,
+                    });
+                }
+                for (const ws of logsClients) {
+                  if (isOpen(ws))
+                    jsonSend(ws, {
+                      type: "conversation.item.created",
+                      item: {
+                        id: `msg_${Date.now()}`,
+                        type: "message",
+                        role: "assistant",
+                        content: [{ type: "text", text: confirmText }],
+                        channel: "text",
+                        supervisor: true,
+                      },
+                    });
+                }
+              } catch (e) {
+                console.error("❌ Error confirming canvas send:", e);
+              }
               return;
             }
           }
