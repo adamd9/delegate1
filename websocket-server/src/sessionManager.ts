@@ -35,9 +35,100 @@ export function handleCallConnection(ws: WebSocket, openAIApiKey: string) {
   console.info("📞 New call connection");
   session.openAIApiKey = openAIApiKey;
   session.twilioConn = ws;
-  ws.on("message", (data) => handleTwilioMessage(data));
+  // Twilio realtime media/events from the voice call
+  ws.on("message", (data) => handleRealtimeCallEvents(data));
   ws.on("error", ws.close);
   // Cleanup handled in server.ts on close
+}
+
+
+// Handle realtime events from Twilio's media stream WebSocket
+// (start, media, close, etc.) for active voice calls
+function handleRealtimeCallEvents(data: RawData) {
+  const msg = parseMessage(data);
+  if (!msg) return;
+
+  switch (msg.event) {
+    case "start":
+      console.info("📞 Call started");
+      console.debug("📞 Call start event", msg);
+      session.streamSid = msg.start.streamSid;
+      session.latestMediaTimestamp = 0;
+      session.lastAssistantItem = undefined;
+      session.responseStartTimestamp = undefined;
+      establishRealtimeModelConnection();
+      break;
+    case "media":
+      session.latestMediaTimestamp = msg.media.timestamp;
+      if (isOpen(session.modelConn)) {
+        jsonSend(session.modelConn, {
+          type: "input_audio_buffer.append",
+          audio: msg.media.payload,
+        });
+      }
+      break;
+    case "close":
+      console.info("📞 Call closed");
+      closeAllConnections();
+      break;
+  }
+}
+
+
+// Ensure the OpenAI realtime model connection is established for voice calls
+function establishRealtimeModelConnection() {
+  // Connect to model if we have either a Twilio connection OR a chat connection
+  const hasConnection = (session.twilioConn && session.streamSid) || session.chatConn;
+  if (!hasConnection || !session.openAIApiKey)
+    return;
+  if (isOpen(session.modelConn)) return;
+
+  session.modelConn = new WebSocket(
+    "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17",
+    {
+      headers: {
+        Authorization: `Bearer ${session.openAIApiKey}`,
+        "OpenAI-Beta": "realtime=v1",
+      },
+    }
+  );
+
+  session.modelConn.on("open", () => {
+    const config = session.saved_config || {};
+
+    // Include supervisor agent function for voice channel
+    const allFunctions = getAllFunctions();
+    const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
+    const agentInstructions = getDefaultAgent().instructions;
+    jsonSend(session.modelConn, {
+      type: "session.update",
+      session: {
+        modalities: ["text", "audio"],
+        turn_detection: { type: "server_vad" },
+        voice: "ballad",
+        input_audio_transcription: { model: "whisper-1" },
+        input_audio_format: "g711_ulaw",
+        output_audio_format: "g711_ulaw",
+        tools: functionSchemas,
+        instructions: agentInstructions,
+        ...config,
+      },
+    });
+
+    // Send a friendly greeting when a Twilio caller connects
+    if (session.twilioConn) {
+      jsonSend(session.modelConn, {
+        type: "response.create",
+        response: {
+          instructions: "Greet the caller briefly in a style that aligns with your given personality before awaiting input.",
+        },
+      });
+    }
+  });
+
+  session.modelConn.on("message", (data: RawData) => handleModelMessage(data, global.logsClients ?? new Set(), global.chatClients ?? new Set()));
+  session.modelConn.on("error", closeModel);
+  session.modelConn.on("close", closeModel);
 }
 
 // Normalize SMS webhook into the unified chat pipeline
@@ -133,36 +224,6 @@ async function handleFunctionCall(item: { name: string; arguments: string }) {
     return JSON.stringify({
       error: `Error running function ${item.name}: ${err.message}`,
     });
-  }
-}
-
-function handleTwilioMessage(data: RawData) {
-  const msg = parseMessage(data);
-  if (!msg) return;
-
-  switch (msg.event) {
-    case "start":
-      console.info("📞 Call started");
-      console.debug("📞 Call start event", msg);
-      session.streamSid = msg.start.streamSid;
-      session.latestMediaTimestamp = 0;
-      session.lastAssistantItem = undefined;
-      session.responseStartTimestamp = undefined;
-      tryConnectModel();
-      break;
-    case "media":
-      session.latestMediaTimestamp = msg.media.timestamp;
-      if (isOpen(session.modelConn)) {
-        jsonSend(session.modelConn, {
-          type: "input_audio_buffer.append",
-          audio: msg.media.payload,
-        });
-      }
-      break;
-    case "close":
-      console.info("📞 Call closed");
-      closeAllConnections();
-      break;
   }
 }
 
@@ -525,61 +586,6 @@ declare global {
   var logsClients: Set<WebSocket> | undefined;
   // eslint-disable-next-line no-var
   var chatClients: Set<WebSocket> | undefined;
-}
-
-function tryConnectModel() {
-  // Connect to model if we have either a Twilio connection OR a chat connection
-  const hasConnection = (session.twilioConn && session.streamSid) || session.chatConn;
-  if (!hasConnection || !session.openAIApiKey)
-    return;
-  if (isOpen(session.modelConn)) return;
-
-  session.modelConn = new WebSocket(
-    "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17",
-    {
-      headers: {
-        Authorization: `Bearer ${session.openAIApiKey}`,
-        "OpenAI-Beta": "realtime=v1",
-      },
-    }
-  );
-
-  session.modelConn.on("open", () => {
-    const config = session.saved_config || {};
-
-    // Include supervisor agent function for voice channel
-    const allFunctions = getAllFunctions();
-    const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
-    const agentInstructions = getDefaultAgent().instructions;
-    jsonSend(session.modelConn, {
-      type: "session.update",
-      session: {
-        modalities: ["text", "audio"],
-        turn_detection: { type: "server_vad" },
-        voice: "ballad",
-        input_audio_transcription: { model: "whisper-1" },
-        input_audio_format: "g711_ulaw",
-        output_audio_format: "g711_ulaw",
-        tools: functionSchemas,
-        instructions: agentInstructions,
-        ...config,
-      },
-    });
-
-    // Send a friendly greeting when a Twilio caller connects
-    if (session.twilioConn) {
-      jsonSend(session.modelConn, {
-        type: "response.create",
-        response: {
-          instructions: "Greet the caller briefly in a style that aligns with your given personality before awaiting input.",
-        },
-      });
-    }
-  });
-
-  session.modelConn.on("message", (data: RawData) => handleModelMessage(data, global.logsClients ?? new Set(), global.chatClients ?? new Set()));
-  session.modelConn.on("error", closeModel);
-  session.modelConn.on("close", closeModel);
 }
 
 function shouldForwardToFrontend(event: any): boolean {
