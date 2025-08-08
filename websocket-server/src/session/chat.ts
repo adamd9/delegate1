@@ -127,6 +127,8 @@ export async function handleTextChatMessage(
     requestBody.input = [userInput];
     console.log("[DEBUG] Responses API Request:", JSON.stringify(requestBody, null, 2));
     const response = await session.openaiClient.responses.create(requestBody);
+    // Persist thread state regardless of tool usage so subsequent turns chain correctly
+    session.previousResponseId = response.id;
     console.log(
       "[DEBUG] Responses API Response:",
       JSON.stringify(
@@ -213,6 +215,79 @@ export async function handleTextChatMessage(
             )
           );
           session.previousResponseId = followUpResponse.id;
+          // If the follow-up produced tool calls (e.g., send_canvas), surface them to UI instead of falling back
+          const fuFunctionCalls = followUpResponse.output?.filter((o: any) => o.type === "function_call");
+          if (fuFunctionCalls && fuFunctionCalls.length > 0) {
+            // Broadcast function call breadcrumb(s) to logs
+            for (const fc of fuFunctionCalls) {
+              for (const ws of logsClients) {
+                if (isOpen(ws))
+                  jsonSend(ws, {
+                    type: "response.function_call_arguments.delta",
+                    name: fc.name,
+                    arguments: fc.arguments,
+                    call_id: fc.call_id,
+                  });
+              }
+            }
+            // Handle send_canvas specially so the UI shows the actual content
+            const canvasCall = fuFunctionCalls.find((fc: any) => fc.name === "send_canvas");
+            if (canvasCall) {
+              let args: any = {};
+              try {
+                args = typeof canvasCall.arguments === "string" ? JSON.parse(canvasCall.arguments) : canvasCall.arguments;
+              } catch {}
+              const title: string = args?.title || "Canvas";
+              const contentStr: string = typeof args?.content === "string" ? args.content : JSON.stringify(args?.content ?? {});
+              // Persist to conversation history as assistant text (until a dedicated canvas channel exists)
+              const assistantMessage = {
+                type: "assistant" as const,
+                content: contentStr,
+                timestamp: Date.now(),
+                channel: "text" as const,
+                supervisor: true,
+              };
+              session.conversationHistory.push(assistantMessage);
+              // Notify chat clients with the content
+              for (const ws of chatClients) {
+                if (isOpen(ws))
+                  jsonSend(ws, {
+                    type: "chat.response",
+                    content: contentStr,
+                    timestamp: Date.now(),
+                    supervisor: true,
+                    title,
+                  });
+              }
+              // Mirror as a normal assistant message to logs for transcript UI
+              for (const ws of logsClients) {
+                if (isOpen(ws))
+                  jsonSend(ws, {
+                    type: "conversation.item.created",
+                    item: {
+                      id: `msg_${Date.now()}`,
+                      type: "message",
+                      role: "assistant",
+                      content: [{ type: "text", text: `[Canvas] ${title}\n${contentStr}` }],
+                      channel: "text",
+                      supervisor: true,
+                    },
+                  });
+              }
+              // Finish the breadcrumb for completeness
+              for (const ws of logsClients) {
+                if (isOpen(ws))
+                  jsonSend(ws, {
+                    type: "response.function_call_arguments.done",
+                    name: canvasCall.name,
+                    arguments: canvasCall.arguments,
+                    call_id: canvasCall.call_id,
+                    status: "completed",
+                  });
+              }
+              return;
+            }
+          }
           const finalResponse = followUpResponse.output_text || "Supervisor agent completed.";
           const assistantMessage = {
             type: "assistant" as const,
