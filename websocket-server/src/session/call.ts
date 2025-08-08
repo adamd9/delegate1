@@ -109,15 +109,9 @@ export function establishRealtimeModelConnection() {
 }
 
 function shouldForwardToFrontend(event: any): boolean {
-  // Filter out events that would disrupt existing chat history
-  if (event.type === "session.created") {
-    console.log("🚫 Filtering session.created event to preserve chat history");
-    return false;
-  }
-  if (event.type === "session.updated") {
-    console.log("🚫 Filtering session.updated event to preserve chat history");
-    return false;
-  }
+  // Forward ALL realtime events to the observability stream (`/logs`).
+  // This improves visibility into the model's behavior during calls.
+  // If you need to hide specific events in the future, add filtering here.
   return true;
 }
 
