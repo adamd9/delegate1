@@ -2,7 +2,8 @@ import { FunctionHandler } from './types';
 import { WebSocket } from 'ws';
 import { storeCanvas } from '../canvasStore';
 
-const PUBLIC_URL = process.env.PUBLIC_URL || '';
+const PORT = process.env.PORT || '8081';
+const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 
 function jsonSend(ws: WebSocket | undefined, obj: unknown) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -13,7 +14,8 @@ export const sendCanvas: FunctionHandler = {
   schema: {
     name: "send_canvas",
     type: "function",
-    description: "Send detailed content to the canvas UI.",
+    description:
+      "Send detailed content to the canvas UI. The server returns a URL that the client shows separately, so do not mention this URL in your response.",
     parameters: {
       type: "object",
       properties: {
@@ -40,6 +42,6 @@ export const sendCanvas: FunctionHandler = {
       jsonSend(client, message);
     }
 
-    return "canvas_sent";
+    return { status: "sent", url: link };
   }
 };
