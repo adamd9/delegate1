@@ -27,10 +27,11 @@ export default function handleEnhancedRealtimeEvent(
   event: any,
   transcript: TranscriptContextValue
 ) {
-  const { 
-    addTranscriptMessage, 
-    updateTranscriptMessage, 
-    addTranscriptBreadcrumb 
+  const {
+    addTranscriptMessage,
+    updateTranscriptMessage,
+    addTranscriptBreadcrumb,
+    addTranscriptCanvas
   } = transcript;
 
   console.log("Enhanced event handler:", event.type, event);
@@ -407,16 +408,18 @@ export default function handleEnhancedRealtimeEvent(
       );
       break;
 
-    case "chat.canvas":
-      addTranscriptBreadcrumb(
-        "📝 Canvas response",
-        {
-          content: event.content,
-          timestamp: event.timestamp,
-          supervisor: event.supervisor || false
-        }
-      );
+    case "chat.canvas": {
+      const url =
+        typeof event.content === "string"
+          ? event.content
+          : typeof event.url === "string"
+          ? event.url
+          : typeof event.content?.url === "string"
+          ? event.content.url
+          : "";
+      addTranscriptCanvas(event.title || "Canvas", url);
       break;
+    }
 
     case "chat.error":
       addTranscriptBreadcrumb(
