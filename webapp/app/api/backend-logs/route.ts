@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { getBackendUrl } from "@/lib/get-backend-url";
 
 // Proxy to backend websocket-server /logs to avoid browser CORS and allow server-side fetch
 export async function GET() {
-  const backendUrl = process.env.WEBSOCKET_SERVER_URL || "http://localhost:8081";
+  const backendUrl = getBackendUrl();
   const url = `${backendUrl.replace(/\/$/, "")}/logs`;
   try {
     const resp = await fetch(url, { cache: "no-store" });
