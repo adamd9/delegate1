@@ -92,6 +92,26 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
     ]);
   };
 
+  const addTranscriptCanvas: TranscriptContextValue["addTranscriptCanvas"] = (
+    title,
+    url
+  ) => {
+    setTranscriptItems((prev) => [
+      ...prev,
+      {
+        itemId: `canvas-${uuidv4()}`,
+        type: "CANVAS",
+        title,
+        data: { url },
+        expanded: false,
+        timestamp: newTimestampPretty(),
+        createdAtMs: Date.now(),
+        status: "DONE",
+        isHidden: false,
+      },
+    ]);
+  };
+
   const toggleTranscriptItemExpand: TranscriptContextValue["toggleTranscriptItemExpand"] = (itemId) => {
     setTranscriptItems((prev) =>
       prev.map((log) =>
@@ -119,6 +139,7 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
         addTranscriptMessage,
         updateTranscriptMessage,
         addTranscriptBreadcrumb,
+        addTranscriptCanvas,
         toggleTranscriptItemExpand,
         updateTranscriptItem,
         clearTranscript,
