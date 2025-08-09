@@ -162,10 +162,6 @@ const SessionConfigurationPanel: React.FC<SessionConfigurationPanelProps> = ({
     return backendTools.some((t: any) => t.name === name);
   };
 
-  const handleOpenLogs = () => {
-    window.open(`${getBackendUrl()}/logs`, "_blank");
-  };
-
   return (
     <Card className="flex flex-col h-full w-full mx-auto">
       <CardHeader className="pb-0 px-4 sm:px-6">
@@ -174,8 +170,8 @@ const SessionConfigurationPanel: React.FC<SessionConfigurationPanelProps> = ({
             Session Configuration
           </CardTitle>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleOpenLogs}>
-              Open Logs
+            <Button variant="outline" size="sm" asChild>
+              <a href="/logs" target="_blank" rel="noreferrer">Open Logs</a>
             </Button>
             {saveStatus === "error" ? (
               <span className="text-xs text-red-500 flex items-center gap-1">
