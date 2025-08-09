@@ -12,7 +12,7 @@ export interface FunctionHandler {
       additionalProperties?: boolean;
     };
   };
-  handler: (args: any, addBreadcrumb?: (title: string, data?: any) => void) => Promise<string>;
+  handler: (args: any, addBreadcrumb?: (title: string, data?: any) => void) => Promise<any>;
 }
 
 export interface AgentConfig {
