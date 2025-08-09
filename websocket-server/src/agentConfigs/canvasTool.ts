@@ -40,6 +40,6 @@ export const sendCanvas: FunctionHandler = {
       jsonSend(client, message);
     }
 
-    return "canvas_sent";
+    return { status: "sent", url: link };
   }
 };

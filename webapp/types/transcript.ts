@@ -2,7 +2,7 @@
 
 export interface TranscriptItem {
   itemId: string;
-  type: "MESSAGE" | "BREADCRUMB";
+  type: "MESSAGE" | "BREADCRUMB" | "CANVAS";
   role?: "user" | "assistant";
   title?: string;
   data?: Record<string, any>;
@@ -27,6 +27,7 @@ export interface TranscriptContextValue {
   ) => void;
   updateTranscriptMessage: (itemId: string, text: string, isDelta: boolean) => void;
   addTranscriptBreadcrumb: (title: string, data?: Record<string, any>) => void;
+  addTranscriptCanvas: (title: string, url: string) => void;
   toggleTranscriptItemExpand: (itemId: string) => void;
   updateTranscriptItem: (itemId: string, updatedProperties: Partial<TranscriptItem>) => void;
   clearTranscript: () => void;
