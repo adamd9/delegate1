@@ -12,6 +12,8 @@ import { establishChatSocket } from "./session/chat";
 import { processSmsWebhook } from "./session/sms";
 import functions from "./functionHandlers";
 import { getLogs } from "./logBuffer";
+import { getCanvas } from "./canvasStore";
+import { marked } from "marked";
 
 dotenv.config();
 
@@ -69,6 +71,17 @@ app.get("/tools", (req, res) => {
 // Endpoint to retrieve latest server logs
 app.get("/logs", (req, res) => {
   res.type("text/plain").send(getLogs().join("\n"));
+});
+
+// Endpoint to serve stored canvas content as HTML
+app.get("/canvas/:id", (req, res) => {
+  const data = getCanvas(req.params.id);
+  if (!data) {
+    res.status(404).send("Not found");
+    return;
+  }
+  const html = marked.parse(data.content);
+  res.send(`<!doctype html><html><head><title>${data.title || "Canvas"}</title></head><body>${html}</body></html>`);
 });
 
 // Access token endpoint for voice client

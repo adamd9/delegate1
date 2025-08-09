@@ -1,5 +1,8 @@
 import { FunctionHandler } from './types';
 import { WebSocket } from 'ws';
+import { storeCanvas } from '../canvasStore';
+
+const PUBLIC_URL = process.env.PUBLIC_URL || '';
 
 function jsonSend(ws: WebSocket | undefined, obj: unknown) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -22,7 +25,9 @@ export const sendCanvas: FunctionHandler = {
     }
   },
   handler: async ({ content, title }: { content: string; title?: string }) => {
-    const message = { type: "chat.canvas", content, title, timestamp: Date.now() };
+    const id = storeCanvas(content, title);
+    const link = `${PUBLIC_URL}/canvas/${id}`;
+    const message = { type: "chat.canvas", content: link, title, timestamp: Date.now() };
 
     const globals = globalThis as any;
     const chatClients: Set<WebSocket> = globals.chatClients ?? new Set();
