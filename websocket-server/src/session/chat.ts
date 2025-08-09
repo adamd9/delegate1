@@ -6,6 +6,7 @@ import { getAllFunctions, getDefaultAgent, FunctionHandler } from "../agentConfi
 import { isSmsWindowOpen, getNumbers } from "../smsState";
 import { sendSms } from "../sms";
 import { session, parseMessage, jsonSend, isOpen } from "./state";
+import { sendCanvas } from "../agentConfigs/canvasTool";
 
 export function establishChatSocket(
   ws: WebSocket,
@@ -186,6 +187,10 @@ export async function handleTextChatMessage(
                 arguments: functionCall.arguments,
                 call_id: functionCall.call_id,
                 status: "completed",
+                output:
+                  typeof functionResult === "string"
+                    ? functionResult
+                    : JSON.stringify(functionResult),
               });
           }
           const fnSchemas = allFns.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
@@ -233,48 +238,42 @@ export async function handleTextChatMessage(
             // Handle send_canvas specially so the UI shows the actual content
             const canvasCall = fuFunctionCalls.find((fc: any) => fc.name === "send_canvas");
             if (canvasCall) {
-              let args: any = {};
+              // Extract arguments robustly - they may be JSON strings or wrapped in arrays
+              let args: any = canvasCall.arguments;
               try {
-                args = typeof canvasCall.arguments === "string" ? JSON.parse(canvasCall.arguments) : canvasCall.arguments;
-              } catch {}
-              const title: string = args?.title || "Canvas";
-              const contentStr: string = typeof args?.content === "string" ? args.content : JSON.stringify(args?.content ?? {});
-              // Persist to conversation history as assistant text (until a dedicated canvas channel exists)
+                while (typeof args === "string") {
+                  args = JSON.parse(args);
+                }
+              } catch (e) {
+                console.warn("Failed to parse send_canvas arguments", e, canvasCall.arguments);
+                args = {};
+              }
+
+              if (Array.isArray(args)) args = args[0] || {};
+
+              const title: string =
+                typeof args.title === "string" && args.title.trim().length > 0 ? args.title : "Canvas";
+              const rawContent = args.content;
+              const contentStr: string =
+                typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent ?? {});
+
+              const result = await (sendCanvas as any).handler({ content: contentStr, title });
+              const link =
+                typeof result === "object" && result && (result as any).url
+                  ? (result as any).url
+                  : typeof result === "string"
+                  ? result
+                  : "";
+
               const assistantMessage = {
                 type: "assistant" as const,
-                content: contentStr,
+                content: link,
                 timestamp: Date.now(),
                 channel: "text" as const,
                 supervisor: true,
               };
               session.conversationHistory.push(assistantMessage);
-              // Notify chat clients with the content
-              for (const ws of chatClients) {
-                if (isOpen(ws))
-                  jsonSend(ws, {
-                    type: "chat.response",
-                    content: contentStr,
-                    timestamp: Date.now(),
-                    supervisor: true,
-                    title,
-                  });
-              }
-              // Mirror as a normal assistant message to logs for transcript UI
-              for (const ws of logsClients) {
-                if (isOpen(ws))
-                  jsonSend(ws, {
-                    type: "conversation.item.created",
-                    item: {
-                      id: `msg_${Date.now()}`,
-                      type: "message",
-                      role: "assistant",
-                      content: [{ type: "text", text: `[Canvas] ${title}\n${contentStr}` }],
-                      channel: "text",
-                      supervisor: true,
-                    },
-                  });
-              }
-              // Finish the breadcrumb for completeness
+
               for (const ws of logsClients) {
                 if (isOpen(ws))
                   jsonSend(ws, {
@@ -283,6 +282,10 @@ export async function handleTextChatMessage(
                     arguments: canvasCall.arguments,
                     call_id: canvasCall.call_id,
                     status: "completed",
+                    output:
+                      typeof result === "string"
+                        ? result
+                        : JSON.stringify(result),
                   });
               }
               // Solution A: confirm tool execution with Responses API to elicit a concise final text
@@ -300,7 +303,7 @@ export async function handleTextChatMessage(
                     {
                       type: "function_call_output",
                       call_id: canvasCall.call_id,
-                      output: JSON.stringify({ status: "sent" }),
+                      output: JSON.stringify({ status: "sent", url: link }),
                     },
                   ],
                   instructions:

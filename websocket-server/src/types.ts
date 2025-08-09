@@ -28,7 +28,7 @@ export interface FunctionSchema {
 
 export interface FunctionHandler {
   schema: FunctionSchema;
-  handler: (args: any, addBreadcrumb?: (title: string, data?: any) => void) => Promise<string>;
+  handler: (args: any, addBreadcrumb?: (title: string, data?: any) => void) => Promise<any>;
 }
 
 // New Responses API types
