@@ -27,10 +27,11 @@ export default function handleEnhancedRealtimeEvent(
   event: any,
   transcript: TranscriptContextValue
 ) {
-  const { 
-    addTranscriptMessage, 
-    updateTranscriptMessage, 
-    addTranscriptBreadcrumb 
+  const {
+    addTranscriptMessage,
+    updateTranscriptMessage,
+    addTranscriptBreadcrumb,
+    addTranscriptCanvas
   } = transcript;
 
   console.log("Enhanced event handler:", event.type, event);
@@ -408,13 +409,9 @@ export default function handleEnhancedRealtimeEvent(
       break;
 
     case "chat.canvas":
-      addTranscriptBreadcrumb(
-        "📝 Canvas response",
-        {
-          content: event.content,
-          timestamp: event.timestamp,
-          supervisor: event.supervisor || false
-        }
+      addTranscriptCanvas(
+        event.title || "Canvas",
+        event.content
       );
       break;
 

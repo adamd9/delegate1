@@ -74,6 +74,27 @@ export function EnhancedTranscript({
     }
   };
 
+  function renderContentWithLinks(text: string) {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    return parts.map((part, index) => {
+      if (/^https?:\/\/[^\s]+$/.test(part)) {
+        return (
+          <a
+            key={index}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 underline"
+          >
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
+  }
+
   return (
     <div className="flex flex-col h-full bg-white rounded-xl border">
       {/* Header */}
@@ -156,9 +177,26 @@ export function EnhancedTranscript({
                         {!isUser && (channelBadge || supervisorBadge)}
                       </div>
                       <div className="whitespace-pre-wrap">
-                        {title}
+                        {renderContentWithLinks(title)}
                       </div>
                     </div>
+                  </div>
+                </div>
+              );
+            } else if (type === "CANVAS") {
+              const url = data?.url;
+              return (
+                <div key={itemId} className="flex justify-center">
+                  <div className="bg-blue-50 text-blue-800 border border-blue-200 px-3 py-2 rounded-md text-sm">
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline flex items-center gap-1"
+                    >
+                      <span>🖼️</span>
+                      <span>{title || "Open canvas"}</span>
+                    </a>
                   </div>
                 </div>
               );
