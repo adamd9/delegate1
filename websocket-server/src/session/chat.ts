@@ -1,6 +1,6 @@
 import { RawData, WebSocket } from "ws";
 import OpenAI, { ClientOptions } from "openai";
-import { HttpsProxyAgent } from "https-proxy-agent";
+import { ProxyAgent } from "undici";
 import { ResponsesTextInput } from "../types";
 import { getAllFunctions, getDefaultAgent, FunctionHandler } from "../agentConfigs";
 import { isSmsWindowOpen, getNumbers } from "../smsState";
@@ -69,8 +69,15 @@ export async function handleTextChatMessage(
       }
       const options: ClientOptions = { apiKey: process.env.OPENAI_API_KEY };
       if (process.env.CODEX_CLI === "true" && process.env.HTTPS_PROXY) {
-        options.httpAgent = new HttpsProxyAgent(process.env.HTTPS_PROXY);
-        console.debug("OpenAI Client", "Using proxy agent for Codex environment");
+        try {
+          const dispatcher = new ProxyAgent(process.env.HTTPS_PROXY);
+          options.fetch = (url, init: any = {}) => {
+            return (globalThis.fetch as any)(url, { ...(init || {}), dispatcher });
+          };
+          console.debug("OpenAI Client", "Using undici ProxyAgent for Codex environment");
+        } catch (e) {
+          console.warn("OpenAI Client", "Failed to configure ProxyAgent, continuing without proxy:", e);
+        }
       }
       session.openaiClient = new OpenAI(options);
       console.log("✅ OpenAI REST client initialized for text chat");
@@ -111,7 +118,7 @@ export async function handleTextChatMessage(
     const requestBody: any = {
       model: "gpt-5-mini",
       reasoning: {
-        effort: "minimal"
+        effort: 'low' as const,
       },
       instructions: instructions,
       tools: functionSchemas,
@@ -193,7 +200,7 @@ export async function handleTextChatMessage(
           const followUpBody = {
             model: "gpt-5-mini",
             reasoning: {
-              effort: "minimal"
+              effort: 'low' as const,
             },
             previous_response_id: response.id,
             instructions:
@@ -279,7 +286,7 @@ export async function handleTextChatMessage(
                 const confirmBody: any = {
                   model: "gpt-5-mini",
                   reasoning: {
-                    effort: "minimal"
+                    effort: 'low' as const,
                   },
                   previous_response_id: followUpResponse.id,
                   input: [
