@@ -330,6 +330,12 @@ export async function handleTextChatMessage(
                   supervisor: true,
                 };
                 session.conversationHistory.push(confirmMsg);
+                if (isSmsWindowOpen()) {
+                  const { smsUserNumber, smsTwilioNumber } = getNumbers();
+                  sendSms(confirmText, smsTwilioNumber, smsUserNumber).catch((e) =>
+                    console.error("sendSms error", e)
+                  );
+                }
                 for (const ws of chatClients) {
                   if (isOpen(ws))
                     jsonSend(ws, {
@@ -368,6 +374,12 @@ export async function handleTextChatMessage(
             supervisor: true,
           };
           session.conversationHistory.push(assistantMessage);
+          if (isSmsWindowOpen()) {
+            const { smsUserNumber, smsTwilioNumber } = getNumbers();
+            sendSms(finalResponse, smsTwilioNumber, smsUserNumber).catch((e) =>
+              console.error("sendSms error", e)
+            );
+          }
           for (const ws of chatClients) {
             if (isOpen(ws))
               jsonSend(ws, {
@@ -408,6 +420,12 @@ export async function handleTextChatMessage(
       supervisor: false,
     };
     session.conversationHistory.push(assistantMessage);
+    if (isSmsWindowOpen()) {
+      const { smsUserNumber, smsTwilioNumber } = getNumbers();
+      sendSms(assistantText, smsTwilioNumber, smsUserNumber).catch((e) =>
+        console.error("sendSms error", e)
+      );
+    }
     for (const ws of chatClients) {
       if (isOpen(ws))
         jsonSend(ws, { type: "chat.response", content: assistantText, timestamp: Date.now() });
