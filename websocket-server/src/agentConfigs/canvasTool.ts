@@ -3,6 +3,8 @@ import { WebSocket } from 'ws';
 import { storeCanvas } from '../canvasStore';
 
 const PUBLIC_URL = process.env.PUBLIC_URL || '';
+const DEFAULT_PORT = process.env.PORT || '8081';
+const EFFECTIVE_PUBLIC_URL = (PUBLIC_URL && PUBLIC_URL.trim()) || `http://localhost:${DEFAULT_PORT}`;
 
 function jsonSend(ws: WebSocket | undefined, obj: unknown) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -13,7 +15,7 @@ export const sendCanvas: FunctionHandler = {
   schema: {
     name: "send_canvas",
     type: "function",
-    description: "Send detailed content to the canvas UI.",
+    description: "Send detailed content to the user using a special UI.",
     parameters: {
       type: "object",
       properties: {
@@ -24,10 +26,14 @@ export const sendCanvas: FunctionHandler = {
       additionalProperties: false
     }
   },
-  handler: async ({ content, title }: { content: string; title?: string }) => {
+  handler: async (
+    { content, title }: { content: string; title?: string },
+  ) => {
+    console.debug("[DEBUG] CanvasTool handler called:", { content, title });
     const id = storeCanvas(content, title);
-    const link = `${PUBLIC_URL}/canvas/${id}`;
-    const message = { type: "chat.canvas", content: link, title, timestamp: Date.now() };
+    const base = EFFECTIVE_PUBLIC_URL.replace(/\/$/, '');
+    const url = `${base}/canvas/${id}`;
+    const message = { type: "chat.canvas", content: url, title, timestamp: Date.now(), id };
 
     const globals = globalThis as any;
     const chatClients: Set<WebSocket> = globals.chatClients ?? new Set();
@@ -40,6 +46,6 @@ export const sendCanvas: FunctionHandler = {
       jsonSend(client, message);
     }
 
-    return "canvas_sent";
+    return { status: "sent", id, url, title: title ?? null };
   }
 };

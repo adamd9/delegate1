@@ -1,0 +1,38 @@
+{
+    // VS Code debug configs
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Run with Collapsible Logs",
+        "skipFiles": ["<node_internals>/**"],
+        // Always start from the current file if none is specified
+        "program": "${file}",
+        // Show logs in Debug Console with expandable objects
+        "console": "internalConsole",
+        "outputCapture": "std",
+        // Use current workspace folder as working dir
+        "cwd": "${workspaceFolder}/websocket-server",
+        // Optional: enable source maps if using TS/Babel
+        "sourceMaps": true,
+        // Restart on file changes
+        "restart": true,
+        "internalConsoleOptions": "openOnSessionStart"
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Run Main Entry (Collapsible Logs)",
+        "skipFiles": ["<node_internals>/**"],
+        "program": "${workspaceFolder}/websocket-server/src/server.ts", // change if main file is named differently
+        "console": "internalConsole",
+        "outputCapture": "std",
+        "cwd": "${workspaceFolder}/websocket-server",
+        "sourceMaps": true,
+        "restart": true,
+        "internalConsoleOptions": "openOnSessionStart"
+      }
+    ]
+  }
+  

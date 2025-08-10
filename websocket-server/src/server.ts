@@ -19,6 +19,7 @@ dotenv.config();
 
 const PORT = parseInt(process.env.PORT || "8081", 10);
 const PUBLIC_URL = process.env.PUBLIC_URL || "";
+const EFFECTIVE_PUBLIC_URL = (PUBLIC_URL && PUBLIC_URL.trim()) || `http://localhost:${PORT}`;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
 if (!OPENAI_API_KEY) {
@@ -50,11 +51,11 @@ const twimlPath = join(__dirname, "twiml.xml");
 const twimlTemplate = readFileSync(twimlPath, "utf-8");
 
 app.get("/public-url", (req, res) => {
-  res.json({ publicUrl: PUBLIC_URL });
+  res.json({ publicUrl: EFFECTIVE_PUBLIC_URL });
 });
 
 app.all("/twiml", (req, res) => {
-  const wsUrl = new URL(PUBLIC_URL);
+  const wsUrl = new URL(EFFECTIVE_PUBLIC_URL);
   wsUrl.protocol = "wss:";
   wsUrl.pathname = `/call`;
 
