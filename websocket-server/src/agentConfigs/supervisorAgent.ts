@@ -165,10 +165,6 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
   },
   handler: async (args: { query: string; context?: string; reasoning_type: string }, addBreadcrumb?: (title: string, data?: any) => void) => {
     try {
-      addBreadcrumb?.("Supervisor Escalation", { 
-        query: args.query, 
-        reasoning_type: args.reasoning_type 
-      });
 
       const supervisorAgentInstructions = supervisorAgentConfig.instructions
       .replace("{{query}}", args.query)
@@ -202,9 +198,7 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
         undefined,
         addBreadcrumb
       );
-      
-      addBreadcrumb?.("Supervisor Response", { response: finalResponse });
-      
+            
       return finalResponse;
       
     } catch (error) {

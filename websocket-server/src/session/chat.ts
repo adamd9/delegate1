@@ -116,7 +116,7 @@ export async function handleTextChatMessage(
     const instructions = getDefaultAgent().instructions;
     // Prepare request body for Responses API
     const requestBody: any = {
-      model: "gpt-5-mini",
+      model: "gpt-5-nano",
       reasoning: {
         effort: 'low' as const,
       },
