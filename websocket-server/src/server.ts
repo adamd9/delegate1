@@ -14,6 +14,7 @@ import functions from "./functionHandlers";
 import { getLogs } from "./logBuffer";
 import { getCanvas } from "./canvasStore";
 import { marked } from "marked";
+import { session as stateSession, closeAllConnections, jsonSend, isOpen } from "./session/state";
 
 dotenv.config();
 
@@ -33,6 +34,8 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 app.use(express.urlencoded({ extended: false }));
+// Enable JSON body parsing for API endpoints
+app.use(express.json());
 
 // --- Twilio SMS webhook route ---
 app.post('/sms', async (req, res) => {
@@ -83,6 +86,73 @@ app.get("/canvas/:id", (req, res) => {
   }
   const html = marked.parse(data.content);
   res.send(`<!doctype html><html><head><title>${data.title || "Canvas"}</title></head><body>${html}</body></html>`);
+});
+
+// Endpoint to reset session state: chat history and/or active connections
+// Body JSON shape: { chatHistory?: boolean, connections?: boolean }
+app.post("/session/reset", (req, res) => {
+  const { chatHistory = true, connections = true } = req.body || {};
+  try {
+    const result: any = { chatHistoryCleared: false, connectionsClosed: false };
+
+    if (connections) {
+      // Close model/twilio/frontend tracked in state
+      closeAllConnections();
+      // Close any chat/text model connections tracked in state
+      try {
+        if (stateSession.chatConn && stateSession.chatConn.readyState === WebSocket.OPEN) {
+          stateSession.chatConn.close();
+        }
+      } catch {}
+      stateSession.chatConn = undefined;
+      try {
+        if (stateSession.textModelConn && stateSession.textModelConn.readyState === WebSocket.OPEN) {
+          stateSession.textModelConn.close();
+        }
+      } catch {}
+      stateSession.textModelConn = undefined;
+      // Close and clear all observability and chat clients
+      try {
+        for (const ws of chatClients) {
+          try { ws.close(); } catch {}
+        }
+        chatClients.clear();
+      } catch {}
+      try {
+        for (const ws of logsClients) {
+          try { ws.close(); } catch {}
+        }
+        logsClients.clear();
+      } catch {}
+      result.connectionsClosed = true;
+    }
+
+    if (chatHistory) {
+      stateSession.conversationHistory = [];
+      stateSession.previousResponseId = undefined;
+      result.chatHistoryCleared = true;
+    }
+
+    // Emit an observability log event over the logs websocket
+    try {
+      for (const ws of logsClients) {
+        if (isOpen(ws))
+          jsonSend(ws, {
+            type: "session.reset",
+            by: "api",
+            chatHistory,
+            connections,
+            result,
+            timestamp: Date.now(),
+          });
+      }
+    } catch {}
+
+    res.json({ status: "ok", ...result });
+  } catch (err: any) {
+    console.error("/session/reset error:", err);
+    res.status(500).json({ status: "error", message: err?.message || "Unknown error" });
+  }
 });
 
 // Access token endpoint for voice client

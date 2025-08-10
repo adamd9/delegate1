@@ -43,6 +43,7 @@ const SessionConfigurationPanel: React.FC<SessionConfigurationPanelProps> = ({
   const [buildInfo, setBuildInfo] = useState<{ commitId: string; commitMessage: string } | null>(
     null
   );
+  const [resetStatus, setResetStatus] = useState<"idle" | "resetting" | "done" | "error">("idle");
 
   // Fetch backend tools once (no polling since tools are static)
   const backendTools = useBackendTools(`${getBackendUrl()}/tools`, 0);
@@ -84,6 +85,30 @@ const SessionConfigurationPanel: React.FC<SessionConfigurationPanelProps> = ({
       setHasUnsavedChanges(false);
     } catch (error) {
       setSaveStatus("error");
+    }
+  };
+
+  const handleResetSessions = async () => {
+    if (resetStatus === "resetting") return;
+    // Optional confirmation
+    if (typeof window !== 'undefined') {
+      const ok = window.confirm("Reset all sessions? This will clear chat history and close all connections.");
+      if (!ok) return;
+    }
+    setResetStatus("resetting");
+    try {
+      const res = await fetch(`${getBackendUrl()}/session/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatHistory: true, connections: true })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setResetStatus("done");
+      setTimeout(() => setResetStatus("idle"), 2500);
+    } catch (e) {
+      console.error("Reset sessions error", e);
+      setResetStatus("error");
+      setTimeout(() => setResetStatus("idle"), 3500);
     }
   };
 
@@ -264,6 +289,25 @@ const SessionConfigurationPanel: React.FC<SessionConfigurationPanelProps> = ({
                   <Plus className="h-4 w-4 mr-2" />
                   Add Tool
                 </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium leading-none">Session Maintenance</label>
+              <div className="flex flex-col gap-2">
+                <Button
+                  variant="destructive"
+                  className="w-full"
+                  onClick={handleResetSessions}
+                  disabled={resetStatus === "resetting"}
+                >
+                  {resetStatus === "resetting" ? "Resetting..." :
+                   resetStatus === "done" ? "Reset Complete" :
+                   resetStatus === "error" ? "Reset Failed" : "Reset All Sessions"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Closes active connections (voice, chat, observability) and clears server-side chat history.
+                </p>
               </div>
             </div>
 
