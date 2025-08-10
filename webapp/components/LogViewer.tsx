@@ -131,10 +131,12 @@ function extractJsonBlock(text: string): { json: string; start: number; end: num
 
 type LogItem =
   | { kind: "line"; line: string }
-  | { kind: "json"; prefix: string; pretty: string };
+  | { kind: "json"; prefix: string; pretty: string }
+  | { kind: "long"; prefix: string; remainder: string; length: number };
 
 function buildLogItems(lines: string[]): LogItem[] {
   const items: LogItem[] = [];
+  const LONG_LINE_THRESHOLD = 300; // chars
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line) {
@@ -146,7 +148,14 @@ function buildLogItems(lines: string[]): LogItem[] {
     const firstBracket = line.indexOf("[");
     const startIdx = [firstCurly, firstBracket].filter((x) => x >= 0).sort((a, b) => a - b)[0];
     if (startIdx === undefined) {
-      items.push({ kind: "line", line });
+      // Not JSON: if line is very long, split into a collapsible chunk
+      if (line.length > LONG_LINE_THRESHOLD) {
+        const prefix = line.slice(0, LONG_LINE_THRESHOLD);
+        const remainder = line.slice(LONG_LINE_THRESHOLD);
+        items.push({ kind: "long", prefix, remainder, length: line.length });
+      } else {
+        items.push({ kind: "line", line });
+      }
       continue;
     }
 
@@ -189,7 +198,14 @@ function buildLogItems(lines: string[]): LogItem[] {
 
     // If we didn't push a json item (no balanced block), push the original line
     if (items.length === 0 || items[items.length - 1].kind !== "json") {
-      items.push({ kind: "line", line });
+      // If the original line is very long (e.g., large field values like instructions), collapse it
+      if (line.length > LONG_LINE_THRESHOLD) {
+        const head = line.slice(0, Math.min(LONG_LINE_THRESHOLD, startIdx + LONG_LINE_THRESHOLD));
+        const tail = line.slice(head.length);
+        items.push({ kind: "long", prefix: head, remainder: tail, length: line.length });
+      } else {
+        items.push({ kind: "line", line });
+      }
     }
   }
   return items;
@@ -286,6 +302,21 @@ export default function LogViewer() {
               </div>
             );
           }
+          if (it.kind === "long") {
+            return (
+              <div key={idx} className="whitespace-pre-wrap break-words">
+                <span>{spanifyAnsi(it.prefix)}</span>
+                <details className="ml-2 inline-block align-top">
+                  <summary className="cursor-pointer select-none text-blue-600 hover:underline">
+                    … ({it.length} chars)
+                  </summary>
+                  <pre className="mt-1 max-h-80 overflow-auto rounded bg-neutral-900 p-3 text-xs text-neutral-100 whitespace-pre-wrap break-words">
+{it.remainder}
+                  </pre>
+                </details>
+              </div>
+            );
+          }
           return (
             <div key={idx} className="whitespace-pre-wrap break-words">
               <span>{spanifyAnsi(it.prefix)}</span>
@@ -293,7 +324,7 @@ export default function LogViewer() {
                 <summary className="cursor-pointer select-none text-blue-600 hover:underline">
                   JSON ({it.pretty.length} chars)
                 </summary>
-                <pre className="mt-1 max-h-80 overflow-auto rounded bg-neutral-900 p-3 text-xs text-neutral-100">
+                <pre className="mt-1 max-h-80 overflow-auto rounded bg-neutral-900 p-3 text-xs text-neutral-100 whitespace-pre-wrap break-words">
 {it.pretty}
                 </pre>
               </details>
