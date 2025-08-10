@@ -15,7 +15,7 @@ export const sendCanvas: FunctionHandler = {
   schema: {
     name: "send_canvas",
     type: "function",
-    description: "Send detailed content to the user using a special UI.",
+    description: "Send detailed content to the user using a special UI. This will be sent out as a link to the user via a separate channel. No need to supply the link in the message back to the user.",
     parameters: {
       type: "object",
       properties: {
