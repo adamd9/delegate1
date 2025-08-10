@@ -2,7 +2,7 @@ import { FunctionHandler } from './types';
 import { supervisorAgentConfig } from './supervisorAgentConfig';
 import { ResponsesFunctionCall, ResponsesFunctionCallOutput, ResponsesInputItem, ResponsesTextInput, ResponsesOutputItem } from '../types';
 import OpenAI, { ClientOptions } from 'openai';
-import { HttpsProxyAgent } from 'https-proxy-agent';
+import { ProxyAgent } from 'undici';
 
 import { getCurrentTimeFunction } from './supervisorTools';
 
@@ -37,8 +37,15 @@ export async function handleSupervisorToolCalls(
   let finalText = "";
   const options: ClientOptions = { apiKey: process.env.OPENAI_API_KEY };
   if (process.env.CODEX_CLI === 'true' && process.env.HTTPS_PROXY) {
-    // options.httpAgent = new HttpsProxyAgent(process.env.HTTPS_PROXY);
-    console.debug('OpenAI Client', 'Using proxy agent for Codex environment');
+    try {
+      const dispatcher = new ProxyAgent(process.env.HTTPS_PROXY);
+      options.fetch = (url, init: any = {}) => {
+        return (globalThis.fetch as any)(url, { ...(init || {}), dispatcher });
+      };
+      console.debug('OpenAI Client', 'Using undici ProxyAgent for Codex environment');
+    } catch (e) {
+      console.warn('OpenAI Client', 'Failed to configure ProxyAgent, continuing without proxy:', e);
+    }
   }
   const openai = new OpenAI(options);
   
@@ -46,7 +53,7 @@ export async function handleSupervisorToolCalls(
   let requestBody: any = {
     model: "gpt-5",
     reasoning: {
-      effort: "minimal"
+      effort: 'low' as const,
     },
     instructions,
     input,
@@ -108,7 +115,7 @@ export async function handleSupervisorToolCalls(
     const followUpRequestBody = {
       model: "gpt-5",
       reasoning: {
-        effort: "minimal"
+        effort: 'low' as const,
       },
       previous_response_id: currentResponseId,
       input: functionCallOutputs,
