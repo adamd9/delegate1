@@ -23,7 +23,7 @@
     "httpdispatcher": "^2.2.0",
     "https-proxy-agent": "^5.0.1",
     "marked": "^16.1.2",
-    "openai": "^4.67.3",
+    "openai": "^5.12.2",
     "ts-node": "^10.9.2",
     "twilio": "^5.8.0",
     "typescript": "^5.5.4",

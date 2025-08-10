@@ -37,19 +37,20 @@ export async function handleSupervisorToolCalls(
   let finalText = "";
   const options: ClientOptions = { apiKey: process.env.OPENAI_API_KEY };
   if (process.env.CODEX_CLI === 'true' && process.env.HTTPS_PROXY) {
-    options.httpAgent = new HttpsProxyAgent(process.env.HTTPS_PROXY);
+    // options.httpAgent = new HttpsProxyAgent(process.env.HTTPS_PROXY);
     console.debug('OpenAI Client', 'Using proxy agent for Codex environment');
   }
   const openai = new OpenAI(options);
   
   // Initial request
   let requestBody: any = {
-    model: "gpt-4o",
+    model: "gpt-5",
+    reasoning: {
+      effort: "minimal"
+    },
     instructions,
     input,
     tools,
-    temperature: 0.7,
-    max_output_tokens: 1000,
     store: true
   };
   
@@ -105,10 +106,12 @@ export async function handleSupervisorToolCalls(
     
     // Make another API call with function call outputs
     const followUpRequestBody = {
-      model: "gpt-4o",
+      model: "gpt-5",
+      reasoning: {
+        effort: "minimal"
+      },
       previous_response_id: currentResponseId,
       input: functionCallOutputs,
-      max_output_tokens: 1000
     };
     
     console.log("[DEBUG] Follow-up Responses API request:", JSON.stringify(followUpRequestBody, null, 2));

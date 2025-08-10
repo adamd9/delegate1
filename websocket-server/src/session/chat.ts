@@ -109,11 +109,12 @@ export async function handleTextChatMessage(
     const instructions = getDefaultAgent().instructions;
     // Prepare request body for Responses API
     const requestBody: any = {
-      model: "gpt-4o",
+      model: "gpt-5-mini",
+      reasoning: {
+        effort: "minimal"
+      },
       instructions: instructions,
       tools: functionSchemas,
-      max_output_tokens: 500,
-      temperature: 0.7,
       store: true,
     };
     if (session.previousResponseId) {
@@ -190,7 +191,10 @@ export async function handleTextChatMessage(
           }
           const fnSchemas = allFns.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
           const followUpBody = {
-            model: "gpt-4o",
+            model: "gpt-5-mini",
+            reasoning: {
+              effort: "minimal"
+            },
             previous_response_id: response.id,
             instructions:
               "Using the supervisor's result, provide a concise plain-text answer in two or three sentences. If important details would be lost, use the sendCanvas tool to deliver the full response.",
@@ -202,7 +206,6 @@ export async function handleTextChatMessage(
               },
             ],
             tools: fnSchemas,
-            max_output_tokens: 500,
           };
           console.log("[DEBUG] Follow-up Responses API request:", JSON.stringify(followUpBody, null, 2));
           const followUpResponse = await session.openaiClient.responses.create(followUpBody);
@@ -233,46 +236,32 @@ export async function handleTextChatMessage(
             // Handle send_canvas specially so the UI shows the actual content
             const canvasCall = fuFunctionCalls.find((fc: any) => fc.name === "send_canvas");
             if (canvasCall) {
+              console.debug("[DEBUG] CanvasTool function call detected:", canvasCall);
               let args: any = {};
               try {
                 args = typeof canvasCall.arguments === "string" ? JSON.parse(canvasCall.arguments) : canvasCall.arguments;
               } catch {}
               const title: string = args?.title || "Canvas";
-              const contentStr: string = typeof args?.content === "string" ? args.content : JSON.stringify(args?.content ?? {});
-              // Persist to conversation history as assistant text (until a dedicated canvas channel exists)
-              const assistantMessage = {
-                type: "assistant" as const,
-                content: contentStr,
-                timestamp: Date.now(),
-                channel: "text" as const,
-                supervisor: true,
-              };
-              session.conversationHistory.push(assistantMessage);
-              // Notify chat clients with the content
-              for (const ws of chatClients) {
-                if (isOpen(ws))
-                  jsonSend(ws, {
-                    type: "chat.response",
-                    content: contentStr,
-                    timestamp: Date.now(),
-                    supervisor: true,
-                    title,
+              // Execute the local canvas tool so it can broadcast a dedicated chat.canvas event and return URL/id
+              let canvasResult: any = { status: "sent" };
+              try {
+                const allFnsLocal = getAllFunctions();
+                const canvasHandler = allFnsLocal.find((f: FunctionHandler) => f.schema.name === "send_canvas");
+                if (canvasHandler) {
+                  canvasResult = await (canvasHandler as any).handler(args, (t: string, d?: any) => {
+                    for (const ws of logsClients) {
+                      if (isOpen(ws))
+                        jsonSend(ws, {
+                          type: "response.function_call_arguments.delta",
+                          name: t.includes("function call:") ? t.split("function call: ")[1] : t,
+                          arguments: JSON.stringify(d || {}),
+                          call_id: `supervisor_${Date.now()}`,
+                        });
+                    }
                   });
-              }
-              // Mirror as a normal assistant message to logs for transcript UI
-              for (const ws of logsClients) {
-                if (isOpen(ws))
-                  jsonSend(ws, {
-                    type: "conversation.item.created",
-                    item: {
-                      id: `msg_${Date.now()}`,
-                      type: "message",
-                      role: "assistant",
-                      content: [{ type: "text", text: `[Canvas] ${title}\n${contentStr}` }],
-                      channel: "text",
-                      supervisor: true,
-                    },
-                  });
+                }
+              } catch (e) {
+                console.error("❌ Error executing send_canvas handler:", e);
               }
               // Finish the breadcrumb for completeness
               for (const ws of logsClients) {
@@ -288,7 +277,10 @@ export async function handleTextChatMessage(
               // Solution A: confirm tool execution with Responses API to elicit a concise final text
               try {
                 const confirmBody: any = {
-                  model: "gpt-4o",
+                  model: "gpt-5-mini",
+                  reasoning: {
+                    effort: "minimal"
+                  },
                   previous_response_id: followUpResponse.id,
                   input: [
                     {
@@ -300,12 +292,11 @@ export async function handleTextChatMessage(
                     {
                       type: "function_call_output",
                       call_id: canvasCall.call_id,
-                      output: JSON.stringify({ status: "sent" }),
+                      output: typeof canvasResult === "string" ? canvasResult : JSON.stringify(canvasResult),
                     },
                   ],
                   instructions:
                     "Provide a concise plain-text confirmation (1-2 sentences) that the canvas has been sent, optionally summarizing what was included.",
-                  max_output_tokens: 300,
                 };
                 console.log("[DEBUG] Canvas confirm Responses API request:", JSON.stringify(confirmBody, null, 2));
                 const confirmResponse = await session.openaiClient.responses.create(confirmBody);
