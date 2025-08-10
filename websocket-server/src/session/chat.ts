@@ -168,7 +168,7 @@ export async function handleTextChatMessage(
         const functionHandler = allFns.find((f: FunctionHandler) => f.schema.name === functionCall.name);
         if (functionHandler) {
           const args = JSON.parse(functionCall.arguments);
-          console.log(`🧠 Executing ${functionCall.name} with args:`, args);
+          console.log(`🧠 Executing ${functionCall.name} with args:`, JSON.stringify(args));
           const addBreadcrumb = (title: string, data?: any) => {
             for (const ws of logsClients) {
               if (isOpen(ws))

@@ -51,7 +51,7 @@ export async function handleSupervisorToolCalls(
   
   // Initial request
   let requestBody: any = {
-    model: "gpt-5",
+    model: "gpt-5-mini",
     reasoning: {
       effort: 'low' as const,
     },
@@ -113,7 +113,7 @@ export async function handleSupervisorToolCalls(
     
     // Make another API call with function call outputs
     const followUpRequestBody = {
-      model: "gpt-5",
+      model: "gpt-5-mini",
       reasoning: {
         effort: 'low' as const,
       },
