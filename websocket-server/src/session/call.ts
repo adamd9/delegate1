@@ -1,5 +1,6 @@
 import { RawData, WebSocket } from "ws";
 import { getAllFunctions, getDefaultAgent, FunctionHandler } from "../agentConfigs";
+import { channelInstructions } from "../agentConfigs/channel";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 
 // Explicitly type globalThis for logsClients/chatClients to avoid TS7017
@@ -79,7 +80,8 @@ export function establishRealtimeModelConnection() {
     // Include supervisor agent function for voice channel
     const allFunctions = getAllFunctions();
     const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
-    const agentInstructions = getDefaultAgent().instructions;
+    const baseInstructions = getDefaultAgent().instructions;
+    const agentInstructions = [channelInstructions('voice'), baseInstructions].join('\n');
     jsonSend(session.modelConn, {
       type: "session.update",
       session: {

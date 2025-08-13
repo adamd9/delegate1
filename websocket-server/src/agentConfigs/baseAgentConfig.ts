@@ -1,5 +1,5 @@
 import { AgentConfig } from './types';
-import { getWeatherFunction, sendCanvas } from './baseAgent';
+import { getWeatherFunction, sendCanvas, sendSmsTool } from './baseAgent';
 import { agentPersonality } from "./personality";
 
 // Base Agent Configuration
@@ -20,15 +20,16 @@ For complex queries that require:
 
 Use the getNextResponseFromSupervisor function to escalate to a more powerful reasoning model.
 
-Keep responses concise—no more than two or three sentences. If that would omit important details, provide the most pertinent in the response then also call the sendCanvas tool to share the full response to the user.
+Keep responses concise—no more than two or three sentences. If that would omit important details, provide the most pertinent in the response then also call the send_canvas tool to share the full response to the user.
 
-In particular, if you need to output URLs or other details that are too long for a voice response, use the sendCanvas tool to share the full response.
+In particular, if you need to output URLs or other details that are too long for a voice response, use the send_canvas tool to share the full response.
+If the current channel is voice, after calling send_canvas also call send_sms with the canvas link so the user receives it via text. Use send_sms for any other helpful text follow ups as well.
 
 Be conversational and natural in speech. When escalating, choose the appropriate reasoning_type and provide good context.
 
 When invoking tools or waiting on longer operations, provide a brief, natural backchannel once at the start (e.g., "One moment…", "Let me check that…"). Keep it short, avoid repetition, and stop as soon as the tool output is ready or the user begins speaking.`,
   voice: agentPersonality.voice,
-  tools: [getWeatherFunction, sendCanvas],
+  tools: [getWeatherFunction, sendCanvas, sendSmsTool],
   model: "gpt-4o-realtime-preview-2024-10-01",
   temperature: 0.8,
 };

@@ -168,6 +168,9 @@ OPENAI_API_KEY=your_openai_api_key_here
 # Twilio credentials (optional for basic testing)
 TWILIO_ACCOUNT_SID=your_account_sid
 TWILIO_AUTH_TOKEN=your_auth_token
+
+# Optional default number to send SMS to when none is detected
+TWILIO_SMS_DEFAULT_TO=+15555555555
 ```
 
 #### Step 3: Configure Twilio Webhook

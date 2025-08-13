@@ -15,6 +15,7 @@ import { getLogs } from "./logBuffer";
 import { getCanvas } from "./canvasStore";
 import { marked } from "marked";
 import { session as stateSession, closeAllConnections, jsonSend, isOpen } from "./session/state";
+import { setNumbers } from "./smsState";
 
 dotenv.config();
 
@@ -61,6 +62,15 @@ app.all("/twiml", (req, res) => {
   const wsUrl = new URL(EFFECTIVE_PUBLIC_URL);
   wsUrl.protocol = "wss:";
   wsUrl.pathname = `/call`;
+
+  const from = (req.query?.From as string) || "";
+  const to = (req.query?.To as string) || "";
+  const defaultTo = process.env.TWILIO_SMS_DEFAULT_TO || "";
+  try {
+    setNumbers({ userFrom: defaultTo || from, twilioTo: to });
+  } catch (e) {
+    console.warn("⚠️ Failed to set call numbers", e);
+  }
 
   const twimlContent = twimlTemplate.replace("{{WS_URL}}", wsUrl.toString());
   console.debug("TWIML:", twimlContent);
