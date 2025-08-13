@@ -1,6 +1,6 @@
 import { RawData, WebSocket } from "ws";
 import { getAllFunctions, getDefaultAgent, FunctionHandler } from "../agentConfigs";
-import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel } from "./state";
+import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 
 // Explicitly type globalThis for logsClients/chatClients to avoid TS7017
 declare global {
@@ -219,14 +219,14 @@ export function processRealtimeModelEvent(
           if (!session.conversationHistory) {
             session.conversationHistory = [];
           }
-          const assistantMessage: { type: 'user' | 'assistant', content: string, timestamp: number, channel: 'voice' | 'text', supervisor?: boolean } = {
-            type: 'assistant' as const,
-            content: textContent.text,
-            timestamp: Date.now(),
-            channel: 'text' as const,
-            supervisor: false,
-          };
-          session.conversationHistory.push(assistantMessage);
+            const assistantMessage: ConversationItem = {
+              type: 'assistant',
+              content: textContent.text,
+              timestamp: Date.now(),
+              channel: 'text',
+              supervisor: false,
+            };
+            session.conversationHistory.push(assistantMessage);
           for (const ws of chatClients) {
             if (isOpen(ws)) jsonSend(ws, {
               type: "chat.response",

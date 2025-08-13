@@ -1,6 +1,7 @@
 import { FunctionHandler } from './types';
 import { WebSocket } from 'ws';
 import { storeCanvas } from '../canvasStore';
+import { session, type ConversationItem } from '../session/state';
 
 const PUBLIC_URL = process.env.PUBLIC_URL || '';
 const DEFAULT_PORT = process.env.PORT || '8081';
@@ -30,10 +31,22 @@ export const sendCanvas: FunctionHandler = {
     { content, title }: { content: string; title?: string },
   ) => {
     console.debug("[DEBUG] CanvasTool handler called:", { content, title });
-    const id = storeCanvas(content, title);
+    const id = await storeCanvas(content, title);
     const base = EFFECTIVE_PUBLIC_URL.replace(/\/$/, '');
     const url = `${base}/canvas/${id}`;
     const message = { type: "chat.canvas", content: url, title, timestamp: Date.now(), id };
+
+    const entry: ConversationItem = {
+      type: 'canvas',
+      content: url,
+      title,
+      timestamp: message.timestamp,
+      id,
+    };
+    if (!session.conversationHistory) {
+      session.conversationHistory = [];
+    }
+    session.conversationHistory.push(entry);
 
     const globals = globalThis as any;
     const chatClients: Set<WebSocket> = globals.chatClients ?? new Set();

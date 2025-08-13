@@ -1,19 +1,32 @@
 import { randomUUID } from 'crypto';
+import { promises as fs } from 'fs';
+import path from 'path';
 
-interface CanvasData {
+export interface CanvasData {
   content: string;
   title?: string;
   timestamp: number;
 }
 
-const canvasStore = new Map<string, CanvasData>();
+const CANVAS_DIR = path.join(__dirname, '..', 'canvas-artifacts');
 
-export function storeCanvas(content: string, title?: string): string {
+async function ensureDir() {
+  await fs.mkdir(CANVAS_DIR, { recursive: true });
+}
+
+export async function storeCanvas(content: string, title?: string): Promise<string> {
   const id = randomUUID();
-  canvasStore.set(id, { content, title, timestamp: Date.now() });
+  await ensureDir();
+  const data: CanvasData = { content, title, timestamp: Date.now() };
+  await fs.writeFile(path.join(CANVAS_DIR, `${id}.json`), JSON.stringify(data), 'utf-8');
   return id;
 }
 
-export function getCanvas(id: string): CanvasData | undefined {
-  return canvasStore.get(id);
+export async function getCanvas(id: string): Promise<CanvasData | undefined> {
+  try {
+    const file = await fs.readFile(path.join(CANVAS_DIR, `${id}.json`), 'utf-8');
+    return JSON.parse(file) as CanvasData;
+  } catch {
+    return undefined;
+  }
 }

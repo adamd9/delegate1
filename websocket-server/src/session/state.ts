@@ -1,6 +1,22 @@
 import { RawData, WebSocket } from "ws";
 
 // Mirror of the Session shape used by the current sessionManager
+export type ConversationItem =
+  | {
+      type: 'user' | 'assistant';
+      content: string;
+      timestamp: number;
+      channel: 'voice' | 'text';
+      supervisor?: boolean;
+    }
+  | {
+      type: 'canvas';
+      content: string; // URL to stored canvas
+      title?: string;
+      timestamp: number;
+      id: string;
+    };
+
 export interface Session {
   twilioConn?: WebSocket;
   frontendConn?: WebSocket;
@@ -14,13 +30,7 @@ export interface Session {
   responseStartTimestamp?: number;
   latestMediaTimestamp?: number;
   openAIApiKey?: string;
-  conversationHistory?: Array<{
-    type: 'user' | 'assistant',
-    content: string,
-    timestamp: number,
-    channel: 'voice' | 'text',
-    supervisor?: boolean
-  }>;
+  conversationHistory?: ConversationItem[];
   previousResponseId?: string; // For Responses API conversation tracking
 }
 
