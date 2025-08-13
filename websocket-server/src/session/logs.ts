@@ -7,17 +7,27 @@ export function establishLogsSocket(ws: WebSocket, logsClients: Set<WebSocket>) 
   // for new events. This stream is consumed by the web frontend at `/logs`.
   if (session.conversationHistory) {
     for (const msg of session.conversationHistory) {
-      jsonSend(ws, {
-        type: "conversation.item.created",
-        item: {
-          id: `msg_${msg.timestamp}`,
-          type: "message",
-          role: msg.type,
-          content: [{ type: "text", text: msg.content }],
-          channel: msg.channel,
-          supervisor: msg.supervisor,
-        },
-      });
+      if (msg.type === 'canvas') {
+        jsonSend(ws, {
+          type: 'chat.canvas',
+          content: msg.content,
+          title: msg.title,
+          timestamp: msg.timestamp,
+          id: msg.id,
+        });
+      } else {
+        jsonSend(ws, {
+          type: "conversation.item.created",
+          item: {
+            id: `msg_${msg.timestamp}`,
+            type: "message",
+            role: msg.type,
+            content: [{ type: "text", text: msg.content }],
+            channel: msg.channel,
+            supervisor: msg.supervisor,
+          },
+        });
+      }
     }
   }
 

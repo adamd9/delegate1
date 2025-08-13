@@ -78,8 +78,8 @@ app.get("/logs", (req, res) => {
 });
 
 // Endpoint to serve stored canvas content as HTML
-app.get("/canvas/:id", (req, res) => {
-  const data = getCanvas(req.params.id);
+app.get("/canvas/:id", async (req, res) => {
+  const data = await getCanvas(req.params.id);
   if (!data) {
     res.status(404).send("Not found");
     return;
