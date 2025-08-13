@@ -14,7 +14,7 @@ export type Item = {
   // For "function_call_output" items
   output?: string;
   // For multi-channel support
-  channel?: "voice" | "text";
+  channel?: "voice" | "text" | "sms";
 };
 
 export interface PhoneNumber {

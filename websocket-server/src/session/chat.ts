@@ -3,6 +3,7 @@ import OpenAI, { ClientOptions } from "openai";
 import { ProxyAgent } from "undici";
 import { ResponsesTextInput } from "../types";
 import { getAllFunctions, getDefaultAgent, FunctionHandler } from "../agentConfigs";
+import { channelInstructions, Channel } from "../agentConfigs/channel";
 import { isSmsWindowOpen, getNumbers } from "../smsState";
 import { sendSms } from "../sms";
 import { session, parseMessage, jsonSend, isOpen } from "./state";
@@ -51,7 +52,7 @@ export async function processChatSocketMessage(
   console.log("💬 Chat message received:", msg);
   switch (msg.type) {
     case "chat.message":
-      await handleTextChatMessage(msg.content, chatClients, logsClients);
+      await handleTextChatMessage(msg.content, chatClients, logsClients, 'text');
       break;
     case "session.update":
       session.saved_config = msg.session;
@@ -65,7 +66,8 @@ export async function processChatSocketMessage(
 export async function handleTextChatMessage(
   content: string,
   chatClients: Set<WebSocket>,
-  logsClients: Set<WebSocket>
+  logsClients: Set<WebSocket>,
+  channel: Channel = 'text'
 ) {
   try {
     console.log("🔤 Processing text message:", content);
@@ -95,7 +97,7 @@ export async function handleTextChatMessage(
       type: "user" as const,
       content: content,
       timestamp: Date.now(),
-      channel: "text" as const,
+      channel,
       supervisor: false,
     };
     if (!session.conversationHistory) {
@@ -112,7 +114,7 @@ export async function handleTextChatMessage(
             type: "message",
             role: "user",
             content: [{ type: "text", text: content }],
-            channel: "text",
+            channel,
           },
         });
     }
@@ -121,7 +123,8 @@ export async function handleTextChatMessage(
     const functionSchemas = allFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
     console.log("🤖 Calling OpenAI Responses API for text response...");
     // Define system instructions
-    const instructions = getDefaultAgent().instructions;
+    const baseInstructions = getDefaultAgent().instructions;
+    const instructions = [channelInstructions(channel), baseInstructions].join('\n');
     // Prepare request body for Responses API
     const requestBody: any = {
       model: "gpt-5-mini",

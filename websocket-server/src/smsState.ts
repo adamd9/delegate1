@@ -4,7 +4,11 @@ const DEFAULT_WINDOW_MS = 30_000;
 
 let replyWindowMs = DEFAULT_WINDOW_MS;
 let smsReplyUntil = 0;
-let smsUserNumber = '';   // req.body.From
+
+// Allow a fallback recipient number via env var
+const DEFAULT_SMS_TO = process.env.TWILIO_SMS_DEFAULT_TO || '';
+
+let smsUserNumber = DEFAULT_SMS_TO;   // req.body.From or env default
 let smsTwilioNumber = ''; // req.body.To
 
 export function setWindowMs(ms: number) {
@@ -20,8 +24,12 @@ export function isSmsWindowOpen(nowMs = Date.now()) {
 }
 
 export function setNumbers({ userFrom, twilioTo }: { userFrom: string; twilioTo: string }) {
-  smsUserNumber = userFrom || '';
-  smsTwilioNumber = twilioTo || '';
+  if (userFrom) {
+    smsUserNumber = userFrom;
+  }
+  if (twilioTo) {
+    smsTwilioNumber = twilioTo;
+  }
 }
 
 export function getNumbers() {
