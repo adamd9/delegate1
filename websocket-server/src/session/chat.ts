@@ -26,6 +26,14 @@ export function establishChatSocket(
         timestamp: msg.timestamp,
         supervisor: msg.supervisor,
       });
+    } else if (msg.type === 'canvas') {
+      jsonSend(ws, {
+        type: 'chat.canvas',
+        content: msg.content,
+        title: msg.title,
+        timestamp: msg.timestamp,
+        id: msg.id,
+      });
     }
   }
   ws.on("message", (data) => processChatSocketMessage(data, chatClients, logsClients));
