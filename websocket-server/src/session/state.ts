@@ -6,7 +6,7 @@ export type ConversationItem =
       type: 'user' | 'assistant';
       content: string;
       timestamp: number;
-      channel: 'voice' | 'text';
+      channel: 'voice' | 'text' | 'sms';
       supervisor?: boolean;
     }
   | {

@@ -18,5 +18,5 @@ export async function processSmsWebhook(
   } catch (e) {
     console.warn('⚠️ SMS setup warning:', e);
   }
-  await handleTextChatMessage(messageText, chatClients, logsClients);
+  await handleTextChatMessage(messageText, chatClients, logsClients, 'sms');
 }

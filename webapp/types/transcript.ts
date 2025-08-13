@@ -11,7 +11,7 @@ export interface TranscriptItem {
   createdAtMs: number;
   status: "IN_PROGRESS" | "DONE";
   isHidden: boolean;
-  channel?: "voice" | "text";
+  channel?: "voice" | "text" | "sms";
   supervisor?: boolean;
 }
 
@@ -21,7 +21,7 @@ export interface TranscriptContextValue {
     itemId: string,
     role: "user" | "assistant",
     text: string,
-    channel?: "voice" | "text",
+    channel?: "voice" | "text" | "sms",
     supervisor?: boolean,
     isHidden?: boolean
   ) => void;
