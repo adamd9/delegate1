@@ -1,6 +1,6 @@
 import { FunctionHandler } from './types';
 import { sendSms } from '../sms';
-import { getNumbers } from '../smsState';
+import { getNumbers, ensureNumbersFromEnv } from '../smsState';
 
 export const sendSmsTool: FunctionHandler = {
   schema: {
@@ -17,9 +17,12 @@ export const sendSmsTool: FunctionHandler = {
     }
   },
   handler: async ({ body }: { body: string }) => {
+    console.debug('[sendSmsTool] Invoked', { hasBody: Boolean(body?.length) });
+    ensureNumbersFromEnv();
     const { smsUserNumber, smsTwilioNumber } = getNumbers();
+    console.debug('[sendSmsTool] Numbers after ensure', { smsUserNumber, smsTwilioNumber });
     if (!smsUserNumber || !smsTwilioNumber) {
-      console.warn('[sendSmsTool] Missing phone numbers for SMS', { smsUserNumber, smsTwilioNumber });
+      console.warn('[sendSmsTool] Missing phone numbers for SMS. Ensure env defaults are set (TWILIO_SMS_DEFAULT_TO, TWILIO_SMS_FROM) or numbers captured via webhook', { smsUserNumber, smsTwilioNumber });
       return { status: 'failed', reason: 'missing numbers' };
     }
     await sendSms(body, smsTwilioNumber, smsUserNumber);
