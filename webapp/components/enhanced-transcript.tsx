@@ -10,6 +10,7 @@ export interface EnhancedTranscriptProps {
   setUserText: (val: string) => void;
   onSendMessage: () => void;
   canSend: boolean;
+  onOpenCanvas?: (canvas: { url: string; title?: string }) => void;
 }
 
 export function EnhancedTranscript({
@@ -17,6 +18,7 @@ export function EnhancedTranscript({
   setUserText,
   onSendMessage,
   canSend,
+  onOpenCanvas,
 }: EnhancedTranscriptProps) {
   const { transcriptItems, toggleTranscriptItemExpand } = useTranscript();
   const transcriptRef = useRef<HTMLDivElement | null>(null);
@@ -163,29 +165,60 @@ export function EnhancedTranscript({
                 </div>
               );
             } else if (type === "BREADCRUMB") {
+              const isCanvasLink = !!(data && typeof (data as any).content === "string" && /^https?:\/\//.test((data as any).content));
               return (
                 <div
                   key={itemId}
                   className="flex flex-col text-gray-600 text-sm"
                 >
                   <span className="text-xs font-mono text-gray-400 mb-1">{timestamp}</span>
-                  <div
-                    className={`flex items-center font-mono text-sm ${
-                      data ? "cursor-pointer hover:text-gray-800" : ""
-                    }`}
-                    onClick={() => data && toggleTranscriptItemExpand(itemId)}
-                  >
-                    {data && (
-                      <ChevronRightIcon
-                        className={`w-4 h-4 mr-1 transition-transform duration-200 ${
-                          expanded ? "rotate-90" : "rotate-0"
-                        }`}
-                      />
-                    )}
-                    <span className="text-orange-600">🔧</span>
-                    <span className="ml-2">{title}</span>
-                  </div>
-                  {expanded && data && (
+                  {/* Canvas link style */}
+                  {isCanvasLink ? (
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className="inline-flex items-center gap-2 text-sm font-mono text-blue-600 hover:text-blue-700 underline underline-offset-2 cursor-pointer"
+                      onClick={() => {
+                        const url = (data as any).content as string;
+                        const providedTitle = (data as any).title as string | undefined;
+                        if (onOpenCanvas) onOpenCanvas({ url, title: providedTitle || title });
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          const url = (data as any).content as string;
+                          const providedTitle = (data as any).title as string | undefined;
+                          if (onOpenCanvas) onOpenCanvas({ url, title: providedTitle || title });
+                        }
+                      }}
+                    >
+                      <span className="text-blue-500">📝</span>
+                      {(() => {
+                        const raw = ((data as any).title as string | undefined) || title || "Canvas";
+                        const cleaned = raw.replace(/^([📝🔧]\s*)/, "").trim();
+                        return <span>{cleaned}</span>;
+                      })()}
+                    </div>
+                  ) : (
+                    // Default breadcrumb with expandable JSON details
+                    <div
+                      className={`flex items-center font-mono text-sm ${
+                        data ? "cursor-pointer hover:text-gray-800" : ""
+                      }`}
+                      onClick={() => data && toggleTranscriptItemExpand(itemId)}
+                    >
+                      {data && (
+                        <ChevronRightIcon
+                          className={`w-4 h-4 mr-1 transition-transform duration-200 ${
+                            expanded ? "rotate-90" : "rotate-0"
+                          }`}
+                        />
+                      )}
+                      <span className="text-orange-600">🔧</span>
+                      <span className="ml-2">{title}</span>
+                    </div>
+                  )}
+                  {!isCanvasLink && expanded && data && (
                     <div className="mt-2 ml-6">
                       <pre className="bg-gray-50 border-l-2 border-orange-200 p-2 text-xs overflow-x-auto whitespace-pre-wrap font-mono text-gray-700">
                         {JSON.stringify(data, null, 2)}
