@@ -16,6 +16,7 @@ import { getCanvas } from "./canvasStore";
 import { marked } from "marked";
 import { session as stateSession, closeAllConnections, jsonSend, isOpen } from "./session/state";
 import { setNumbers } from "./smsState";
+import { getNumbers } from "./smsState";
 
 dotenv.config();
 
@@ -87,6 +88,24 @@ app.get("/tools", (req, res) => {
 // Endpoint to retrieve latest server logs
 app.get("/logs", (req, res) => {
   res.type("text/plain").send(getLogs().join("\n"));
+});
+
+// Debug endpoint: current SMS numbers and env presence (no secrets)
+app.get('/sms/debug', (req, res) => {
+  const { smsUserNumber, smsTwilioNumber } = getNumbers();
+  const mask = (v: string) => (v ? `${v.slice(0, 3)}***${v.slice(-2)}` : '');
+  const defaults = {
+    hasDefaultTo: Boolean(process.env.TWILIO_SMS_DEFAULT_TO || process.env.SMS_DEFAULT_TO),
+    hasDefaultFrom: Boolean(process.env.TWILIO_SMS_FROM || process.env.TWILIO_SMS_DEFAULT_FROM || process.env.SMS_FROM),
+    defaultToMasked: mask((process.env.TWILIO_SMS_DEFAULT_TO || process.env.SMS_DEFAULT_TO || '')),
+    defaultFromMasked: mask((process.env.TWILIO_SMS_FROM || process.env.TWILIO_SMS_DEFAULT_FROM || process.env.SMS_FROM || '')),
+  };
+  const creds = {
+    hasAccountSid: Boolean(process.env.TWILIO_SMS_ACCOUNT_SID),
+    hasAuthToken: Boolean(process.env.TWILIO_SMS_AUTH_TOKEN),
+    hasMessagingServiceSid: Boolean(process.env.TWILIO_MESSAGING_SERVICE_SID),
+  };
+  res.json({ numbers: { smsUserNumber, smsTwilioNumber }, defaults, creds });
 });
 
 // Endpoint to serve stored canvas content as HTML
