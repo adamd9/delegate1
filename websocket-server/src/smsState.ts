@@ -22,17 +22,6 @@ const DEFAULT_SMS_FROM = readEnvNumber('TWILIO_SMS_FROM', 'TWILIO_SMS_DEFAULT_FR
 let smsUserNumber = DEFAULT_SMS_TO;     // Destination (user) number
 let smsTwilioNumber = DEFAULT_SMS_FROM; // Our Twilio sender number
 
-// Init diagnostics (safe): indicate presence and masked values
-try {
-  const mask = (v: string) => (v ? `${v.slice(0, 3)}***${v.slice(-2)}` : '');
-  console.debug('[smsState] Defaults', {
-    hasDefaultTo: Boolean(DEFAULT_SMS_TO),
-    hasDefaultFrom: Boolean(DEFAULT_SMS_FROM),
-    defaultToMasked: mask(DEFAULT_SMS_TO),
-    defaultFromMasked: mask(DEFAULT_SMS_FROM),
-  });
-} catch {}
-
 export function setWindowMs(ms: number) {
   replyWindowMs = ms;
 }
@@ -62,13 +51,6 @@ export function getNumbers() {
 
 // If numbers are missing at call-time, try to refresh from env defaults
 export function ensureNumbersFromEnv() {
-  const before = { smsUserNumber, smsTwilioNumber };
   if (!smsUserNumber && DEFAULT_SMS_TO) smsUserNumber = DEFAULT_SMS_TO;
   if (!smsTwilioNumber && DEFAULT_SMS_FROM) smsTwilioNumber = DEFAULT_SMS_FROM;
-  const after = { smsUserNumber, smsTwilioNumber };
-  if ((before.smsUserNumber !== after.smsUserNumber) || (before.smsTwilioNumber !== after.smsTwilioNumber)) {
-    console.debug('[smsState] ensureNumbersFromEnv applied defaults', after);
-  } else {
-    console.debug('[smsState] ensureNumbersFromEnv no-op (no defaults present or already set)');
-  }
 }
