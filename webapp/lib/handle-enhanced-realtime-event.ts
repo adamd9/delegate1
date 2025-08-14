@@ -412,6 +412,7 @@ export default function handleEnhancedRealtimeEvent(
         "📝 Canvas response",
         {
           content: event.content,
+          title: event.title,
           timestamp: event.timestamp,
           supervisor: event.supervisor || false
         }

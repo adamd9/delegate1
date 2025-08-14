@@ -6,6 +6,7 @@ import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogClose } from "
 import { Settings, X } from "lucide-react";
 import SessionConfigurationPanel from "@/components/session-configuration-panel";
 import { EnhancedTranscript } from "@/components/enhanced-transcript";
+import CanvasPreviewPanel from "@/components/canvas-preview-panel";
 
 import { Item } from "@/components/types";
 import handleRealtimeEvent from "@/lib/handle-realtime-event";
@@ -123,6 +124,9 @@ const CallInterface = () => {
   };
 
   const [setupDialogOpen, setSetupDialogOpen] = useState(false);
+  // Canvas panel state
+  const [canvasPanelOpen, setCanvasPanelOpen] = useState(false);
+  const [selectedCanvas, setSelectedCanvas] = useState<{ url: string; title?: string } | null>(null);
 
   return (
     <div className="h-screen bg-white flex flex-col">
@@ -171,18 +175,37 @@ const CallInterface = () => {
           </div>
         </DialogContent>
         <div className="flex-grow p-4 overflow-hidden flex flex-col">
-          <div className="w-full h-full flex flex-col gap-4 flex-grow overflow-hidden">
-            <div className="flex-1 min-h-0">
+          <div className="w-full h-full flex flex-col sm:flex-row gap-4 flex-grow overflow-hidden">
+            {/* Transcript (left) */}
+            <div className={`${canvasPanelOpen ? "hidden" : "block"} sm:block flex-1 min-w-0 min-h-0`}>
               <EnhancedTranscript
                 userText={userText}
                 setUserText={setUserText}
                 onSendMessage={() => handleSendChatMessage(userText)}
                 canSend={canSendChat}
+                onOpenCanvas={(canvas) => {
+                  setSelectedCanvas(canvas);
+                  setCanvasPanelOpen(true);
+                }}
               />
             </div>
+
+            {/* Canvas Panel (right) */}
+            <CanvasPreviewPanel
+              open={canvasPanelOpen}
+              onOpenChange={(open) => {
+                setCanvasPanelOpen(open);
+                if (!open) {
+                  // Optionally clear selected canvas
+                  // setSelectedCanvas(null);
+                }
+              }}
+              canvas={selectedCanvas}
+            />
           </div>
         </div>
       </Dialog>
+      {/* Mobile overlay renders from inside CanvasPreviewPanel when open */}
     </div>
   );
 };
