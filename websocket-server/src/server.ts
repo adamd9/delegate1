@@ -67,7 +67,9 @@ app.all("/twiml", (req, res) => {
   const to = (req.query?.To as string) || "";
   const defaultTo = process.env.TWILIO_SMS_DEFAULT_TO || "";
   try {
+    console.debug("[/twiml] Incoming query numbers", { from, to, defaultTo });
     setNumbers({ userFrom: defaultTo || from, twilioTo: to });
+    console.debug("[/twiml] Numbers recorded for SMS replies");
   } catch (e) {
     console.warn("⚠️ Failed to set call numbers", e);
   }

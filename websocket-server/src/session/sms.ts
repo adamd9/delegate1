@@ -1,5 +1,5 @@
 import { WebSocket } from "ws";
-import { openReplyWindow, setNumbers } from "../smsState";
+import { openReplyWindow, setNumbers, getNumbers } from "../smsState";
 import { handleTextChatMessage } from "./chat";
 
 // Normalize SMS webhook into the unified chat pipeline
@@ -12,9 +12,12 @@ export async function processSmsWebhook(
   logsClients: Set<WebSocket>
 ) {
   const { messageText, from, to } = params;
+  console.debug('[processSmsWebhook] Inbound', { hasText: Boolean(messageText?.length), from, to });
   try {
     setNumbers({ userFrom: from, twilioTo: to });
     openReplyWindow();
+    const { smsUserNumber, smsTwilioNumber } = getNumbers();
+    console.debug('[processSmsWebhook] Numbers set and reply window opened', { smsUserNumber, smsTwilioNumber });
   } catch (e) {
     console.warn('⚠️ SMS setup warning:', e);
   }
