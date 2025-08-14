@@ -6,13 +6,13 @@ export const sendSmsTool: FunctionHandler = {
   schema: {
     name: 'send_sms',
     type: 'function',
-    description: 'Send a text message to the user\'s phone number.',
+    description: 'Send a text message to the user\'s phone number. The user\'s phone number is known to the tool, so it doesn\'t need to be specified as part of the tool call.',
     parameters: {
       type: 'object',
       properties: {
-        body: { type: 'string', description: 'The SMS message to send.' }
+        message: { type: 'string', description: 'The SMS message to send.' }
       },
-      required: ['body'],
+      required: ['message'],
       additionalProperties: false
     }
   },
