@@ -2,7 +2,8 @@ import { RawData, WebSocket } from "ws";
 import OpenAI, { ClientOptions } from "openai";
 import { ProxyAgent } from "undici";
 import { ResponsesTextInput } from "../types";
-import { getAllFunctions, getDefaultAgent, FunctionHandler } from "../agentConfigs";
+import { getDefaultAgent, FunctionHandler } from "../agentConfigs";
+import { getAgent } from "../agentConfigs";
 import { channelInstructions, Channel } from "../agentConfigs/channel";
 import { isSmsWindowOpen, getNumbers } from "../smsState";
 import { sendSms } from "../sms";
@@ -118,9 +119,9 @@ export async function handleTextChatMessage(
           },
         });
     }
-    // Import function schemas for supervisor agent
-    const allFunctions = getAllFunctions();
-    const functionSchemas = allFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
+    // Text channel: expose only base agent tools (supervisor MCP tools are used internally by supervisor flow)
+    const baseFunctions = getAgent('base').tools as FunctionHandler[];
+    const functionSchemas = baseFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
     console.log("🤖 Calling OpenAI Responses API for text response...");
     // Define system instructions
     const baseInstructions = getDefaultAgent().instructions;
@@ -175,7 +176,7 @@ export async function handleTextChatMessage(
         sendSms("...", smsTwilioNumber, smsUserNumber).catch((e) => console.error("sendSms error", e));
       }
       try {
-        const allFns = getAllFunctions();
+        const allFns = getAgent('base').tools as FunctionHandler[];
         const functionHandler = allFns.find((f: FunctionHandler) => f.schema.name === functionCall.name);
         if (functionHandler) {
           const args = JSON.parse(functionCall.arguments);
@@ -263,7 +264,7 @@ export async function handleTextChatMessage(
               // Execute the local canvas tool so it can broadcast a dedicated chat.canvas event and return URL/id
               let canvasResult: any = { status: "sent" };
               try {
-                const allFnsLocal = getAllFunctions();
+                const allFnsLocal = getAgent('base').tools as FunctionHandler[];
                 const canvasHandler = allFnsLocal.find((f: FunctionHandler) => f.schema.name === "send_canvas");
                 if (canvasHandler) {
                   canvasResult = await (canvasHandler as any).handler(args, (t: string, d?: any) => {

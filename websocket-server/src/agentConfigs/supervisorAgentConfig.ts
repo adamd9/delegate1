@@ -1,6 +1,7 @@
 import { AgentConfig } from './types';
 import { getCurrentTimeFunction } from './supervisorTools';
 import { agentPersonality } from "./personality";
+import { getDiscoveredMcpHandlers } from './mcpAdapter';
 
 // Supervisor Agent Configuration
 export const supervisorAgentConfig: AgentConfig = {
@@ -20,7 +21,9 @@ Guidelines:
 - Format your response for receipt and presentation by the junior agent.`,
   voice: agentPersonality.voice,
   tools: [
-    getCurrentTimeFunction
+    getCurrentTimeFunction,
+    // Dynamically discovered MCP tools (supervisor-only)
+    ...getDiscoveredMcpHandlers()
   ],
   model: "gpt-5-mini",
 };

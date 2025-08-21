@@ -16,6 +16,7 @@ import { getCanvas } from "./canvasStore";
 import { marked } from "marked";
 import { session as stateSession, closeAllConnections, jsonSend, isOpen } from "./session/state";
 import { setNumbers } from "./smsState";
+import { initMCPDiscovery } from './agentConfigs/mcpAdapter';
 
 dotenv.config();
 
@@ -33,6 +34,16 @@ const app = express();
 app.use(cors());
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
+
+// Kick off MCP discovery (non-blocking)
+(async () => {
+  try {
+    await initMCPDiscovery();
+    console.log('[startup] MCP discovery initialized');
+  } catch (e: any) {
+    console.warn('[startup] MCP discovery failed to initialize:', e?.message || e);
+  }
+})();
 
 app.use(express.urlencoded({ extended: false }));
 // Enable JSON body parsing for API endpoints

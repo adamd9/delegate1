@@ -5,11 +5,30 @@ import OpenAI, { ClientOptions } from 'openai';
 import { ProxyAgent } from 'undici';
 
 import { getCurrentTimeFunction } from './supervisorTools';
+import { getDiscoveredMcpHandlers, getDiscoveredMcpFunctionSchemas } from './mcpAdapter';
+
+// Helper to satisfy Responses API tool name pattern: ^[a-zA-Z0-9_-]+$
+const sanitizeToolName = (name: string) => name.replace(/[^a-zA-Z0-9_-]/g, '-');
+
+// Helper to avoid flooding breadcrumbs; returns either parsed JSON, truncated string, or object with length
+function safeTruncateJson(input: any, maxLen = 1200): any {
+  try {
+    const str = typeof input === 'string' ? input : JSON.stringify(input);
+    if (str.length <= maxLen) {
+      try { return JSON.parse(str); } catch { return str; }
+    }
+    const truncated = str.slice(0, maxLen) + `... [truncated ${str.length - maxLen} chars]`;
+    try { return JSON.parse(truncated); } catch { return truncated; }
+  } catch {
+    return input;
+  }
+}
 
 // Supervisor tool response handler
 export async function getSupervisorToolResponse(functionName: string, args: any): Promise<string> {
-  const supervisorTools = [getCurrentTimeFunction];
-  const tool = supervisorTools.find(t => t.schema.name === functionName);
+  const supervisorTools = [getCurrentTimeFunction, ...getDiscoveredMcpHandlers()];
+  // Find by exact name or by sanitized name match
+  const tool = supervisorTools.find(t => t.schema.name === functionName || sanitizeToolName(t.schema.name) === functionName);
   
   if (!tool) {
     return JSON.stringify({ error: `Unknown function: ${functionName}` });
@@ -100,8 +119,26 @@ export async function handleSupervisorToolCalls(
     
     for (const functionCall of functionCalls) {
       const functionName = functionCall.name;
-      const args = JSON.parse(functionCall.arguments);
-      const result = await getSupervisorToolResponse(functionName, args);
+      let parsedArgs: any = {};
+      try {
+        parsedArgs = typeof functionCall.arguments === 'string' ? JSON.parse(functionCall.arguments) : functionCall.arguments;
+      } catch {
+        parsedArgs = functionCall.arguments;
+      }
+      // Breadcrumb: function call start
+      addBreadcrumb?.(`function call: ${functionName}`, parsedArgs);
+
+      let result: string = '';
+      try {
+        result = await getSupervisorToolResponse(functionName, parsedArgs);
+        // Breadcrumb: function call result
+        addBreadcrumb?.(`function call result: ${functionName}`, safeTruncateJson(result));
+      } catch (e: any) {
+        // Breadcrumb: function error
+        addBreadcrumb?.(`function error: ${functionName}`, { error: e?.message || String(e) });
+        // Propagate error back as output so model can react
+        result = JSON.stringify({ error: e?.message || String(e) });
+      }
       
       // Add function call output
       functionCallOutputs.push({
@@ -111,7 +148,7 @@ export async function handleSupervisorToolCalls(
       });
     }
     
-    // Make another API call with function call outputs
+    // Make another API call with function call outputs (include tools so model can continue calling functions)
     const followUpRequestBody = {
       model: "gpt-5-mini",
       reasoning: {
@@ -119,8 +156,10 @@ export async function handleSupervisorToolCalls(
       },
       previous_response_id: currentResponseId,
       input: functionCallOutputs,
+      tools,
     };
     
+    addBreadcrumb?.("Supervisor Follow-up", { with_tools: true, outputs: functionCallOutputs.map(o => ({ call_id: o.call_id })) });
     console.log("[DEBUG] Follow-up Responses API request:", JSON.stringify(followUpRequestBody, null, 2));
     const followUpResponse = await openai.responses.create(followUpRequestBody);
     console.log("[DEBUG] Follow-up Responses API response:", JSON.stringify({
@@ -175,12 +214,20 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
 
       const tools = [
         { type: "web_search" as const },
+        // Built-in supervisor tool
         {
           type: "function" as const,
           name: getCurrentTimeFunction.schema.name,
           description: getCurrentTimeFunction.schema.description || "",
-          parameters: getCurrentTimeFunction.schema.parameters
-        }
+          parameters: getCurrentTimeFunction.schema.parameters,
+          strict: false as const
+        },
+        // Discovered MCP tools (schemas only)
+        ...getDiscoveredMcpFunctionSchemas().map((s) => ({
+          ...s,
+          name: sanitizeToolName(s.name),
+          strict: false as const
+        }))
       ];
 
       // Initial user input as message input

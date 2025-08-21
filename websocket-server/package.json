@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc && npm run copy-assets",
-    "copy-assets": "cp src/twiml.xml dist/",
+    "copy-assets": "cp src/twiml.xml dist/ && mkdir -p dist/config && cp -R src/config/* dist/config/ || true",
     "start": "node dist/server.js",
     "dev": "nodemon --watch 'src/**/*' --watch '.env' --ext 'ts,js,xml,env' --exec 'ts-node' src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -15,6 +15,7 @@
   "license": "ISC",
   "dependencies": {
     "@openai/agents": "^0.0.5",
+    "@modelcontextprotocol/sdk": "^1.5.0",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.12",
     "cors": "^2.8.5",
