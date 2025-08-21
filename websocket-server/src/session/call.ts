@@ -142,6 +142,19 @@ export function processRealtimeModelEvent(
       const transcript: string = (event.transcript || event.text || "").toString();
       if (transcript) {
         console.log("[VOICE][USER][FINAL]", transcript);
+        // Append user voice turn to unified conversation history
+        try {
+          if (!session.conversationHistory) session.conversationHistory = [];
+          session.conversationHistory.push({
+            type: 'user',
+            content: transcript,
+            timestamp: Date.now(),
+            channel: 'voice',
+            supervisor: false,
+          });
+        } catch (e) {
+          console.warn("⚠️ Failed to append user voice transcript to history", e);
+        }
       }
       break;
     }
@@ -215,20 +228,23 @@ export function processRealtimeModelEvent(
               console.log("[VOICE][ASSISTANT][FINAL-TEXT]", textContent.text);
             }
           } catch {}
-        }
-        if (textContent && session.chatConn) {
-          // Add to conversation history
-          if (!session.conversationHistory) {
-            session.conversationHistory = [];
-          }
+
+          // Always add assistant message to shared history (voice channel)
+          try {
+            if (!session.conversationHistory) session.conversationHistory = [];
             const assistantMessage: ConversationItem = {
               type: 'assistant',
               content: textContent.text,
               timestamp: Date.now(),
-              channel: 'text',
+              channel: 'voice',
               supervisor: false,
             };
             session.conversationHistory.push(assistantMessage);
+          } catch (e) {
+            console.warn("⚠️ Failed to append assistant voice message to history", e);
+          }
+
+          // Optionally broadcast to chat clients if connected
           for (const ws of chatClients) {
             if (isOpen(ws)) jsonSend(ws, {
               type: "chat.response",
@@ -236,12 +252,25 @@ export function processRealtimeModelEvent(
               timestamp: Date.now(),
             });
           }
-        } else if (!textContent) {
-          // If no text content, log the assembled voice transcript for this item if available
+        } else {
+          // If no text content, persist the assembled voice transcript when available
           const id = item.id;
           const assembled = id ? (assistantVoiceByItem.get(id) || "") : "";
           if (assembled.trim()) {
             console.log("[VOICE][ASSISTANT][FINAL-VOICE]", assembled);
+            try {
+              if (!session.conversationHistory) session.conversationHistory = [];
+              const assistantMessage: ConversationItem = {
+                type: 'assistant',
+                content: assembled,
+                timestamp: Date.now(),
+                channel: 'voice',
+                supervisor: false,
+              };
+              session.conversationHistory.push(assistantMessage);
+            } catch (e) {
+              console.warn("⚠️ Failed to append assembled assistant voice transcript to history", e);
+            }
             // Also log the raw response payload for debugging/inspection
             try {
               const raw = JSON.stringify({ event_type: event.type, item }, null, 2);
