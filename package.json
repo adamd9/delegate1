@@ -4,8 +4,11 @@
   "description": "Single-threaded, multi-channel AI assistant with voice, text, and phone capabilities",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\"",
-    "dev:core": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\"",
+    "kill-ports": "bash scripts/kill-ports.sh",
+    "predev": "npm run kill-ports",
+    "dev": "concurrently -k \"npm run backend:dev\" \"npm run frontend:dev\"",
+    "dev:core": "concurrently -k \"npm run backend:dev\" \"npm run frontend:dev\"",
+    "prestart": "npm run kill-ports",
     "start": "concurrently \"npm run backend:start\" \"npm run frontend:start\"",
     "build": "npm run backend:build && npm run frontend:build",
     "backend:dev": "cd websocket-server && npm run dev",
