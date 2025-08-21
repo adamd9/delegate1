@@ -1,0 +1,9 @@
+[
+  {
+    "type": "streamable-http",
+    "url": "https://cmp.greatmachineinthesky.com/mcp",
+    "name": "CalendarRetriever",
+    "description": "MCP Server for Calendar Retrieval via HTTP",
+    "note": "Calendar retriever (Remote HTTP)"
+  }
+]

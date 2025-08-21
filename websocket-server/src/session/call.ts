@@ -1,5 +1,6 @@
 import { RawData, WebSocket } from "ws";
-import { getAllFunctions, getDefaultAgent, FunctionHandler } from "../agentConfigs";
+import { getDefaultAgent } from "../agentConfigs";
+import { getAgent, FunctionHandler } from "../agentConfigs";
 import { channelInstructions } from "../agentConfigs/channel";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 
@@ -77,9 +78,9 @@ export function establishRealtimeModelConnection() {
   session.modelConn.on("open", () => {
     const config = session.saved_config || {};
 
-    // Include supervisor agent function for voice channel
-    const allFunctions = getAllFunctions();
-    const functionSchemas = allFunctions.map((f: FunctionHandler) => f.schema);
+    // Voice channel: expose base agent tools only (supervisor/MCP excluded)
+    const baseFunctions = getAgent('base').tools as FunctionHandler[];
+    const functionSchemas = baseFunctions.map((f: FunctionHandler) => f.schema);
     const baseInstructions = getDefaultAgent().instructions;
     const agentInstructions = [channelInstructions('voice'), baseInstructions].join('\n');
     jsonSend(session.modelConn, {
@@ -290,8 +291,9 @@ export function processRealtimeModelEvent(
 
 async function handleFunctionCall(item: { name: string; arguments: string }) {
   console.log("Handling function call:", item);
-  const allFunctions = getAllFunctions();
-  const func = allFunctions.find((f: FunctionHandler) => f.schema.name === item.name);
+  // Voice channel should only execute base tools
+  const baseFunctions = getAgent('base').tools as FunctionHandler[];
+  const func = baseFunctions.find((f: FunctionHandler) => f.schema.name === item.name);
   if (!func) {
     throw new Error(`No handler found for function: ${item.name}`);
   }
