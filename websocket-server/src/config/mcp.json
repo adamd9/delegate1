@@ -1,9 +1,16 @@
 [
+  // {
+  //   "type": "streamable-http",
+  //   "url": "https://cmp.greatmachineinthesky.com/mcp",
+  //   "name": "CalendarRetriever",
+  //   "description": "MCP Server for Calendar Retrieval via HTTP",
+  //   "note": "Calendar retriever (Remote HTTP)"
+  // },
   {
     "type": "streamable-http",
-    "url": "https://cmp.greatmachineinthesky.com/mcp",
+    "url": "http://localhost:3001/mcp",
     "name": "CalendarRetriever",
     "description": "MCP Server for Calendar Retrieval via HTTP",
     "note": "Calendar retriever (Remote HTTP)"
-  }
+  }  
 ]
