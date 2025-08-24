@@ -17,6 +17,9 @@ import { marked } from "marked";
 import { session as stateSession, closeAllConnections, jsonSend, isOpen } from "./session/state";
 import { setNumbers } from "./smsState";
 import { initMCPDiscovery } from './agentConfigs/mcpAdapter';
+import { initToolsRegistry } from './tools/init';
+import { getAgentsDebug, getSchemasForAgent } from './tools/registry';
+import { listAllTools } from './tools/registry';
 
 dotenv.config();
 
@@ -40,6 +43,9 @@ const wss = new WebSocketServer({ server });
   try {
     await initMCPDiscovery();
     console.log('[startup] MCP discovery initialized');
+    // Initialize centralized tools registry after MCP discovery
+    await initToolsRegistry();
+    console.log('[startup] Tools registry initialized');
   } catch (e: any) {
     console.warn('[startup] MCP discovery failed to initialize:', e?.message || e);
   }
@@ -91,6 +97,35 @@ app.all("/twiml", (req, res) => {
 // New endpoint to list available tools (schemas)
 app.get("/tools", (req, res) => {
   res.json(functions.map((f) => f.schema));
+});
+
+// Central catalog debug endpoint: canonical tools with metadata
+app.get('/catalog/tools', (req, res) => {
+  const catalog = listAllTools().map(t => ({
+    id: t.id,
+    name: t.name,
+    sanitizedName: t.sanitizedName,
+    origin: t.origin,
+    tags: t.tags,
+    description: t.description,
+  }));
+  res.json(catalog);
+});
+
+// Agents debug endpoint: policies and resolved tool names
+app.get('/agents', (req, res) => {
+  res.json(getAgentsDebug());
+});
+
+// Tools visible to a given agent (Responses API tools array)
+app.get('/agents/:id/tools', (req, res) => {
+  const id = req.params.id;
+  try {
+    const schemas = getSchemasForAgent(id);
+    res.json(schemas);
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Failed to get tools for agent' });
+  }
 });
 
 // Endpoint to retrieve latest server logs

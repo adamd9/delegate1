@@ -5,10 +5,7 @@ import OpenAI, { ClientOptions } from 'openai';
 import { ProxyAgent } from 'undici';
 
 import { getCurrentTimeFunction } from './supervisorTools';
-import { getDiscoveredMcpHandlers, getDiscoveredMcpFunctionSchemas } from './mcpAdapter';
-
-// Helper to satisfy Responses API tool name pattern: ^[a-zA-Z0-9_-]+$
-const sanitizeToolName = (name: string) => name.replace(/[^a-zA-Z0-9_-]/g, '-');
+import { getSchemasForAgent, executeBySanitizedName } from '../tools/registry';
 
 // Helper to avoid flooding breadcrumbs; returns either parsed JSON, truncated string, or object with length
 function safeTruncateJson(input: any, maxLen = 1200): any {
@@ -24,23 +21,7 @@ function safeTruncateJson(input: any, maxLen = 1200): any {
   }
 }
 
-// Supervisor tool response handler
-export async function getSupervisorToolResponse(functionName: string, args: any): Promise<string> {
-  const supervisorTools = [getCurrentTimeFunction, ...getDiscoveredMcpHandlers()];
-  // Find by exact name or by sanitized name match
-  const tool = supervisorTools.find(t => t.schema.name === functionName || sanitizeToolName(t.schema.name) === functionName);
-  
-  if (!tool) {
-    return JSON.stringify({ error: `Unknown function: ${functionName}` });
-  }
-  
-  try {
-    return await tool.handler(args);
-  } catch (error) {
-    console.error(`Error executing supervisor tool ${functionName}:`, error);
-    return JSON.stringify({ error: `Failed to execute ${functionName}` });
-  }
-}
+// (Legacy supervisor tool router removed; centralized registry now handles execution)
 
 // Handle iterative function calls using Responses API
 export async function handleSupervisorToolCalls(
@@ -130,7 +111,8 @@ export async function handleSupervisorToolCalls(
 
       let result: string = '';
       try {
-        result = await getSupervisorToolResponse(functionName, parsedArgs);
+        // Route via centralized registry by sanitizedName
+        result = await executeBySanitizedName(functionName, parsedArgs);
         // Breadcrumb: function call result
         addBreadcrumb?.(`function call result: ${functionName}`, safeTruncateJson(result));
       } catch (e: any) {
@@ -212,23 +194,8 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
 
       const supervisorPrompt = supervisorAgentInstructions;
 
-      const tools = [
-        { type: "web_search" as const },
-        // Built-in supervisor tool
-        {
-          type: "function" as const,
-          name: getCurrentTimeFunction.schema.name,
-          description: getCurrentTimeFunction.schema.description || "",
-          parameters: getCurrentTimeFunction.schema.parameters,
-          strict: false as const
-        },
-        // Discovered MCP tools (schemas only)
-        ...getDiscoveredMcpFunctionSchemas().map((s) => ({
-          ...s,
-          name: sanitizeToolName(s.name),
-          strict: false as const
-        }))
-      ];
+      // Resolve supervisor-allowed tools from centralized registry
+      const tools = getSchemasForAgent('supervisor');
 
       // Initial user input as message input
       const input: ResponsesTextInput = {
