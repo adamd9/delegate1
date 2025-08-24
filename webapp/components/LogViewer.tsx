@@ -227,9 +227,11 @@ export default function LogViewer() {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = React.useState(true);
 
+  const backendBase = (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8081").replace(/\/$/, "");
+
   const fetchLogs = React.useCallback(async () => {
     if (paused) return;
-    const res = await fetch("/api/backend-logs", { cache: "no-store" });
+    const res = await fetch(`${backendBase}/logs`, { cache: "no-store" });
     if (!res.ok) {
       const txt = await res.text();
       setError(`Failed to load logs: ${res.status} ${txt}`);
@@ -238,7 +240,7 @@ export default function LogViewer() {
     const txt = await res.text();
     setRaw(txt);
     setError(null);
-  }, [paused]);
+  }, [paused, backendBase]);
 
   // Initial + polling
   React.useEffect(() => {
