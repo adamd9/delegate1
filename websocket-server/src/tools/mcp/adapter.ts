@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { FunctionHandler } from './types';
-import { mcpClient, type DiscoveredTool, type RemoteServerConfig } from './mcpClient';
+import { FunctionHandler } from '../../agentConfigs/types';
+import { mcpClient, type DiscoveredTool, type RemoteServerConfig } from './client';
 
 // Simple logger
 const log = {
