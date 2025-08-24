@@ -2,7 +2,7 @@ import { registerTools, ToolOrigin } from "../registry";
 import { getWeatherFunction } from "../handlers/weather";
 import { sendCanvas } from "../handlers/canvas";
 import { sendSmsTool } from "../handlers/sms";
-import { getCurrentTimeFunction } from "../../agentConfigs/supervisorTools";
+import { getCurrentTimeFunction } from "../handlers/current-time";
 import { getNextResponseFromSupervisorFunction } from "../handlers/supervisor-escalation";
 
 function wrap(name: string, description: string, parameters: any, origin: ToolOrigin, tags: string[], handler: (args: any) => Promise<any>) {

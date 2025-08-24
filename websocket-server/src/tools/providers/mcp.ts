@@ -1,5 +1,5 @@
 import { registerTools } from "../registry";
-import { getDiscoveredMcpHandlers } from "../../agentConfigs/mcpAdapter";
+import { getDiscoveredMcpHandlers } from "../mcp/adapter";
 
 export function registerMcpTools() {
   const providerId = 'mcp';

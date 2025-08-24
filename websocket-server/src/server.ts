@@ -16,7 +16,7 @@ import { getCanvas } from "./canvasStore";
 import { marked } from "marked";
 import { session as stateSession, closeAllConnections, jsonSend, isOpen } from "./session/state";
 import { setNumbers } from "./smsState";
-import { initMCPDiscovery } from './agentConfigs/mcpAdapter';
+import { initMCPDiscovery } from './tools/mcp/adapter';
 import { initToolsRegistry } from './tools/init';
 import { getAgentsDebug, getSchemasForAgent } from './tools/registry';
 import { listAllTools } from './tools/registry';

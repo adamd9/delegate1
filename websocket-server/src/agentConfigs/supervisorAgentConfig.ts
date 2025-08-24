@@ -1,7 +1,7 @@
 import { AgentConfig } from './types';
-import { getCurrentTimeFunction } from './supervisorTools';
+import { getCurrentTimeFunction } from '../tools/handlers/current-time';
 import { agentPersonality } from "./personality";
-import { getDiscoveredMcpHandlers } from './mcpAdapter';
+import { getDiscoveredMcpHandlers } from '../tools/mcp/adapter';
 
 // Supervisor Agent Configuration
 export const supervisorAgentConfig: AgentConfig = {

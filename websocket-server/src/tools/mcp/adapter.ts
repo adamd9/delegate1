@@ -33,7 +33,7 @@ export async function initMCPDiscovery() {
   try {
     await mcpClient.initialize();
 
-    const cfgPath = join(__dirname, '../config/mcp.json');
+    const cfgPath = join(__dirname, '../../config/mcp.json');
     let servers: RemoteServerConfig[] = [];
     try {
       const raw = readFileSync(cfgPath, 'utf8');
