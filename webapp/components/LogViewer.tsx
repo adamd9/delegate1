@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { getBackendUrl } from "@/lib/get-backend-url";
 
 // Minimal ANSI -> HTML converter supporting common styles/colors.
 // We avoid extra deps to keep the UI lightweight.
@@ -227,7 +228,23 @@ export default function LogViewer() {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = React.useState(true);
 
-  const backendBase = (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8081").replace(/\/$/, "");
+  const envBackend = process.env.NEXT_PUBLIC_REMOTE_BACKEND;
+  const backendBase = getBackendUrl().replace(/\/$/, "");
+
+  // One-time debug logging to help diagnose deployed builds
+  React.useEffect(() => {
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[LogsUI Debug] Resolved backendBase:", backendBase, {
+        NEXT_PUBLIC_REMOTE_BACKEND: envBackend,
+        hasEnv: Boolean(envBackend),
+        locationOrigin: typeof window !== "undefined" ? window.location.origin : "(no-window)",
+        buildTime: process.env.NEXT_PUBLIC_BUILD_TIME || "(unset)",
+      });
+    } catch {}
+    // only on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchLogs = React.useCallback(async () => {
     if (paused) return;
@@ -287,6 +304,7 @@ export default function LogViewer() {
           <span>{lines.length} lines</span>
           {!autoScroll && <span>Auto-scroll off</span>}
           {error && <span className="text-red-600">{error}</span>}
+          <span title={`env:${envBackend || "(unset)"}`}>backend: {backendBase}</span>
         </div>
       </div>
 
