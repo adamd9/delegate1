@@ -312,7 +312,7 @@ This documents the current supervisor escalation flow and calls out shared versu
   - Uses `addBreadcrumb()` to emit nested supervisor tool-call breadcrumbs to `logsClients` and optionally via SMS.
   - Shared `conversationHistory[]` is updated for both user and assistant messages; responses broadcast to `chatClients`.
 
-- **sendCanvas Tool** (`agentConfigs/canvasTool.ts`):
+- **sendCanvas Tool** (`websocket-server/src/tools/handlers/canvas.ts`):
   - Shared utility tool to send rich content to both `chatClients` and `logsClients`.
 
 ### Duplicated or Divergent Logic

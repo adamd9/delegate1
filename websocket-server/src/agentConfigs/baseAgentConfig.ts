@@ -1,5 +1,7 @@
 import { AgentConfig } from './types';
-import { getWeatherFunction, sendCanvas, sendSmsTool } from './baseAgent';
+import { getWeatherFunction } from '../tools/handlers/weather';
+import { sendCanvas } from '../tools/handlers/canvas';
+import { sendSmsTool } from '../tools/handlers/sms';
 import { agentPersonality } from "./personality";
 
 // Base Agent Configuration

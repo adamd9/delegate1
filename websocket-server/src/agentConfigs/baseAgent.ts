@@ -1,37 +1,6 @@
-import { AgentConfig, FunctionHandler } from './types';
-import { sendCanvas } from './canvasTool';
-import { sendSmsTool } from './smsTool';
-
-// Weather function - basic utility function
-export const getWeatherFunction: FunctionHandler = {
-  schema: {
-    name: "get_weather_from_coords",
-    type: "function",
-    description: "Get the current weather",
-    parameters: {
-      type: "object",
-      properties: {
-        latitude: {
-          type: "number",
-        },
-        longitude: {
-          type: "number",
-        },
-      },
-      required: ["latitude", "longitude"],
-      additionalProperties: false
-    },
-  },
-  handler: async (args: { latitude: number; longitude: number }) => {
-    const response = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${args.latitude}&longitude=${args.longitude}&current=temperature_2m,wind_speed_10m&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m`
-    );
-    const data: any = await response.json();
-    const currentTemp = data.current?.temperature_2m;
-    return JSON.stringify({ temp: currentTemp });
-  },
-};
-
-// Import the base agent configuration
+// Keep this file as a compatibility hub for base agent exports only
+// Tools are now centralized under src/tools/handlers/*
 export { baseAgentConfig as baseAgent } from './baseAgentConfig';
-export { sendCanvas, sendSmsTool };
+export { sendCanvas } from '../tools/handlers/canvas';
+export { sendSmsTool } from '../tools/handlers/sms';
+export { getWeatherFunction } from '../tools/handlers/weather';

@@ -120,7 +120,9 @@ export async function handleTextChatMessage(
         });
     }
     // Text channel: expose only base agent tools (supervisor MCP tools are used internally by supervisor flow)
-    const baseFunctions = getAgent('base').tools as FunctionHandler[];
+    const baseFunctions = (getAgent('base').tools as FunctionHandler[])
+      .filter(Boolean)
+      .filter((f: any) => f && f.schema);
     const functionSchemas = baseFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
     console.log("🤖 Calling OpenAI Responses API for text response...");
     // Define system instructions
