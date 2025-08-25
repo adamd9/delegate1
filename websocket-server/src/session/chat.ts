@@ -157,7 +157,7 @@ export async function handleTextChatMessage(
     const requestBody: any = {
       model: "gpt-5-mini",
       reasoning: {
-        effort: 'low' as const,
+        effort: 'minimal' as const,
       },
       instructions: instructions,
       tools: functionSchemas,
@@ -250,7 +250,7 @@ export async function handleTextChatMessage(
           const followUpBody = {
             model: "gpt-5-mini",
             reasoning: {
-              effort: 'low' as const,
+              effort: 'minimal' as const,
             },
             previous_response_id: response.id,
             instructions:
@@ -340,7 +340,7 @@ export async function handleTextChatMessage(
                 const confirmBody: any = {
                   model: "gpt-5-mini",
                   reasoning: {
-                    effort: 'low' as const,
+                    effort: 'minimal' as const,
                   },
                   previous_response_id: followUpResponse.id,
                   input: [
