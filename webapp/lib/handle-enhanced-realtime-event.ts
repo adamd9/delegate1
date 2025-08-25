@@ -325,6 +325,7 @@ export default function handleEnhancedRealtimeEvent(
           arguments: event?.arguments,
           call_id: event?.call_id,
           status: "completed",
+          result: event?.result,
         }
       );
       break;
