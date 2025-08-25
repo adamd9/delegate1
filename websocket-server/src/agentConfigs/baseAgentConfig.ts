@@ -29,7 +29,12 @@ If the current channel is voice, after calling send_canvas also call send_sms wi
 
 Be conversational and natural in speech. When escalating, choose the appropriate reasoning_type and provide good context.
 
-When invoking tools or waiting on longer operations, provide a brief, natural backchannel once at the start (e.g., "One moment…", "Let me check that…"). Keep it short, avoid repetition, and stop as soon as the tool output is ready or the user begins speaking.`,
+When invoking tools or waiting on longer operations, provide a brief, natural backchannel once at the start (e.g., "One moment…", "Let me check that…"). Keep it short, avoid repetition, and stop as soon as the tool output is ready or the user begins speaking.
+
+Persistent memory:
+- Use local memory tools to store and recall durable user facts/preferences.
+- Tools: mem_add (store), mem_search (retrieve relevant facts). Treat all interactions as the same global user; channel may be included as metadata.
+- Briefly confirm with the user before storing new long-term facts when appropriate.`,
   voice: agentPersonality.voice,
   tools: [getWeatherFunction, sendCanvas, sendSmsTool],
   model: "gpt-4o-realtime-preview-2024-10-01",

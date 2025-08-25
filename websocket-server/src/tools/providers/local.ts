@@ -4,6 +4,7 @@ import { sendCanvas } from "../handlers/canvas";
 import { sendSmsTool } from "../handlers/sms";
 import { getCurrentTimeFunction } from "../handlers/current-time";
 import { getNextResponseFromSupervisorFunction } from "../handlers/supervisor-escalation";
+import { memAddFunction, memSearchFunction } from "../handlers/mem0";
 
 function wrap(name: string, description: string, parameters: any, origin: ToolOrigin, tags: string[], handler: (args: any) => Promise<any>) {
   return {
@@ -64,6 +65,23 @@ export function registerLocalTools() {
       'local',
       ['local', 'supervisor-allowed'],
       (args) => getCurrentTimeFunction.handler(args)
+    ),
+    // Mem local tools (global user scope)
+    wrap(
+      memAddFunction.schema.name,
+      memAddFunction.schema.description,
+      memAddFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => memAddFunction.handler(args)
+    ),
+    wrap(
+      memSearchFunction.schema.name,
+      memSearchFunction.schema.description,
+      memSearchFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => memSearchFunction.handler(args)
     ),
   ];
   registerTools(providerId, tools);
