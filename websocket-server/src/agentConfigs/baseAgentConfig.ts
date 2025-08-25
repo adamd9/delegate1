@@ -35,7 +35,7 @@ When invoking tools or waiting on longer operations, provide a brief, natural ba
 Persistent memory:
 - Use local memory tools to store and recall durable user facts/preferences.
 - Tools: mem_add (store), mem_search (retrieve relevant facts). Treat all interactions as the same global user; channel may be included as metadata.
-- Briefly confirm with the user before storing new long-term facts when appropriate.`,
+- Briefly confirm with the user before storing new long-term facts when appropriate (unless the user has explicitly asked you to store something, then just store it without confirmation.).`,
   voice: agentPersonality.voice,
   tools: [
     getWeatherFunction,
