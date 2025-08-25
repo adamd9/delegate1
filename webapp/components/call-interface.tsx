@@ -35,8 +35,10 @@ const CallInterface = () => {
   const [chatStatus, setChatStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [userText, setUserText] = useState("");
   const transcript = useTranscript();
+  const [inFlight, setInFlight] = useState(false);
+  const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
   
-  const canSendChat = chatStatus === 'connected' && userText.trim().length > 0;
+  const canSendChat = chatStatus === 'connected' && userText.trim().length > 0 && !inFlight;
 
   // Run singleton checklist on mount, log result
   useEffect(() => {
@@ -86,9 +88,14 @@ const CallInterface = () => {
       newChatWs.onmessage = (event) => {
         const data = JSON.parse(event.data);
         console.log("Received chat event:", data);
-        
-        // Chat WebSocket is used for sending messages only
-        // Responses are handled via logs WebSocket for consistency
+        // Handle chat request lifecycle events for UI state
+        if (data?.type === 'chat.working') {
+          setInFlight(true);
+          setCurrentRequestId(data.request_id || null);
+        } else if (data?.type === 'chat.done' || data?.type === 'chat.canceled') {
+          setInFlight(false);
+          setCurrentRequestId(null);
+        }
       };
 
       newChatWs.onclose = () => {
@@ -115,12 +122,22 @@ const CallInterface = () => {
       };
       console.log("Sending chat message:", chatMessage);
       chatWs.send(JSON.stringify(chatMessage));
-      
+      // Optimistically set in-flight until server confirms with chat.working
+      setInFlight(true);
       // Clear input
       setUserText("");
     } else {
       console.error("Chat WebSocket not connected");
     }
+  };
+
+  const handleCancelChat = () => {
+    if (!chatWs || chatWs.readyState !== WebSocket.OPEN) return;
+    const cancelMessage: any = { type: 'chat.cancel' };
+    if (currentRequestId) cancelMessage.request_id = currentRequestId;
+    console.log('Sending chat cancel:', cancelMessage);
+    chatWs.send(JSON.stringify(cancelMessage));
+    // UI will reset on chat.canceled from server; keep inFlight true briefly for UX
   };
 
   const [setupDialogOpen, setSetupDialogOpen] = useState(false);
@@ -183,6 +200,8 @@ const CallInterface = () => {
                 setUserText={setUserText}
                 onSendMessage={() => handleSendChatMessage(userText)}
                 canSend={canSendChat}
+                inFlight={inFlight}
+                onCancel={handleCancelChat}
                 onOpenCanvas={(canvas) => {
                   setSelectedCanvas(canvas);
                   setCanvasPanelOpen(true);

@@ -53,8 +53,26 @@ export async function processChatSocketMessage(
   console.log("💬 Chat message received:", msg);
   switch (msg.type) {
     case "chat.message":
-      await handleTextChatMessage(msg.content, chatClients, logsClients, 'text');
+      // Fire-and-forget to avoid blocking the socket. UI will receive chat.working immediately.
+      void handleTextChatMessage(msg.content, chatClients, logsClients, 'text');
       break;
+    case "chat.cancel": {
+      const reqId = msg.request_id as string | undefined;
+      if (session.currentRequest && (!reqId || session.currentRequest.id === reqId)) {
+        session.currentRequest.canceled = true;
+        console.log(`✋ Cancel requested for ${session.currentRequest.id}`);
+        // Notify chat clients and logs
+        for (const ws of chatClients) {
+          if (isOpen(ws)) jsonSend(ws, { type: "chat.canceled", request_id: session.currentRequest.id, timestamp: Date.now() });
+        }
+        for (const ws of logsClients) {
+          if (isOpen(ws)) jsonSend(ws, { type: "chat.canceled", request_id: session.currentRequest.id, timestamp: Date.now() });
+        }
+        // Clear in-flight marker
+        session.currentRequest = undefined;
+      }
+      break;
+    }
     case "session.update":
       session.saved_config = msg.session;
       console.log("📝 Chat session config updated:", msg.session);
@@ -72,6 +90,13 @@ export async function handleTextChatMessage(
 ) {
   try {
     console.log("🔤 Processing text message:", content);
+    // Create a new request id and mark as in-flight (cancel any previous text/sms request implicitly for safety)
+    const requestId = `req_${Date.now()}`;
+    session.currentRequest = { id: requestId, channel, canceled: false, startedAt: Date.now() };
+    // Inform UI that work has started
+    for (const ws of chatClients) {
+      if (isOpen(ws)) jsonSend(ws, { type: "chat.working", request_id: requestId, timestamp: Date.now() });
+    }
     // Initialize OpenAI client if needed
     if (!session.openaiClient) {
       if (!process.env.OPENAI_API_KEY) {
@@ -149,6 +174,11 @@ export async function handleTextChatMessage(
     requestBody.input = [userInput];
     console.log("[DEBUG] Responses API Request:", JSON.stringify(requestBody, null, 2));
     const response = await session.openaiClient.responses.create(requestBody);
+    // If canceled mid-flight, abort committing
+    if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
+      console.log(`[${requestId}] Aborting post-response handling due to cancel`);
+      return;
+    }
     // Persist thread state regardless of tool usage so subsequent turns chain correctly
     session.previousResponseId = response.id;
     console.log(
@@ -199,6 +229,11 @@ export async function handleTextChatMessage(
             }
           };
           const functionResult = await (functionHandler as any).handler(args, addBreadcrumb);
+          // Check cancel before proceeding
+          if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
+            console.log(`[${requestId}] Aborting after tool execution due to cancel`);
+            return;
+          }
           console.log(`✅ Function result received (${(functionResult || '').length ?? 0} chars)`);
           for (const ws of logsClients) {
             if (isOpen(ws))
@@ -230,6 +265,10 @@ export async function handleTextChatMessage(
           };
           console.log("[DEBUG] Follow-up Responses API request:", JSON.stringify(followUpBody, null, 2));
           const followUpResponse = await session.openaiClient.responses.create(followUpBody);
+          if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
+            console.log(`[${requestId}] Aborting after follow-up due to cancel`);
+            return;
+          }
           console.log(
             "[DEBUG] Follow-up Responses API response:",
             JSON.stringify(
@@ -321,6 +360,10 @@ export async function handleTextChatMessage(
                 };
                 console.log("[DEBUG] Canvas confirm Responses API request:", JSON.stringify(confirmBody, null, 2));
                 const confirmResponse = await session.openaiClient.responses.create(confirmBody);
+                if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
+                  console.log(`[${requestId}] Aborting after canvas confirm due to cancel`);
+                  return;
+                }
                 console.log(
                   "[DEBUG] Canvas confirm Responses API response:",
                   JSON.stringify(
@@ -403,6 +446,10 @@ export async function handleTextChatMessage(
                 supervisor: true,
               });
           }
+          for (const ws of chatClients) {
+            if (isOpen(ws)) jsonSend(ws, { type: "chat.done", request_id: requestId, timestamp: Date.now() });
+          }
+          session.currentRequest = undefined;
           // Forward assistant response to observability clients (/logs)
           for (const ws of logsClients) {
             if (isOpen(ws))
@@ -444,6 +491,10 @@ export async function handleTextChatMessage(
       if (isOpen(ws))
         jsonSend(ws, { type: "chat.response", content: assistantText, timestamp: Date.now() });
     }
+    for (const ws of chatClients) {
+      if (isOpen(ws)) jsonSend(ws, { type: "chat.done", request_id: requestId, timestamp: Date.now() });
+    }
+    session.currentRequest = undefined;
     // Forward assistant response to observability clients (/logs)
     for (const ws of logsClients) {
       if (isOpen(ws))
@@ -461,5 +512,12 @@ export async function handleTextChatMessage(
     }
   } catch (err) {
     console.error("❌ Error handling text chat message:", err);
+    // Ensure clients are unblocked on error
+    if (session.currentRequest) {
+      for (const ws of chatClients) {
+        if (isOpen(ws)) jsonSend(ws, { type: "chat.canceled", request_id: session.currentRequest.id, error: "server_error", timestamp: Date.now() });
+      }
+      session.currentRequest = undefined;
+    }
   }
 }

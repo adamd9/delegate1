@@ -1,6 +1,7 @@
 import { WebSocket } from "ws";
 import { openReplyWindow, setNumbers, getNumbers } from "../smsState";
 import { handleTextChatMessage } from "./chat";
+import { session, jsonSend, isOpen } from "./state";
 
 // Normalize SMS webhook into the unified chat pipeline
 // - Records phone numbers for reply routing via `smsState`
@@ -20,6 +21,19 @@ export async function processSmsWebhook(
     console.debug('[processSmsWebhook] Numbers set and reply window opened', { smsUserNumber, smsTwilioNumber });
   } catch (e) {
     console.warn('⚠️ SMS setup warning:', e);
+  }
+  // Auto-cancel any existing in-flight text/sms request
+  if (session.currentRequest && (session.currentRequest.channel === 'text' || session.currentRequest.channel === 'sms')) {
+    session.currentRequest.canceled = true;
+    const canceledId = session.currentRequest.id;
+    console.log(`[SMS] ✋ Auto-canceling in-flight request ${canceledId} due to new SMS`);
+    for (const ws of chatClients) {
+      if (isOpen(ws)) jsonSend(ws, { type: "chat.canceled", request_id: canceledId, timestamp: Date.now(), reason: 'sms_preempt' });
+    }
+    for (const ws of logsClients) {
+      if (isOpen(ws)) jsonSend(ws, { type: "chat.canceled", request_id: canceledId, timestamp: Date.now(), reason: 'sms_preempt' });
+    }
+    session.currentRequest = undefined;
   }
   await handleTextChatMessage(messageText, chatClients, logsClients, 'sms');
 }
