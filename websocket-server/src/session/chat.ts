@@ -243,6 +243,7 @@ export async function handleTextChatMessage(
                 arguments: functionCall.arguments,
                 call_id: functionCall.call_id,
                 status: "completed",
+                result: typeof functionResult === "string" ? functionResult : JSON.stringify(functionResult),
               });
           }
           const fnSchemas = allFns.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
