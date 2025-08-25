@@ -7,9 +7,16 @@ async function getClient() {
   const apiKey = process.env.MEM0_API_KEY;
   if (!apiKey) throw new Error('MEM0_API_KEY is not set');
   // Dynamic import to avoid load if unused or missing dep during dev
-  const mod: any = await import('mem0ai');
+  const dynImport = new Function('m', 'return import(m)') as (m: string) => Promise<any>;
+  let mod: any;
+  try { mod = await dynImport('mem0ai'); }
+  catch {
+    try { mod = await dynImport('@mem0ai/mem0'); }
+    catch { throw new Error("Mem SDK not installed. Please install 'mem0ai' or '@mem0ai/mem0' in websocket-server"); }
+  }
   const MemoryClient = mod?.default || mod?.MemoryClient || mod;
-  return new MemoryClient(apiKey);
+  const host = process.env.MEM0_API_HOST;
+  return host ? new MemoryClient({ apiKey, host }) : new MemoryClient({ apiKey });
 }
 
 export const memAddFunction: FunctionHandler = {

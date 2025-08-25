@@ -2,6 +2,7 @@ import { registerBuiltinTools } from './providers/builtin';
 import { registerLocalTools } from './providers/local';
 import { registerMcpTools } from './providers/mcp';
 import { registerAgent } from './registry';
+import { getAgent } from '../agentConfigs';
 
 export async function initToolsRegistry() {
   // Register providers
@@ -11,13 +12,15 @@ export async function initToolsRegistry() {
   registerMcpTools();
 
   // Agent policies: allow/deny by names/tags only (minimal)
+  const baseToolNames = (getAgent('base').tools || []).map(t => t.schema?.name).filter(Boolean) as string[];
   registerAgent('base', {
-    // Base agent gets default local tools by tag
-    allowTags: ['base-default'],
+    // Final selection comes from agent config tools
+    allowNames: baseToolNames,
   });
 
+  const supervisorToolNames = (getAgent('supervisor').tools || []).map(t => t.schema?.name).filter(Boolean) as string[];
   registerAgent('supervisor', {
-    // Supervisor can use supervisor-allowed tools (builtin, local utils, MCP)
-    allowTags: ['supervisor-allowed'],
+    // Supervisor selection also mirrors its agent config
+    allowNames: supervisorToolNames,
   });
 }

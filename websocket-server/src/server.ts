@@ -21,7 +21,8 @@ import { initToolsRegistry } from './tools/init';
 import { getAgentsDebug, getSchemasForAgent } from './tools/registry';
 import { listAllTools } from './tools/registry';
 
-dotenv.config();
+// Ensure we load the env file from this package even if process is started from repo root
+dotenv.config({ path: join(__dirname, '../.env') });
 
 const PORT = parseInt(process.env.PORT || "8081", 10);
 const PUBLIC_URL = process.env.PUBLIC_URL || "";

@@ -2,6 +2,7 @@ import { AgentConfig } from './types';
 import { getWeatherFunction } from '../tools/handlers/weather';
 import { sendCanvas } from '../tools/handlers/canvas';
 import { sendSmsTool } from '../tools/handlers/sms';
+import { memAddFunction, memSearchFunction } from '../tools/handlers/mem0';
 import { agentPersonality } from "./personality";
 
 // Base Agent Configuration
@@ -36,7 +37,13 @@ Persistent memory:
 - Tools: mem_add (store), mem_search (retrieve relevant facts). Treat all interactions as the same global user; channel may be included as metadata.
 - Briefly confirm with the user before storing new long-term facts when appropriate.`,
   voice: agentPersonality.voice,
-  tools: [getWeatherFunction, sendCanvas, sendSmsTool],
+  tools: [
+    getWeatherFunction,
+    sendCanvas,
+    sendSmsTool,
+    memAddFunction,
+    memSearchFunction,
+  ],
   model: "gpt-4o-realtime-preview-2024-10-01",
   temperature: 0.8,
 };
