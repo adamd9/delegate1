@@ -44,11 +44,13 @@ export async function handleSupervisorToolCalls(
   const openai = new OpenAI(options);
   
   // Initial request
+  // If the toolset includes the builtin web_search tool, minimal effort is not allowed.
+  const hasWebSearch = Array.isArray(tools) && tools.some((t: any) => t && t.type === 'web_search');
+  const reasoning: { effort: 'minimal' | 'low' } = { effort: hasWebSearch ? 'low' : 'minimal' };
+
   let requestBody: any = {
     model: "gpt-5-mini",
-    reasoning: {
-      effort: 'minimal' as const,
-    },
+    reasoning,
     instructions,
     input,
     tools,
@@ -127,9 +129,7 @@ export async function handleSupervisorToolCalls(
     // Make another API call with function call outputs (include tools so model can continue calling functions)
     const followUpRequestBody = {
       model: "gpt-5-mini",
-      reasoning: {
-        effort: 'minimal' as const,
-      },
+      reasoning,
       previous_response_id: currentResponseId,
       input: functionCallOutputs,
       tools,
