@@ -32,6 +32,13 @@ export interface Session {
   openAIApiKey?: string;
   conversationHistory?: ConversationItem[];
   previousResponseId?: string; // For Responses API conversation tracking
+  // Minimal in-flight chat request tracking
+  currentRequest?: {
+    id: string;
+    channel: 'voice' | 'text' | 'sms';
+    canceled?: boolean;
+    startedAt: number;
+  };
 }
 
 // Singleton session state

@@ -10,6 +10,8 @@ export interface EnhancedTranscriptProps {
   setUserText: (val: string) => void;
   onSendMessage: () => void;
   canSend: boolean;
+  inFlight?: boolean;
+  onCancel?: () => void;
   onOpenCanvas?: (canvas: { url: string; title?: string }) => void;
 }
 
@@ -18,6 +20,8 @@ export function EnhancedTranscript({
   setUserText,
   onSendMessage,
   canSend,
+  inFlight = false,
+  onCancel,
   onOpenCanvas,
 }: EnhancedTranscriptProps) {
   const { transcriptItems, toggleTranscriptItemExpand } = useTranscript();
@@ -242,20 +246,31 @@ export function EnhancedTranscript({
             value={userText}
             onChange={(e) => setUserText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && canSend) {
+              if (e.key === "Enter" && canSend && !inFlight) {
                 onSendMessage();
               }
             }}
             placeholder="Type a message..."
             className="flex-1 px-4 py-2 focus:outline-none border-0 bg-transparent"
           />
-          <button
-            onClick={onSendMessage}
-            disabled={!canSend || !userText.trim()}
-            className="bg-gray-900 text-white rounded-full px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Send
-          </button>
+          {inFlight ? (
+            <button
+              onClick={() => onCancel && onCancel()}
+              title="Working… Click to cancel"
+              aria-label="Working… Click to cancel"
+              className="bg-gray-900 text-white rounded-full px-3 py-2"
+            >
+              <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            </button>
+          ) : (
+            <button
+              onClick={onSendMessage}
+              disabled={!canSend || !userText.trim()}
+              className="bg-gray-900 text-white rounded-full px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Send
+            </button>
+          )}
         </div>
         <VoiceMiniApp />
       </div>
