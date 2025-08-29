@@ -20,7 +20,12 @@ export interface AgentConfig {
   instructions: string;
   voice?: string;
   tools: FunctionHandler[];
+  // Deprecated: use textModel and voiceModel instead. Retained for backward compatibility.
   model?: string;
+  // Model to use for text (Responses API) interactions
+  textModel?: string;
+  // Model to use for voice (Realtime API/websocket) interactions
+  voiceModel?: string;
   temperature?: number;
 }
 

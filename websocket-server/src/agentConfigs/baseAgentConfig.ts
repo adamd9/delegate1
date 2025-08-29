@@ -44,6 +44,11 @@ Persistent memory:
     memAddFunction,
     memSearchFunction,
   ],
-  model: "gpt-4o-realtime-preview-2024-10-01",
+  // Text (Responses API) model for chat interactions
+  textModel: "gpt-5-mini",
+  // Voice (Realtime API) model for call interactions
+  voiceModel: "gpt-realtime",
+  // Backward compat: keep model; align it with voice model by default
+  model: "gpt-realtime",
   temperature: 0.8,
 };
