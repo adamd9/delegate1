@@ -155,7 +155,7 @@ export async function handleTextChatMessage(
     const instructions = [channelInstructions(channel), baseInstructions].join('\n');
     // Prepare request body for Responses API
     const requestBody: any = {
-      model: "gpt-5-mini",
+      model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
       reasoning: {
         effort: 'minimal' as const,
       },
@@ -248,7 +248,7 @@ export async function handleTextChatMessage(
           }
           const fnSchemas = allFns.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
           const followUpBody = {
-            model: "gpt-5-mini",
+            model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
             reasoning: {
               effort: 'minimal' as const,
             },
@@ -338,7 +338,7 @@ export async function handleTextChatMessage(
               // Solution A: confirm tool execution with Responses API to elicit a concise final text
               try {
                 const confirmBody: any = {
-                  model: "gpt-5-mini",
+                  model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
                   reasoning: {
                     effort: 'minimal' as const,
                   },
