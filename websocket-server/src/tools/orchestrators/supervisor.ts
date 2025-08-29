@@ -3,6 +3,8 @@ import { ProxyAgent } from 'undici';
 import { ResponsesFunctionCall, ResponsesFunctionCallOutput, ResponsesInputItem } from '../../types';
 import { executeBySanitizedName } from '../registry';
 
+import { supervisorAgentConfig } from '../../agentConfigs/supervisorAgentConfig';
+
 // Helper to avoid flooding breadcrumbs; returns either parsed JSON, truncated string, or object with length
 function safeTruncateJson(input: any, maxLen = 1200): any {
   try {
@@ -49,7 +51,7 @@ export async function handleSupervisorToolCalls(
   const reasoning: { effort: 'minimal' | 'low' } = { effort: hasWebSearch ? 'low' : 'minimal' };
 
   let requestBody: any = {
-    model: "gpt-5-mini",
+    model: supervisorAgentConfig.model,
     reasoning,
     instructions,
     input,
@@ -128,7 +130,7 @@ export async function handleSupervisorToolCalls(
     
     // Make another API call with function call outputs (include tools so model can continue calling functions)
     const followUpRequestBody = {
-      model: "gpt-5-mini",
+      model: supervisorAgentConfig.model,
       reasoning,
       previous_response_id: currentResponseId,
       input: functionCallOutputs,
