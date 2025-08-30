@@ -192,16 +192,7 @@ export async function handleTextChatMessage(
     const functionCalls = response.output?.filter((output: any) => output.type === "function_call");
     if (functionCalls && functionCalls.length > 0) {
       const functionCall = functionCalls[0];
-      // Defer console logging to orchestrator for consistency
-      for (const ws of logsClients) {
-        if (isOpen(ws))
-          jsonSend(ws, {
-            type: "response.function_call_arguments.delta",
-            name: functionCall.name,
-            arguments: functionCall.arguments,
-            call_id: functionCall.call_id,
-          });
-      }
+      // Defer both console logging and breadcrumb emission to the orchestrator for consistency
       // --- SMS placeholder for tool call ---
       if (isSmsWindowOpen()) {
         const { smsUserNumber, smsTwilioNumber } = getNumbers();
