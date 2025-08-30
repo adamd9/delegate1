@@ -48,7 +48,7 @@ Persistent memory:
     memSearchFunction,
   ],
   // Text (Responses API) model for chat interactions
-  textModel: "gpt-5-mini",
+  textModel: "gpt-5",
   // Voice (Realtime API) model for call interactions
   voiceModel: "gpt-realtime",
   // Backward compat: keep model; align it with voice model by default
