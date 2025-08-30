@@ -16,7 +16,7 @@ export const sendCanvas: FunctionHandler = {
   schema: {
     name: "send_canvas",
     type: "function",
-    description: "Send detailed content to the user using a special UI. This will be sent out as a link to the user via a separate channel. No need to supply the link in the message back to the user.",
+    description: "Create and publish detailed content to the user using the canvas UI; the function returns a publicly‑accessible link and status. When the user issues an explicit send command, the agent should call this function immediately.",
     parameters: {
       type: "object",
       properties: {
