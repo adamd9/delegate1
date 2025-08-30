@@ -2,8 +2,8 @@ import { RawData, WebSocket } from "ws";
 import OpenAI, { ClientOptions } from "openai";
 import { ProxyAgent } from "undici";
 import { ResponsesTextInput } from "../types";
-import { getDefaultAgent, FunctionHandler } from "../agentConfigs";
-import { getAgent } from "../agentConfigs";
+import { getAgent, getDefaultAgent, FunctionHandler } from "../agentConfigs";
+import { executeFunctionCalls } from "../tools/orchestrators/functionCallExecutor";
 import { channelInstructions, Channel } from "../agentConfigs/channel";
 import { isSmsWindowOpen, getNumbers } from "../smsState";
 import { sendSms } from "../sms";
@@ -279,146 +279,55 @@ export async function handleTextChatMessage(
             )
           );
           session.previousResponseId = followUpResponse.id;
-          // If the follow-up produced tool calls (e.g., send_canvas), surface them to UI instead of falling back
           const fuFunctionCalls = followUpResponse.output?.filter((o: any) => o.type === "function_call");
           if (fuFunctionCalls && fuFunctionCalls.length > 0) {
-            // Broadcast function call breadcrumb(s) to logs
-            for (const fc of fuFunctionCalls) {
+            // Delegate to orchestrator to execute one function_call (canvas preferred) and optionally confirm
+            const { handled, confirmText, confirmResponseId } = await executeFunctionCalls(
+              fuFunctionCalls,
+              {
+                mode: 'chat',
+                logsClients,
+                openaiClient: session.openaiClient,
+                previousResponseId: followUpResponse.id,
+                confirm: true,
+              }
+            );
+            if (handled) {
+              if (confirmResponseId) session.previousResponseId = confirmResponseId;
+              const text = confirmText || followUpResponse.output_text || "(action completed)";
+              const assistantMessage = {
+                type: 'assistant' as const,
+                content: text,
+                timestamp: Date.now(),
+                channel: 'text' as const,
+                supervisor: true,
+              };
+              session.conversationHistory.push(assistantMessage);
+              if (isSmsWindowOpen()) {
+                const { smsUserNumber, smsTwilioNumber } = getNumbers();
+                sendSms(text, smsTwilioNumber, smsUserNumber).catch((e) => console.error('sendSms error', e));
+              }
+              for (const ws of chatClients) {
+                if (isOpen(ws)) jsonSend(ws, { type: 'chat.response', content: text, timestamp: Date.now(), supervisor: true });
+              }
+              for (const ws of chatClients) {
+                if (isOpen(ws)) jsonSend(ws, { type: 'chat.done', request_id: requestId, timestamp: Date.now() });
+              }
+              session.currentRequest = undefined;
+              // Also forward to logs history for symmetry
               for (const ws of logsClients) {
                 if (isOpen(ws))
                   jsonSend(ws, {
-                    type: "response.function_call_arguments.delta",
-                    name: fc.name,
-                    arguments: fc.arguments,
-                    call_id: fc.call_id,
-                  });
-              }
-            }
-            // Handle send_canvas specially so the UI shows the actual content
-            const canvasCall = fuFunctionCalls.find((fc: any) => fc.name === "send_canvas");
-            if (canvasCall) {
-              console.debug("[DEBUG] CanvasTool function call detected:", canvasCall);
-              let args: any = {};
-              try {
-                args = typeof canvasCall.arguments === "string" ? JSON.parse(canvasCall.arguments) : canvasCall.arguments;
-              } catch {}
-              const title: string = args?.title || "Canvas";
-              // Execute the local canvas tool so it can broadcast a dedicated chat.canvas event and return URL/id
-              let canvasResult: any = { status: "sent" };
-              try {
-                const allFnsLocal = getAgent('base').tools as FunctionHandler[];
-                const canvasHandler = allFnsLocal.find((f: FunctionHandler) => f.schema.name === "send_canvas");
-                if (canvasHandler) {
-                  canvasResult = await (canvasHandler as any).handler(args, (t: string, d?: any) => {
-                    for (const ws of logsClients) {
-                      if (isOpen(ws))
-                        jsonSend(ws, {
-                          type: "response.function_call_arguments.delta",
-                          name: t.includes("function call:") ? t.split("function call: ")[1] : t,
-                          arguments: JSON.stringify(d || {}),
-                          call_id: `supervisor_${Date.now()}`,
-                        });
-                    }
-                  });
-                }
-              } catch (e) {
-                console.error("❌ Error executing send_canvas handler:", e);
-              }
-              // Finish the breadcrumb for completeness
-              for (const ws of logsClients) {
-                if (isOpen(ws))
-                  jsonSend(ws, {
-                    type: "response.function_call_arguments.done",
-                    name: canvasCall.name,
-                    arguments: canvasCall.arguments,
-                    call_id: canvasCall.call_id,
-                    status: "completed",
-                  });
-              }
-              // Solution A: confirm tool execution with Responses API to elicit a concise final text
-              try {
-                const confirmBody: any = {
-                  model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
-                  reasoning: {
-                    effort: 'minimal' as const,
-                  },
-                  previous_response_id: followUpResponse.id,
-                  input: [
-                    {
-                      type: "function_call",
-                      call_id: canvasCall.call_id,
-                      name: canvasCall.name,
-                      arguments: canvasCall.arguments,
-                    },
-                    {
-                      type: "function_call_output",
-                      call_id: canvasCall.call_id,
-                      output: typeof canvasResult === "string" ? canvasResult : JSON.stringify(canvasResult),
-                    },
-                  ],
-                  instructions:
-                    "Provide a concise plain-text confirmation (1-2 sentences) that the canvas has been sent, optionally summarizing what was included.",
-                };
-                console.log("[DEBUG] Canvas confirm Responses API request:", JSON.stringify(confirmBody, null, 2));
-                const confirmResponse = await session.openaiClient.responses.create(confirmBody);
-                if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
-                  console.log(`[${requestId}] Aborting after canvas confirm due to cancel`);
-                  return;
-                }
-                console.log(
-                  "[DEBUG] Canvas confirm Responses API response:",
-                  JSON.stringify(
-                    { id: confirmResponse.id, output_text: confirmResponse.output_text, output: confirmResponse.output },
-                    null,
-                    2
-                  )
-                );
-                session.previousResponseId = confirmResponse.id;
-                const extraCalls = confirmResponse.output?.filter((o: any) => o.type === "function_call");
-                if (extraCalls && extraCalls.length > 0) {
-                  console.warn("[WARN] Confirmation response still contained tool calls; not looping further.", extraCalls.map((c: any) => c.name));
-                }
-                const confirmText = confirmResponse.output_text || `I've sent the detailed content to your canvas: ${title}.`;
-                // Persist and deliver the confirmation text
-                const confirmMsg = {
-                  type: "assistant" as const,
-                  content: confirmText,
-                  timestamp: Date.now(),
-                  channel: "text" as const,
-                  supervisor: true,
-                };
-                session.conversationHistory.push(confirmMsg);
-                if (isSmsWindowOpen()) {
-                  const { smsUserNumber, smsTwilioNumber } = getNumbers();
-                  sendSms(confirmText, smsTwilioNumber, smsUserNumber).catch((e) =>
-                    console.error("sendSms error", e)
-                  );
-                }
-                for (const ws of chatClients) {
-                  if (isOpen(ws))
-                    jsonSend(ws, {
-                      type: "chat.response",
-                      content: confirmText,
-                      timestamp: Date.now(),
+                    type: 'conversation.item.created',
+                    item: {
+                      id: `msg_${Date.now()}`,
+                      type: 'message',
+                      role: 'assistant',
+                      content: [{ type: 'text', text }],
+                      channel: 'text',
                       supervisor: true,
-                    });
-                }
-                for (const ws of logsClients) {
-                  if (isOpen(ws))
-                    jsonSend(ws, {
-                      type: "conversation.item.created",
-                      item: {
-                        id: `msg_${Date.now()}`,
-                        type: "message",
-                        role: "assistant",
-                        content: [{ type: "text", text: confirmText }],
-                        channel: "text",
-                        supervisor: true,
-                      },
-                    });
-                }
-              } catch (e) {
-                console.error("❌ Error confirming canvas send:", e);
+                    },
+                  });
               }
               return;
             }

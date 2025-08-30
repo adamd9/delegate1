@@ -1,6 +1,7 @@
 import { RawData, WebSocket } from "ws";
 import { getDefaultAgent } from "../agentConfigs";
 import { getAgent, FunctionHandler } from "../agentConfigs";
+import { executeFunctionCall } from "../tools/orchestrators/functionCallExecutor";
 import { channelInstructions } from "../agentConfigs/channel";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 
@@ -203,7 +204,7 @@ export function processRealtimeModelEvent(
       console.log("[VOICE][ASSISTANT][FINAL-VOICE]", event);
       const { item } = event;
       if (item.type === "function_call") {
-        handleFunctionCall(item)
+        handleFunctionCall(item, logsClients)
           .then((output) => {
             if (session.modelConn) {
               jsonSend(session.modelConn, {
@@ -290,31 +291,17 @@ export function processRealtimeModelEvent(
   }
 }
 
-async function handleFunctionCall(item: { name: string; arguments: string }) {
+async function handleFunctionCall(item: { name: string; arguments: string; call_id?: string }, logsClients: Set<WebSocket>) {
   console.log("Handling function call:", item);
-  // Voice channel should only execute base tools
-  const baseFunctions = getAgent('base').tools as FunctionHandler[];
-  const func = baseFunctions.find((f: FunctionHandler) => f.schema.name === item.name);
-  if (!func) {
-    throw new Error(`No handler found for function: ${item.name}`);
-  }
-  let args: unknown;
   try {
-    args = JSON.parse(item.arguments);
-  } catch {
-    return JSON.stringify({
-      error: "Invalid JSON arguments for function call.",
-    });
-  }
-  try {
-    console.log("Calling function:", func.schema.name, args);
-    const result = await (func as any).handler(args as any);
+    const result = await executeFunctionCall(
+      { name: item.name, arguments: item.arguments, call_id: item.call_id },
+      { mode: 'voice', logsClients, confirm: false }
+    );
     return result;
   } catch (err: any) {
     console.error("Error running function:", err);
-    return JSON.stringify({
-      error: `Error running function ${item.name}: ${err.message}`,
-    });
+    return JSON.stringify({ error: `Error running function ${item.name}: ${err?.message || 'unknown'}` });
   }
 }
 
