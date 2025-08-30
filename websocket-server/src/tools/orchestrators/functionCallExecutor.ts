@@ -11,6 +11,7 @@ export interface OrchestratorContext {
   openaiClient?: any;
   previousResponseId?: string;
   confirm?: boolean; // default true for chat, false for voice
+  announce?: boolean; // when true (default), print standard console logs for detection/execution/result
 }
 
 export interface FunctionCallItem {
@@ -26,13 +27,13 @@ function safeParseArgs(args: any): any {
   return args || {};
 }
 
-function emitDelta(logsClients: Set<WebSocket>, name: string, data?: any) {
+function emitDelta(logsClients: Set<WebSocket>, name: string, data?: any, call_id?: string) {
   for (const ws of logsClients) {
     if (isOpen(ws)) jsonSend(ws, {
       type: "response.function_call_arguments.delta",
       name,
       arguments: JSON.stringify(data || {}),
-      call_id: `supervisor_${Date.now()}`,
+      call_id: call_id || `supervisor_${Date.now()}`,
     });
   }
 }
@@ -55,13 +56,23 @@ export async function executeFunctionCall(call: FunctionCallItem, ctx: Orchestra
   const handler = allFns.find((f: FunctionHandler) => f.schema.name === call.name);
   if (!handler) throw new Error(`No handler found for function: ${call.name}`);
   const parsed = safeParseArgs(call.arguments);
-  emitDelta(ctx.logsClients, call.name, parsed);
+  if (ctx.announce !== false) {
+    console.log(`🔧 Function call detected: ${call.name}`);
+    console.log(`🧠 Executing ${call.name} with args:`, JSON.stringify(parsed));
+  }
+  // Emit delta using the model-provided call_id to avoid duplicate-looking entries
+  emitDelta(ctx.logsClients, call.name, parsed, call.call_id);
   try {
     const result = await (handler as any).handler(parsed, (title: string, data?: any) => {
       const name = title.includes("function call:") ? title.split("function call: ")[1] : title;
+      // Breadcrumbs from inside handlers don't map to the original call_id; generate ephemeral ids
       emitDelta(ctx.logsClients, name, data);
     });
     emitDone(ctx.logsClients, call.name, call.arguments, call.call_id, result);
+    if (ctx.announce !== false) {
+      const len = typeof result === 'string' ? (result as string).length : JSON.stringify(result || {}).length;
+      console.log(`✅ Function result received (${len} chars)`);
+    }
     return result;
   } catch (e: any) {
     emitDone(ctx.logsClients, call.name, call.arguments, call.call_id, { error: e?.message || "handler error" });
