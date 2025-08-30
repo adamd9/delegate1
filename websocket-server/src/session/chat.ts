@@ -3,7 +3,7 @@ import OpenAI, { ClientOptions } from "openai";
 import { ProxyAgent } from "undici";
 import { ResponsesTextInput } from "../types";
 import { getAgent, getDefaultAgent, FunctionHandler } from "../agentConfigs";
-import { executeFunctionCalls } from "../tools/orchestrators/functionCallExecutor";
+import { executeFunctionCalls, executeFunctionCall } from "../tools/orchestrators/functionCallExecutor";
 import { channelInstructions, Channel } from "../agentConfigs/channel";
 import { isSmsWindowOpen, getNumbers } from "../smsState";
 import { sendSms } from "../sms";
@@ -192,7 +192,7 @@ export async function handleTextChatMessage(
     const functionCalls = response.output?.filter((output: any) => output.type === "function_call");
     if (functionCalls && functionCalls.length > 0) {
       const functionCall = functionCalls[0];
-      console.log(`🔧 Function call detected: ${functionCall.name}`);
+      // Defer console logging to orchestrator for consistency
       for (const ws of logsClients) {
         if (isOpen(ws))
           jsonSend(ws, {
@@ -212,40 +212,17 @@ export async function handleTextChatMessage(
         const functionHandler = allFns.find((f: FunctionHandler) => f.schema.name === functionCall.name);
         if (functionHandler) {
           const args = JSON.parse(functionCall.arguments);
-          console.log(`🧠 Executing ${functionCall.name} with args:`, JSON.stringify(args));
-          const addBreadcrumb = (title: string, data?: any) => {
-            for (const ws of logsClients) {
-              if (isOpen(ws))
-                jsonSend(ws, {
-                  type: "response.function_call_arguments.delta",
-                  name: title.includes("function call:") ? title.split("function call: ")[1] : title,
-                  arguments: JSON.stringify(data || {}),
-                  call_id: `supervisor_${Date.now()}`,
-                });
-            }
-            if (isSmsWindowOpen()) {
-              const { smsUserNumber, smsTwilioNumber } = getNumbers();
-              sendSms("......", smsTwilioNumber, smsUserNumber).catch((e) => console.error("sendSms error", e));
-            }
-          };
-          const functionResult = await (functionHandler as any).handler(args, addBreadcrumb);
+          // Execute via orchestrator to standardize breadcrumbs and completion
+          const functionResult = await executeFunctionCall(
+            { name: functionCall.name, arguments: functionCall.arguments, call_id: functionCall.call_id },
+            { mode: 'chat', logsClients, confirm: false }
+          );
           // Check cancel before proceeding
           if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
             console.log(`[${requestId}] Aborting after tool execution due to cancel`);
             return;
           }
-          console.log(`✅ Function result received (${(functionResult || '').length ?? 0} chars)`);
-          for (const ws of logsClients) {
-            if (isOpen(ws))
-              jsonSend(ws, {
-                type: "response.function_call_arguments.done",
-                name: functionCall.name,
-                arguments: functionCall.arguments,
-                call_id: functionCall.call_id,
-                status: "completed",
-                result: typeof functionResult === "string" ? functionResult : JSON.stringify(functionResult),
-              });
-          }
+          // Orchestrator prints the standard result log
           const fnSchemas = allFns.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
           const followUpBody = {
             model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
