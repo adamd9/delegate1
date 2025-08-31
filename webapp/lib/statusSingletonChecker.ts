@@ -150,20 +150,45 @@ this.emitter.emit('update', this.result);
       passed = false;
     }
     // 5. Check Twilio webhook URL (voiceUrl matches publicUrl/twiml)
-    if (numbersData && numbersData.length > 0 && publicUrl) {
-      const appendedTwimlUrl = publicUrl ? `${publicUrl}/twiml` : "";
-const onlyNumber = numbersData[0];
-const isWebhookMismatch = Boolean(appendedTwimlUrl && onlyNumber?.voiceUrl && appendedTwimlUrl !== onlyNumber.voiceUrl);
-checks.push({
-  id: "webhook",
-  label: "Update Twilio webhook URL",
-  passed: !!publicUrl && !isWebhookMismatch,
-  info: !isWebhookMismatch ? "Webhook URL matches" : `Expected: ${appendedTwimlUrl}, Found: ${onlyNumber?.voiceUrl}`
-});
-if (isWebhookMismatch) passed = false;
-    } else {
-      checks.push({ id: "webhook", label: "Update Twilio webhook URL", passed: false, info: "No phone number or public URL" });
-      passed = false;
+    // Optional: If no phone numbers are configured, do not fail the overall checklist.
+    {
+      const hasPhone = Array.isArray(numbersData) && numbersData.length > 0;
+      if (publicUrl) {
+        if (hasPhone) {
+          const appendedTwimlUrl = `${publicUrl}/twiml`;
+          const onlyNumber = numbersData[0];
+          const isWebhookMismatch = Boolean(
+            appendedTwimlUrl && onlyNumber?.voiceUrl && appendedTwimlUrl !== onlyNumber.voiceUrl
+          );
+          checks.push({
+            id: "webhook",
+            label: "Update Twilio webhook URL",
+            passed: !isWebhookMismatch,
+            info: !isWebhookMismatch
+              ? "Webhook URL matches"
+              : `Expected: ${appendedTwimlUrl}, Found: ${onlyNumber?.voiceUrl}`
+          });
+          if (isWebhookMismatch) passed = false; // Only fail when a phone exists and webhook is wrong
+        } else {
+          // No phone numbers configured: skip this optional check
+          checks.push({
+            id: "webhook",
+            label: "Update Twilio webhook URL",
+            passed: true,
+            info: "Skipped (no phone number configured)"
+          });
+          // Do not change `passed`
+        }
+      } else {
+        // No public URL. This is already handled by the websocket-server/ngrok checks above.
+        checks.push({
+          id: "webhook",
+          label: "Update Twilio webhook URL",
+          passed: false,
+          info: "No public URL"
+        });
+        // Avoid double-failing here; overall `passed` already reflects missing public URL.
+      }
     }
     return { passed, checks };
   }
