@@ -3,6 +3,7 @@ import { getWeatherFunction } from '../tools/handlers/weather';
 import { sendCanvas } from '../tools/handlers/canvas';
 import { sendSmsTool } from '../tools/handlers/sms';
 import { memAddFunction, memSearchFunction } from '../tools/handlers/mem0';
+import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction, listCategoriesFunction } from '../tools/handlers/notes';
 import { agentPersonality } from "./personality";
 
 // Base Agent Configuration
@@ -46,6 +47,11 @@ Persistent memory:
     sendSmsTool,
     memAddFunction,
     memSearchFunction,
+    createNoteFunction,
+    listNotesFunction,
+    updateNoteFunction,
+    deleteNoteFunction,
+    listCategoriesFunction,
   ],
   // Text (Responses API) model for chat interactions
   textModel: "gpt-5",
