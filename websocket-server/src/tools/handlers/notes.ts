@@ -1,24 +1,24 @@
 import { FunctionHandler } from '../../agentConfigs/types';
-import { createNote, listNotes, updateNote, deleteNote, listCategories } from '../../noteStore';
+import { createNote, listNotes, updateNote, deleteNote } from '../../noteStore';
 
 export const createNoteFunction: FunctionHandler = {
   schema: {
     name: 'create_note',
     type: 'function',
-    description: 'Create a new note with optional tags for categorization.',
+    description: 'Create a new note with a title and content.',
     parameters: {
       type: 'object',
       properties: {
+        title: { type: 'string' },
         content: { type: 'string' },
-        tags: { type: 'array', items: { type: 'string' } }
       },
-      required: ['content'],
+      required: ['title', 'content'],
       additionalProperties: false
     }
   },
-  handler: async ({ content, tags }: { content: string; tags?: string[] }) => {
-    const note = await createNote(content, Array.isArray(tags) ? tags : []);
-    return { status: 'created', note_id: note.id, content: note.content, tags: note.tags ?? [] };
+  handler: async ({ title, content }: { title: string; content: string }) => {
+    const note = await createNote(title, content);
+    return { status: 'created', note_id: note.id, title: note.title, content: note.content };
   }
 };
 
@@ -26,20 +26,20 @@ export const listNotesFunction: FunctionHandler = {
   schema: {
     name: 'list_notes',
     type: 'function',
-    description: 'List existing notes, optionally filtered by tag or search query.',
+    description: 'List note titles, optionally filtered by a search query (matches title or content).',
     parameters: {
       type: 'object',
       properties: {
-        tag: { type: 'string', description: 'Return only notes with this tag.' },
-        query: { type: 'string', description: 'Full text search within note content.' }
+        query: { type: 'string', description: 'Full text search within note title/content.' }
       },
       required: [],
       additionalProperties: false
     }
   },
-  handler: async ({ tag, query }: { tag?: string; query?: string }) => {
-    const notes = await listNotes({ tag, query });
-    return { notes };
+  handler: async ({ query }: { query?: string }) => {
+    const notes = await listNotes({ query });
+    // Return only id/title to keep payload small
+    return { notes: notes.map(n => ({ id: n.id, title: n.title })) };
   }
 };
 
@@ -47,22 +47,22 @@ export const updateNoteFunction: FunctionHandler = {
   schema: {
     name: 'update_note',
     type: 'function',
-    description: 'Update an existing note\'s content or tags.',
+    description: 'Update an existing note\'s title and/or content.',
     parameters: {
       type: 'object',
       properties: {
         note_id: { type: 'string' },
+        title: { type: 'string' },
         content: { type: 'string' },
-        tags: { type: 'array', items: { type: 'string' } }
       },
       required: ['note_id'],
       additionalProperties: false
     }
   },
-  handler: async ({ note_id, content, tags }: { note_id: string; content?: string; tags?: string[] }) => {
-    const note = await updateNote(note_id, content, tags);
+  handler: async ({ note_id, title, content }: { note_id: string; title?: string; content?: string }) => {
+    const note = await updateNote(note_id, { title, content });
     if (!note) return { error: 'not_found' };
-    return { status: 'updated', note_id: note.id, content: note.content, tags: note.tags ?? [] };
+    return { status: 'updated', note_id: note.id, title: note.title, content: note.content };
   }
 };
 
@@ -83,23 +83,5 @@ export const deleteNoteFunction: FunctionHandler = {
   handler: async ({ note_id }: { note_id: string }) => {
     const ok = await deleteNote(note_id);
     return { status: ok ? 'deleted' : 'not_found' };
-  }
-};
-
-export const listCategoriesFunction: FunctionHandler = {
-  schema: {
-    name: 'list_categories',
-    type: 'function',
-    description: 'List all unique tags used across notes.',
-    parameters: {
-      type: 'object',
-      properties: {},
-      required: [],
-      additionalProperties: false
-    }
-  },
-  handler: async () => {
-    const categories = await listCategories();
-    return { categories };
   }
 };

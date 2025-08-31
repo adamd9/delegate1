@@ -4,8 +4,8 @@ import path from 'path';
 
 export interface NoteData {
   id: string;
+  title: string;
   content: string;
-  tags?: string[];
   timestamp: number;
 }
 
@@ -14,7 +14,19 @@ const NOTES_FILE = path.join(__dirname, '..', 'notes.json');
 async function readAll(): Promise<NoteData[]> {
   try {
     const file = await fs.readFile(NOTES_FILE, 'utf-8');
-    return JSON.parse(file) as NoteData[];
+    const parsed = JSON.parse(file) as any[];
+    // Back-compat: older notes may not have title/tags
+    return parsed.map((n: any) => {
+      const title: string = typeof n.title === 'string' && n.title.length > 0
+        ? n.title
+        : deriveTitleFromContent(String(n.content ?? ''));
+      return {
+        id: String(n.id),
+        title,
+        content: String(n.content ?? ''),
+        timestamp: typeof n.timestamp === 'number' ? n.timestamp : Date.now(),
+      } as NoteData;
+    });
   } catch {
     return [];
   }
@@ -24,33 +36,34 @@ async function writeAll(notes: NoteData[]): Promise<void> {
   await fs.writeFile(NOTES_FILE, JSON.stringify(notes, null, 2), 'utf-8');
 }
 
-export async function createNote(content: string, tags: string[] = []): Promise<NoteData> {
+export async function createNote(title: string, content: string): Promise<NoteData> {
   const notes = await readAll();
-  const note: NoteData = { id: randomUUID(), content, tags, timestamp: Date.now() };
+  const note: NoteData = { id: randomUUID(), title, content, timestamp: Date.now() };
   notes.push(note);
   await writeAll(notes);
   return note;
 }
 
-export async function listNotes(filter?: { tag?: string; query?: string }): Promise<NoteData[]> {
+export async function listNotes(filter?: { query?: string }): Promise<NoteData[]> {
   let notes = await readAll();
-  if (filter?.tag) {
-    const tag = filter.tag;
-    notes = notes.filter(n => n.tags?.includes(tag));
-  }
   if (filter?.query) {
     const q = filter.query.toLowerCase();
-    notes = notes.filter(n => n.content.toLowerCase().includes(q));
+    notes = notes.filter(n =>
+      n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q)
+    );
   }
   return notes;
 }
 
-export async function updateNote(id: string, content?: string, tags?: string[]): Promise<NoteData | undefined> {
+export async function updateNote(
+  id: string,
+  updates: { title?: string; content?: string }
+): Promise<NoteData | undefined> {
   const notes = await readAll();
   const note = notes.find(n => n.id === id);
   if (!note) return undefined;
-  if (content !== undefined) note.content = content;
-  if (tags !== undefined) note.tags = tags;
+  if (updates.title !== undefined) note.title = updates.title;
+  if (updates.content !== undefined) note.content = updates.content;
   note.timestamp = Date.now();
   await writeAll(notes);
   return note;
@@ -65,11 +78,10 @@ export async function deleteNote(id: string): Promise<boolean> {
   return true;
 }
 
-export async function listCategories(): Promise<string[]> {
-  const notes = await readAll();
-  const set = new Set<string>();
-  for (const n of notes) {
-    if (n.tags) for (const t of n.tags) set.add(t);
-  }
-  return Array.from(set);
+function deriveTitleFromContent(content: string): string {
+  const firstLine = content.split(/\r?\n/, 1)[0] || '';
+  const m = /^\s*Title:\s*(.+)\s*$/i.exec(firstLine);
+  const raw = m ? m[1] : firstLine;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed.slice(0, 120) : 'Untitled';
 }
