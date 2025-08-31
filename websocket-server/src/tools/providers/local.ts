@@ -5,7 +5,7 @@ import { sendSmsTool } from "../handlers/sms";
 import { getCurrentTimeFunction } from "../handlers/current-time";
 import { getNextResponseFromSupervisorFunction } from "../handlers/supervisor-escalation";
 import { memAddFunction, memSearchFunction } from "../handlers/mem0";
-import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction, listCategoriesFunction } from "../handlers/notes";
+import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction } from "../handlers/notes";
 
 function wrap(name: string, description: string, parameters: any, origin: ToolOrigin, tags: string[], handler: (args: any) => Promise<any>) {
   return {
@@ -115,14 +115,6 @@ export function registerLocalTools() {
       'local',
       ['local', 'base-default'],
       (args) => deleteNoteFunction.handler(args)
-    ),
-    wrap(
-      listCategoriesFunction.schema.name,
-      listCategoriesFunction.schema.description,
-      listCategoriesFunction.schema.parameters,
-      'local',
-      ['local', 'base-default'],
-      (args) => listCategoriesFunction.handler(args)
     ),
   ];
   registerTools(providerId, tools);
