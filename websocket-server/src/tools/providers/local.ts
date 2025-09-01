@@ -15,9 +15,15 @@ function wrap(name: string, description: string, parameters: any, origin: ToolOr
     origin,
     tags,
     handler: async (args: any) => {
-      const out = await handler(args);
-      if (typeof out === 'string') return out;
-      try { return JSON.stringify(out); } catch { return String(out); }
+      try {
+        const out = await handler(args);
+        if (typeof out === 'string') return out;
+        try { return JSON.stringify(out); } catch { return String(out); }
+      } catch (e: any) {
+        // Generic protection: never let tool handler throw out of the registry layer
+        const errMsg = e?.message || String(e);
+        return JSON.stringify({ error: errMsg });
+      }
     }
   };
 }
@@ -67,23 +73,6 @@ export function registerLocalTools() {
       ['local', 'supervisor-allowed'],
       (args) => getCurrentTimeFunction.handler(args)
     ),
-    // Mem local tools (global user scope)
-    wrap(
-      memAddFunction.schema.name,
-      memAddFunction.schema.description,
-      memAddFunction.schema.parameters,
-      'local',
-      ['local', 'base-default'],
-      (args) => memAddFunction.handler(args)
-    ),
-    wrap(
-      memSearchFunction.schema.name,
-      memSearchFunction.schema.description,
-      memSearchFunction.schema.parameters,
-      'local',
-      ['local', 'base-default'],
-      (args) => memSearchFunction.handler(args)
-    ),
     wrap(
       createNoteFunction.schema.name,
       createNoteFunction.schema.description,
@@ -117,5 +106,31 @@ export function registerLocalTools() {
       (args) => deleteNoteFunction.handler(args)
     ),
   ];
+
+  // Conditionally register Mem0 tools only when API key is configured
+  if (process.env.MEM0_API_KEY) {
+    tools.push(
+      wrap(
+        memAddFunction.schema.name,
+        memAddFunction.schema.description,
+        memAddFunction.schema.parameters,
+        'local',
+        ['local', 'base-default'],
+        (args) => memAddFunction.handler(args)
+      )
+    );
+    tools.push(
+      wrap(
+        memSearchFunction.schema.name,
+        memSearchFunction.schema.description,
+        memSearchFunction.schema.parameters,
+        'local',
+        ['local', 'base-default'],
+        (args) => memSearchFunction.handler(args)
+      )
+    );
+  } else {
+    console.warn('[tools] Skipping Mem0 tools: MEM0_API_KEY not set');
+  }
   registerTools(providerId, tools);
 }

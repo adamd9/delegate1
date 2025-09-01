@@ -345,8 +345,43 @@ export async function handleTextChatMessage(
           }
           return;
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("❌ Error executing function call:", err);
+        // Gracefully notify user and finalize this request to avoid stalling the chat
+        const toolName = (functionCall && functionCall.name) ? functionCall.name : 'tool';
+        const errMsg = err?.message || 'unknown error';
+        const errorText = `Observation: ${toolName} failed: ${errMsg}. I won't block the chat; you can continue while I remain operational.`;
+        const assistantMessage = {
+          type: "assistant" as const,
+          content: errorText,
+          timestamp: Date.now(),
+          channel: "text" as const,
+          supervisor: true,
+        };
+        session.conversationHistory.push(assistantMessage);
+        for (const ws of chatClients) {
+          if (isOpen(ws)) jsonSend(ws, { type: "chat.response", content: errorText, timestamp: Date.now(), supervisor: true });
+        }
+        for (const ws of chatClients) {
+          if (isOpen(ws)) jsonSend(ws, { type: "chat.done", request_id: requestId, timestamp: Date.now() });
+        }
+        session.currentRequest = undefined;
+        // Also forward to logs for observability
+        for (const ws of logsClients) {
+          if (isOpen(ws))
+            jsonSend(ws, {
+              type: "conversation.item.created",
+              item: {
+                id: `msg_${Date.now()}`,
+                type: "message",
+                role: "assistant",
+                content: [{ type: "text", text: errorText }],
+                channel: "text",
+                supervisor: true,
+              },
+            });
+        }
+        return;
       }
     }
     // Fallback to assistant text output
