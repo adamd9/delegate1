@@ -25,7 +25,12 @@ export const sendSmsTool: FunctionHandler = {
       console.warn('[sendSmsTool] Missing phone numbers for SMS. Ensure env defaults are set (TWILIO_SMS_DEFAULT_TO, TWILIO_SMS_FROM) or numbers captured via webhook', { smsUserNumber, smsTwilioNumber });
       return { status: 'failed', reason: 'missing numbers' };
     }
-    await sendSms(message, smsTwilioNumber, smsUserNumber);
-    return { status: 'sent' };
+    try {
+      await sendSms(message, smsTwilioNumber, smsUserNumber);
+      return { status: 'sent' };
+    } catch (e: any) {
+      // Never throw from the tool; surface a structured error so the model can reply gracefully
+      return { status: 'failed', error: e?.message || String(e) };
+    }
   }
 };

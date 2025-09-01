@@ -75,8 +75,10 @@ export async function executeFunctionCall(call: FunctionCallItem, ctx: Orchestra
     }
     return result;
   } catch (e: any) {
-    emitDone(ctx.logsClients, call.name, call.arguments, call.call_id, { error: e?.message || "handler error" });
-    throw e;
+    const errMsg = e?.message || "handler error";
+    emitDone(ctx.logsClients, call.name, call.arguments, call.call_id, { error: errMsg });
+    // Do not throw; return structured error so upstream can continue gracefully
+    return { error: errMsg };
   }
 }
 
