@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useTranscript } from "@/contexts/TranscriptContext";
 import { ChevronRightIcon, ClipboardIcon } from "@heroicons/react/24/outline";
 import VoiceMiniApp from "@/components/voice-mini-app";
+import AdditionalTools from "@/components/additional-tools";
 
 export interface EnhancedTranscriptProps {
   userText: string;
@@ -237,7 +238,7 @@ export function EnhancedTranscript({
           })}
       </div>
 
-      {/* Input Area and Voice Mini App */}
+      {/* Input Area and Additional Tools */}
       <div className="flex-shrink-0 border-t border-gray-200 p-4 space-y-4">
         <div className="flex items-center gap-2">
           <input
@@ -272,7 +273,7 @@ export function EnhancedTranscript({
             </button>
           )}
         </div>
-        <VoiceMiniApp />
+        <AdditionalTools />
       </div>
     </div>
   );

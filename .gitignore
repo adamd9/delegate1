@@ -7,3 +7,6 @@ websocket-server/session-data.json
 websocket-server/notes.json
 websocket-server/dist
 scripts/localtunnel/*.log
+
+# runtime artifacts (ThoughtFlow, etc.)
+websocket-server/runtime-data/

@@ -38,3 +38,6 @@ next-env.d.ts
 
 # canvas artifacts
 /canvas-artifacts
+
+# runtime data (ThoughtFlow, temp artifacts, etc.)
+runtime-data/

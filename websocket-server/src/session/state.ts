@@ -40,6 +40,12 @@ export interface Session {
     canceled?: boolean;
     startedAt: number;
   };
+  // ThoughtFlow session tracking (v1 file-based persistence)
+  thoughtflow?: {
+    sessionId?: string;
+    startedAt?: number;
+    jsonlPath?: string;
+  };
 }
 
 // Singleton session state
