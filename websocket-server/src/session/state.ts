@@ -32,6 +32,7 @@ export interface Session {
   openAIApiKey?: string;
   conversationHistory?: ConversationItem[];
   previousResponseId?: string; // For Responses API conversation tracking
+  waitingForTool?: boolean;
   // Minimal in-flight chat request tracking
   currentRequest?: {
     id: string;
