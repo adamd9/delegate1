@@ -1,0 +1,14 @@
+direction: down
+
+WeatherCall: {
+  label: Run 2  tool.get_weather_from_coords
+  style: { fill: "#E6FFFA" }
+
+  p1: geo.resolve ("Canberra") -> lat=-35.2809, lon=149.13
+  p2: supervisor.exec (tool=get_weather_from_coords)
+  p3: tool.result (temp=2°C, summary="chilly")
+  p4: assistant.output ("In Canberra right now it’s about 2°C (very chilly).")
+  p5: audit.log (latency=~300ms)
+  
+  p1 -> p2 -> p3 -> p4 -> p5
+}

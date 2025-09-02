@@ -1,0 +1,14 @@
+direction: down
+
+MemWrite: {
+  label: Run 3  tool.mem_add  user_base_location
+  style: { fill: "#FFFBEA" }
+
+  m1: guard.require (confirmation="yes")
+  m2: memory.serialize ("User is based in Canberra, Australia.")
+  m3: memory.write (key=user.base_location, value=Canberra_AU)
+  m4: memory.result (status=ok, chars=118)
+  m5: assistant.output ("Got it — I’ll remember you’re based in Canberra...")
+  
+  m1 -> m2 -> m3 -> m4 -> m5
+}

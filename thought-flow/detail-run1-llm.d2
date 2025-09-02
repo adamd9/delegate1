@@ -1,0 +1,14 @@
+direction: down
+
+LLM_Request: {
+  label: Run 1  responses.request
+  style: { fill: "#EEF2FF" }
+
+  t1: prompt.load_template (persona=hk47)
+  t2: memory.read (key=user.base_location) => none found
+  t3: prompt.assemble (channel=text, persona=hk47)
+  t4: llm.call (model=gpt-5, mode=text, store=true)
+  t5: assistant.output ("To fetch today’s weather, I need your location...")
+  
+  t1 -> t2 -> t3 -> t4 -> t5
+}

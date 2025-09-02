@@ -1,0 +1,54 @@
+direction: down
+
+Startup: {
+  label: Startup
+  style: { fill: "#F6F7F9" }
+  a: mcpClient.init
+  b: mcpAdapter.register_tools (count=5)
+  a -> b
+}
+
+Run1: {
+  label: Run 1  chat.message "whats the weather today?"
+  style: { fill: "#EEF2FF" }
+
+  s1: chat.on_message ("whats the weather today?")
+  s2: nlp.preprocess_text (normalize casing, strip punctuation)
+  s3: responses.request gpt-5 (mode=text, store=true)
+  s4: assistant.output ("To fetch today’s weather, I need your location...")
+  s3.link: ./detail-run1-llm.svg
+
+  s1 -> s2 -> s3 -> s4
+}
+
+Run2: {
+  label: Run 2  chat.message "canberra"
+  style: { fill: "#E6FFFA" }
+
+  s1: chat.on_message ("canberra")
+  s2: nlp.normalize_location (matched=Canberra, AU)
+  s3: responses.request gpt-5 (acknowledge_fetch)
+  s4: tool.get_weather_from_coords (lat=-35.2809, lon=149.13)
+  s5: assistant.output ("In Canberra right now it’s about 2°C (very chilly).")
+  s4.link: ./detail-run2-weathercall.svg
+
+  s1 -> s2 -> s3 -> s4 -> s5
+}
+
+Run3: {
+  label: Run 3  chat.message "thanks. you should remember that im based in canberra"
+  style: { fill: "#FFFBEA" }
+
+  s1: chat.on_message ("thanks. you should remember that im based in canberra")
+  s2: responses.request gpt-5 (assistant: "Shall I store 'Master is based in Canberra' for future defaults?")
+  s3: chat.on_message ("yes")
+  s4: tool.mem_add (user_base=Canberra_AU)
+  s5: assistant.output ("Got it — I’ll remember you’re based in Canberra...")
+  s4.link: ./detail-run3-memwrite.svg
+
+  s1 -> s2 -> s3 -> s4 -> s5
+}
+
+Startup.b -.-> Run1.s1
+Run1.s4 -.-> Run2.s1
+Run2.s5 -.-> Run3.s1
