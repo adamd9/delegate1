@@ -4,6 +4,7 @@ import { sendCanvas } from '../tools/handlers/canvas';
 import { sendSmsTool } from '../tools/handlers/sms';
 import { memAddFunction, memSearchFunction } from '../tools/handlers/mem0';
 import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction } from '../tools/handlers/notes';
+import { hangupCallTool } from '../tools/handlers/hangup';
 import { agentPersonality } from "./personality";
 
 // Base Agent Configuration
@@ -51,6 +52,7 @@ Persistent memory:
     listNotesFunction,
     updateNoteFunction,
     deleteNoteFunction,
+    hangupCallTool,
   ],
   // Text (Responses API) model for chat interactions
   textModel: "gpt-5",
