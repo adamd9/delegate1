@@ -40,9 +40,8 @@ export default function AdditionalTools() {
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <button
+    <div className="flex items-center gap-2 flex-wrap">
+      <button
           type="button"
           onClick={endConversation}
           disabled={ending}
@@ -65,7 +64,6 @@ export default function AdditionalTools() {
         {status === 'err' && (
           <span className="text-xs text-red-600">Finalize failed</span>
         )}
-      </div>
       <VoiceMiniApp />
     </div>
   );

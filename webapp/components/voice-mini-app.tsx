@@ -38,14 +38,12 @@ const VoiceMiniApp = () => {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        {status === "CONNECTED" ? (
-          <Button onClick={disconnect}>Disconnect</Button>
-        ) : (
-          <Button onClick={handleConnect}>Connect</Button>
-        )}
-      </div>
+    <div className="flex flex-row items-center gap-2 flex-wrap">
+      {status === "CONNECTED" ? (
+        <Button size="sm" onClick={disconnect}>Disconnect</Button>
+      ) : (
+        <Button size="sm" onClick={handleConnect}>Connect</Button>
+      )}
       <label className="flex items-center gap-2">
         <input
           type="checkbox"
@@ -68,6 +66,7 @@ const VoiceMiniApp = () => {
       </label>
       {pushToTalk && (
         <Button
+          size="sm"
           onMouseDown={() => {
             setTalking(true);
             pushToTalkStart();
