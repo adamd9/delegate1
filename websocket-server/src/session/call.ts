@@ -4,6 +4,7 @@ import { getAgent, FunctionHandler } from "../agentConfigs";
 import { executeFunctionCall } from "../tools/orchestrators/functionCallExecutor";
 import { channelInstructions } from "../agentConfigs/channel";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
+import { HOLD_MUSIC_ULAW_BASE64, HOLD_MUSIC_DURATION_MS } from "../assets/holdMusic";
 
 // Explicitly type globalThis for logsClients/chatClients to avoid TS7017
 declare global {
@@ -15,6 +16,26 @@ declare global {
 
 // Accumulator for assistant voice transcript text by item id (server logs only)
 const assistantVoiceByItem = new Map<string, string>();
+
+function startHoldMusicLoop() {
+  if (!session.twilioConn || !session.streamSid) return;
+
+  const send = () => {
+    if (!session.waitingForTool || !session.twilioConn || !session.streamSid) return;
+    jsonSend(session.twilioConn, {
+      event: "media",
+      streamSid: session.streamSid,
+      media: { payload: HOLD_MUSIC_ULAW_BASE64 },
+    });
+    jsonSend(session.twilioConn, {
+      event: "mark",
+      streamSid: session.streamSid,
+    });
+    setTimeout(send, HOLD_MUSIC_DURATION_MS);
+  };
+
+  send();
+}
 
 export function establishCallSocket(ws: WebSocket, openAIApiKey: string) {
   console.info("📞 New call connection");
@@ -293,6 +314,8 @@ export function processRealtimeModelEvent(
 
 async function handleFunctionCall(item: { name: string; arguments: string; call_id?: string }, logsClients: Set<WebSocket>) {
   console.log("Handling function call:", item);
+  session.waitingForTool = true;
+  startHoldMusicLoop();
   try {
     const result = await executeFunctionCall(
       { name: item.name, arguments: item.arguments, call_id: item.call_id },
@@ -302,6 +325,8 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
   } catch (err: any) {
     console.error("Error running function:", err);
     return JSON.stringify({ error: `Error running function ${item.name}: ${err?.message || 'unknown'}` });
+  } finally {
+    session.waitingForTool = false;
   }
 }
 
