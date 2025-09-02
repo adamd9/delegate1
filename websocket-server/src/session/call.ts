@@ -17,6 +17,25 @@ declare global {
 // Accumulator for assistant voice transcript text by item id (server logs only)
 const assistantVoiceByItem = new Map<string, string>();
 
+// Timer handle for hold music loop
+let holdMusicTimer: NodeJS.Timeout | undefined;
+// Add slight gap between hold music loops to avoid a harsh beat
+const HOLD_MUSIC_LOOP_INTERVAL_MS = HOLD_MUSIC_DURATION_MS + 250;
+
+function stopHoldMusicLoop() {
+  if (holdMusicTimer) {
+    clearTimeout(holdMusicTimer);
+    holdMusicTimer = undefined;
+  }
+  if (session.twilioConn && session.streamSid) {
+    // Ensure any queued hold music is cleared
+    jsonSend(session.twilioConn, {
+      event: "clear",
+      streamSid: session.streamSid,
+    });
+  }
+}
+
 function startHoldMusicLoop() {
   if (!session.twilioConn || !session.streamSid) return;
 
@@ -31,7 +50,7 @@ function startHoldMusicLoop() {
       event: "mark",
       streamSid: session.streamSid,
     });
-    setTimeout(send, HOLD_MUSIC_DURATION_MS);
+    holdMusicTimer = setTimeout(send, HOLD_MUSIC_LOOP_INTERVAL_MS);
   };
 
   send();
@@ -327,6 +346,7 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
     return JSON.stringify({ error: `Error running function ${item.name}: ${err?.message || 'unknown'}` });
   } finally {
     session.waitingForTool = false;
+    stopHoldMusicLoop();
   }
 }
 
