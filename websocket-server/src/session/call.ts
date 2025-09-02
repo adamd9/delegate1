@@ -333,8 +333,11 @@ export function processRealtimeModelEvent(
 
 async function handleFunctionCall(item: { name: string; arguments: string; call_id?: string }, logsClients: Set<WebSocket>) {
   console.log("Handling function call:", item);
-  session.waitingForTool = true;
-  startHoldMusicLoop();
+  const isSupervisorEscalation = item.name === 'getNextResponseFromSupervisor';
+  if (isSupervisorEscalation) {
+    session.waitingForTool = true;
+    startHoldMusicLoop();
+  }
   try {
     const result = await executeFunctionCall(
       { name: item.name, arguments: item.arguments, call_id: item.call_id },
@@ -345,8 +348,10 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
     console.error("Error running function:", err);
     return JSON.stringify({ error: `Error running function ${item.name}: ${err?.message || 'unknown'}` });
   } finally {
-    session.waitingForTool = false;
-    stopHoldMusicLoop();
+    if (isSupervisorEscalation) {
+      session.waitingForTool = false;
+      stopHoldMusicLoop();
+    }
   }
 }
 
