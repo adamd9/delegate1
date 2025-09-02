@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTranscript } from "@/contexts/TranscriptContext";
 import { ChevronRightIcon, ClipboardIcon } from "@heroicons/react/24/outline";
-import VoiceMiniApp from "@/components/voice-mini-app";
 import AdditionalTools from "@/components/additional-tools";
 
 export interface EnhancedTranscriptProps {
