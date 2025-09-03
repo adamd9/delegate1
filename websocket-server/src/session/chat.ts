@@ -174,7 +174,9 @@ export async function handleTextChatMessage(
     const channelStepId = `snp_channel_${channel}`;
     appendEvent({ type: 'step.started', run_id: runId, step_id: policyStepId, label: 'policy.snapshot', payload: { version: policyHash, produced_at: (session.thoughtflow as any)?.startedAt || Date.now(), content_preview: baseInstructions.slice(0, 240) }, timestamp: Date.now() });
     appendEvent({ type: 'step.completed', run_id: runId, step_id: policyStepId, timestamp: Date.now() });
-    appendEvent({ type: 'step.started', run_id: runId, step_id: toolsStepId, label: 'tool.schemas.snapshot', payload: { version: toolsHash, count: functionSchemas.length }, timestamp: Date.now() });
+    const toolNames = functionSchemas.map((s: any) => s?.name).filter(Boolean);
+    const schemasPreview = JSON.stringify(functionSchemas.slice(0, 3), null, 2);
+    appendEvent({ type: 'step.started', run_id: runId, step_id: toolsStepId, label: 'tool.schemas.snapshot', payload: { version: toolsHash, count: functionSchemas.length, names: toolNames, schemas_preview: schemasPreview }, timestamp: Date.now() });
     appendEvent({ type: 'step.completed', run_id: runId, step_id: toolsStepId, timestamp: Date.now() });
     appendEvent({ type: 'step.started', run_id: runId, step_id: channelStepId, label: 'channel.preamble', payload: { channel }, timestamp: Date.now() });
     appendEvent({ type: 'step.completed', run_id: runId, step_id: channelStepId, timestamp: Date.now() });
@@ -219,7 +221,7 @@ export async function handleTextChatMessage(
       type: 'step.started',
       run_id: runId,
       step_id: llmStepId,
-      label: ThoughtFlowStepType.ToolCall,
+      label: ThoughtFlowStepType.AssistantCall,
       depends_on: [userStepId, policyStepId, toolsStepId, channelStepId],
       payload: {
         name: 'openai.responses.create',
@@ -230,7 +232,7 @@ export async function handleTextChatMessage(
       timestamp: Date.now(),
     });
     const response = await session.openaiClient.responses.create(requestBody);
-    appendEvent({ type: 'step.completed', run_id: runId, step_id: llmStepId, payload: { meta: { status: 'ok' } }, timestamp: Date.now() });
+    appendEvent({ type: 'step.completed', run_id: runId, step_id: llmStepId, payload: { meta: { status: 'ok' }, response_id: response.id, output_preview: (response.output_text || JSON.stringify(response.output || null)).slice(0, 300) }, timestamp: Date.now() });
     // If canceled mid-flight, abort committing
     if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
       console.log(`[${requestId}] Aborting post-response handling due to cancel`);
@@ -249,9 +251,13 @@ export async function handleTextChatMessage(
     );
     // Emit tool_output for LLM text before branching into tool calls
     const llmOutStepId = `step_llm_output_${requestId}`;
-    appendEvent({ type: 'step.started', run_id: runId, step_id: llmOutStepId, label: ThoughtFlowStepType.ToolOutput, depends_on: llmStepId, payload: { output: response.output_text || response.output }, timestamp: Date.now() });
+    const functionCalls = response.output?.filter((o: any) => o.type === 'function_call') || [];
+    const assistantOutputPayload = {
+      text: response.output_text,
+      function_calls: functionCalls.map((fc: any) => ({ name: fc.name, args: fc.arguments, call_id: fc.call_id })),
+    };
+    appendEvent({ type: 'step.started', run_id: runId, step_id: llmOutStepId, label: ThoughtFlowStepType.AssistantOutput, depends_on: llmStepId, payload: assistantOutputPayload, timestamp: Date.now() });
     appendEvent({ type: 'step.completed', run_id: runId, step_id: llmOutStepId, timestamp: Date.now() });
-    const functionCalls = response.output?.filter((output: any) => output.type === "function_call");
     if (functionCalls && functionCalls.length > 0) {
       const functionCall = functionCalls[0];
       const toolStepId = `step_tool_${functionCall.call_id}`;
@@ -267,7 +273,7 @@ export async function handleTextChatMessage(
         if (functionHandler) {
           const args = JSON.parse(functionCall.arguments);
           // Execute via orchestrator to standardize breadcrumbs and completion
-          appendEvent({ type: 'step.started', run_id: runId, step_id: toolStepId, label: ThoughtFlowStepType.ToolCall, payload: { name: functionCall.name, arguments: functionCall.arguments }, depends_on: userStepId, timestamp: Date.now() });
+          appendEvent({ type: 'step.started', run_id: runId, step_id: toolStepId, label: ThoughtFlowStepType.ToolCall, payload: { name: functionCall.name, arguments: functionCall.arguments }, depends_on: llmOutStepId, timestamp: Date.now() });
           const functionResult = await executeFunctionCall(
             { name: functionCall.name, arguments: functionCall.arguments, call_id: functionCall.call_id },
             { mode: 'chat', logsClients, confirm: false }
