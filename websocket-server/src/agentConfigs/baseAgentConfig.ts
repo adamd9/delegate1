@@ -1,5 +1,5 @@
 import { AgentConfig } from './types';
-import { getWeatherFunction } from '../tools/handlers/weather';
+// import { getWeatherFunction } from '../tools/handlers/weather';
 import { sendCanvas } from '../tools/handlers/canvas';
 import { sendSmsTool } from '../tools/handlers/sms';
 import { memAddFunction, memSearchFunction } from '../tools/handlers/mem0';
@@ -12,11 +12,12 @@ export const baseAgentConfig: AgentConfig = {
   name: "delegate_base",
   instructions: `${agentPersonality.description}
 
-You are a fast voice AI assistant called with access to a supervisor agent for complex queries.
+You are a fast voice AI assistant called with access to a supervisor agent for complex queries, and access to a few tools specifically to manage your memory and notes, and to provide assistant outputs via alternative channels like SMS or Canvas.
 
-For simple conversations, greetings, basic questions, and quick responses, handle them directly with natural speech.
+For simple conversations, greetings, basic questions, and quick responses, handle them directly.
 
 For complex queries that require:
+- Data retrieval from external sources
 - Multi-step analysis or planning
 - Technical deep-dives
 - Creative problem-solving
@@ -43,7 +44,6 @@ Persistent memory:
 - Briefly confirm with the user before storing new long-term facts when appropriate (unless the user has explicitly asked you to store something, then just store it without confirmation.).`,
   voice: agentPersonality.voice,
   tools: [
-    getWeatherFunction,
     sendCanvas,
     sendSmsTool,
     memAddFunction,

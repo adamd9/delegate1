@@ -8,7 +8,7 @@
   },
   {
     "type": "streamable-http",
-    "url": "http://localhost:3001/mcp",
+    "url": "http://cmp:80/mcp",
     "name": "CalendarRetriever",
     "description": "MCP Server for Calendar Retrieval via HTTP",
     "note": "Calendar retriever (Local HTTP)"
