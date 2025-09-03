@@ -48,7 +48,6 @@
   "dependencies": {
     "dotenv": "^17.2.1",
     "http-proxy-agent": "^7.0.2",
-    "localtunnel": "^2.0.2",
     "openai": "^5.12.2",
     "twilio": "^5.8.0"
   }
