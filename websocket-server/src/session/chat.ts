@@ -232,13 +232,24 @@ export async function handleTextChatMessage(
       timestamp: Date.now(),
     });
     const response = await session.openaiClient.responses.create(requestBody);
-    appendEvent({ type: 'step.completed', run_id: runId, step_id: llmStepId, payload: { meta: { status: 'ok' }, response_id: response.id, output_preview: (response.output_text || JSON.stringify(response.output || null)).slice(0, 300) }, timestamp: Date.now() });
     // If canceled mid-flight, abort committing
     if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
       console.log(`[${requestId}] Aborting post-response handling due to cancel`);
+      // Still mark step as completed but with cancel status
+      appendEvent({ type: 'step.completed', run_id: runId, step_id: llmStepId, payload: { meta: { status: 'canceled' } }, timestamp: Date.now() });
       appendEvent({ type: 'run.aborted', run_id: runId, request_id: requestId, timestamp: Date.now() });
       return;
     }
+
+    // Consolidate LLM output into the AssistantCall's completed payload
+    const functionCalls = response.output?.filter((o: any) => o.type === 'function_call') || [];
+    const assistantOutputPayload = {
+      text: response.output_text,
+      function_calls: functionCalls.map((fc: any) => ({ name: fc.name, args: fc.arguments, call_id: fc.call_id })),
+      response_id: response.id,
+    };
+    appendEvent({ type: 'step.completed', run_id: runId, step_id: llmStepId, payload: assistantOutputPayload, timestamp: Date.now() });
+
     // Persist thread state regardless of tool usage so subsequent turns chain correctly
     session.previousResponseId = response.id;
     console.log(
@@ -249,15 +260,7 @@ export async function handleTextChatMessage(
         2
       )
     );
-    // Emit tool_output for LLM text before branching into tool calls
-    const llmOutStepId = `step_llm_output_${requestId}`;
-    const functionCalls = response.output?.filter((o: any) => o.type === 'function_call') || [];
-    const assistantOutputPayload = {
-      text: response.output_text,
-      function_calls: functionCalls.map((fc: any) => ({ name: fc.name, args: fc.arguments, call_id: fc.call_id })),
-    };
-    appendEvent({ type: 'step.started', run_id: runId, step_id: llmOutStepId, label: ThoughtFlowStepType.AssistantOutput, depends_on: llmStepId, payload: assistantOutputPayload, timestamp: Date.now() });
-    appendEvent({ type: 'step.completed', run_id: runId, step_id: llmOutStepId, timestamp: Date.now() });
+
     if (functionCalls && functionCalls.length > 0) {
       const functionCall = functionCalls[0];
       const toolStepId = `step_tool_${functionCall.call_id}`;
@@ -273,16 +276,18 @@ export async function handleTextChatMessage(
         if (functionHandler) {
           const args = JSON.parse(functionCall.arguments);
           // Execute via orchestrator to standardize breadcrumbs and completion
-          appendEvent({ type: 'step.started', run_id: runId, step_id: toolStepId, label: ThoughtFlowStepType.ToolCall, payload: { name: functionCall.name, arguments: functionCall.arguments }, depends_on: llmOutStepId, timestamp: Date.now() });
+          appendEvent({ type: 'step.started', run_id: runId, step_id: toolStepId, label: ThoughtFlowStepType.ToolCall, payload: { name: functionCall.name, arguments: functionCall.arguments }, depends_on: llmStepId, timestamp: Date.now() });
           const functionResult = await executeFunctionCall(
             { name: functionCall.name, arguments: functionCall.arguments, call_id: functionCall.call_id },
             { mode: 'chat', logsClients, confirm: false }
           );
-          appendEvent({ type: 'step.completed', run_id: runId, step_id: toolStepId, payload: { meta: { status: 'ok' } }, timestamp: Date.now() });
-          // Emit a separate tool_output step that depends on the tool call
-          const toolOutputStepId = `step_tool_output_${functionCall.call_id}`;
-          appendEvent({ type: 'step.started', run_id: runId, step_id: toolOutputStepId, label: ThoughtFlowStepType.ToolOutput, depends_on: toolStepId, payload: { output: functionResult }, timestamp: Date.now() });
-          appendEvent({ type: 'step.completed', run_id: runId, step_id: toolOutputStepId, timestamp: Date.now() });
+          // Consolidate tool output into the ToolCall's completed payload
+          const toolOutputPayload = {
+            output: functionResult,
+            meta: { status: 'ok' },
+          };
+          appendEvent({ type: 'step.completed', run_id: runId, step_id: toolStepId, payload: toolOutputPayload, timestamp: Date.now() });
+
           // Check cancel before proceeding
           if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
             console.log(`[${requestId}] Aborting after tool execution due to cancel`);
@@ -341,7 +346,7 @@ export async function handleTextChatMessage(
               if (confirmResponseId) session.previousResponseId = confirmResponseId;
               const text = confirmText || followUpResponse.output_text || "(action completed)";
               const assistantStepId_handled = `step_assistant_${Date.now()}`;
-              appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_handled, label: ThoughtFlowStepType.AssistantMessage, payload: { text }, depends_on: toolOutputStepId, timestamp: Date.now() });
+              appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_handled, label: ThoughtFlowStepType.AssistantMessage, payload: { text }, depends_on: toolStepId, timestamp: Date.now() });
               const assistantMessage = {
                 type: 'assistant' as const,
                 content: text,
@@ -383,7 +388,7 @@ export async function handleTextChatMessage(
           }
           const finalResponse = followUpResponse.output_text || "Supervisor agent completed.";
           const assistantStepId_supervisor = `step_assistant_${Date.now()}`;
-          appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_supervisor, label: ThoughtFlowStepType.AssistantMessage, payload: { text: finalResponse }, depends_on: toolOutputStepId, timestamp: Date.now() });
+          appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_supervisor, label: ThoughtFlowStepType.AssistantMessage, payload: { text: finalResponse }, depends_on: toolStepId, timestamp: Date.now() });
           const assistantMessage = {
             type: "assistant" as const,
             content: finalResponse,
@@ -474,7 +479,7 @@ export async function handleTextChatMessage(
     // Fallback to assistant text output
     const assistantText = response.output_text || "(No text output)";
     const assistantStepId_fallback = `step_assistant_${Date.now()}`;
-    appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_fallback, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, depends_on: llmOutStepId, timestamp: Date.now() });
+    appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_fallback, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, depends_on: llmStepId, timestamp: Date.now() });
     const assistantMessage = {
       type: "assistant" as const,
       content: assistantText,

@@ -7,9 +7,7 @@ export enum ThoughtFlowStepType {
   UserMessage = 'user_message',
   AssistantMessage = 'assistant_message',
   AssistantCall = 'assistant_call',
-  AssistantOutput = 'assistant_output',
   ToolCall = 'tool_call',
-  ToolOutput = 'tool_output',
   ToolError = 'tool_error',
   Generic = 'generic',
 }
@@ -207,13 +205,6 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
   lines.push('      border-radius: 8');
   lines.push('    }');
   lines.push('  }');
-  lines.push('  assistantout: {');
-  lines.push('    style: {');
-  lines.push('      fill: "#F5F8FF"');
-  lines.push('      stroke: "#A8C5F7"');
-  lines.push('      border-radius: 6');
-  lines.push('    }');
-  lines.push('  }');
   lines.push('  assistantcall: {');
   lines.push('    style: {');
   lines.push('      fill: "#EEF5FF"');
@@ -279,21 +270,24 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
       const node = `s${sIdx + 1}`; // Scoped inside run box
       idToNode[step.step_id] = node;
       const baseLabel = `${sIdx + 1}. ${step.label || 'step'}${step.duration_ms != null ? ` (${step.duration_ms}ms)` : ''}`;
-      const l = (step.label || '').toLowerCase();
       const typeStr = (step.label || '') as ThoughtFlowStepType | string;
-      const isAssistantOutput = typeStr === ThoughtFlowStepType.AssistantOutput || l.includes('assistant_output');
-      const isToolOutput = !isAssistantOutput && (typeStr === ThoughtFlowStepType.ToolOutput || l.includes('tool_output'));
-      const isAssistantCall = typeStr === ThoughtFlowStepType.AssistantCall || l.includes('assistant_call');
-      const isToolCall = (!isAssistantCall) && (typeStr === ThoughtFlowStepType.ToolCall || (l.includes('tool_call') || (l.includes('tool') && !isToolOutput && !isAssistantOutput)));
-      const snippetCore = (isToolOutput || isAssistantOutput) ? extractToolOutput(step) : (isToolCall || isAssistantCall) ? extractToolSnippet(step) : extractSnippet(step);
-      let snippet = snippetCore;
-      let toolNameForOutput: string | undefined;
-      if (isToolOutput) {
-        toolNameForOutput = getToolNameForOutput(step, stepById);
-        if (toolNameForOutput && snippetCore) snippet = `tool: ${toolNameForOutput} — ${snippetCore}`;
-        else if (toolNameForOutput) snippet = `tool: ${toolNameForOutput}`;
+      const isAssistantCall = typeStr === ThoughtFlowStepType.AssistantCall;
+      const isToolCall = typeStr === ThoughtFlowStepType.ToolCall;
+
+      let snippet: string | undefined;
+      if (isAssistantCall || isToolCall) {
+        const callSnippet = extractToolSnippet(step);
+        const outputSnippet = extractToolOutput(step);
+        if (callSnippet && outputSnippet) {
+          snippet = `input: ${callSnippet}\noutput: ${outputSnippet}`;
+        } else {
+          snippet = callSnippet || outputSnippet;
+        }
+      } else {
+        snippet = extractSnippet(step);
       }
-      const klass = isAssistantOutput ? 'assistantout' : isToolOutput ? 'toolout' : isAssistantCall ? 'assistantcall' : isToolCall ? 'tool' : stepClass(step.label);
+
+      const klass = stepClass(step.label);
       // Emit block node with properly terminated |md when snippet exists
       lines.push(`  ${node}: {`);
       // Always use md so we can include the step_id inline
@@ -311,24 +305,9 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
       lines.push(`    class: ${klass}`);
       // Tooltip: include fuller details
       let tip: string | undefined;
-      if (isToolOutput || isAssistantOutput) {
-        const full = extractToolOutputFull(step) || '';
-        const nm = toolNameForOutput || getToolNameForOutput(step, stepById);
-        if (isToolOutput) {
-          tip = nm ? `tool: ${nm}\n${full}` : full;
-        } else {
-          const fcs = step.payload_started?.function_calls;
-          const hasFunctions = Array.isArray(fcs) && fcs.length > 0;
-          let functionsSummary = '';
-          if (hasFunctions) {
-            const fcLines = fcs.map((fc: any) => `- ${fc.name}(${truncate(fc.args || '', 60)})`);
-            functionsSummary = `\n\nFunction Calls:\n${fcLines.join('\n')}`;
-          }
-          tip = full + functionsSummary;
-        }
-      }
-      else if (isToolCall || isAssistantCall) tip = buildToolTooltip(step);
-      else {
+      if (isAssistantCall || isToolCall) {
+        tip = buildToolTooltip(step);
+      } else {
         // Snapshots and generic/user/assistant nodes
         tip = buildSnapshotTooltip(step) || extractFullText(step);
       }
@@ -365,75 +344,140 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
   return lines.join('\n');
 }
 
-function extractSnippet(step: { label?: string; payload_started?: any; payload_completed?: any }): string | undefined {
+function extractSnippet(step: { payload_started?: any }): string | undefined {
   try {
-    const lbl = (step.label || '').toLowerCase();
     const ps = step.payload_started || {};
-    // Prefer human text
-    const text = typeof ps?.text === 'string' ? ps.text
-      : typeof ps?.content === 'string' ? ps.content
-      : undefined;
-    const raw = text || undefined;
-    if (!raw) return undefined;
-    const collapsed = raw.replace(/\s+/g, ' ').trim();
-    if (!collapsed) return undefined;
+    const text = (typeof ps?.text === 'string' ? ps.text : undefined) || (typeof ps?.content === 'string' ? ps.content : undefined);
+    if (!text) return undefined;
+    const collapsed = text.replace(/\s+/g, ' ').trim();
     return trimToOneSentence(collapsed, 140);
   } catch {
     return undefined;
   }
 }
 
-function extractToolSnippet(step: { payload_started?: any }): string | undefined {
+function extractToolSnippet(step: { label?: string; payload_started?: any }): string | undefined {
   try {
     const ps = step.payload_started || {};
-    const name: string | undefined = ps?.name || ps?.tool || ps?.function || undefined;
-    let args: any = ps?.arguments;
-    if (typeof args === 'string') {
-      try { args = JSON.parse(args); } catch { /* keep as string */ }
+    if (step.label === ThoughtFlowStepType.AssistantCall) {
+      const preview = ps.arguments?.instructions_preview;
+      return preview ? `LLM Request: ${trimToOneSentence(preview, 100)}` : 'LLM Request';
     }
-    const argsStr = typeof args === 'string' ? args : (args ? JSON.stringify(args) : undefined);
-    const lines: string[] = [];
-    if (name) lines.push(`tool: ${name}`);
-    if (argsStr) lines.push(`args: ${argsStr}`);
-    const joined = lines.join('\n');
-    if (!joined) return undefined;
-    const trimmed = joined.replace(/\s+/g, ' ').trim();
-    return trimmed.length > 200 ? trimmed.slice(0, 197) + '…' : trimmed;
+
+    const name: string | undefined = ps?.name || ps?.tool || ps?.function;
+    const argsStr = ps?.arguments ? truncate(JSON.stringify(ps.arguments), 80) : '';
+    if (!name) return undefined;
+
+    const line = `tool: ${name}(${argsStr})`;
+    return line.replace(/\s+/g, ' ').trim();
   } catch {
     return undefined;
   }
 }
 
-function extractToolOutput(step: { label?: string; payload_started?: any; payload_completed?: any }): string | undefined {
+function extractToolOutput(step: { label?: string; payload_completed?: any }): string | undefined {
   try {
-    const ps = step.payload_started || {};
     const pc = step.payload_completed || {};
-    // Prefer payload_started.output for explicit tool_output steps; fallback to completed
-    let out: any = ps?.output ?? ps?.result ?? ps?.data;
-    if (out == null) out = pc?.output ?? pc?.result ?? pc?.data;
-    if (out == null) return undefined;
-    if (typeof out !== 'string') {
-      try { out = JSON.stringify(out); } catch { out = String(out); }
+    let out: any;
+
+    if (step.label === ThoughtFlowStepType.AssistantCall) {
+      if (pc.text) {
+        out = pc.text;
+      } else if (Array.isArray(pc.function_calls) && pc.function_calls.length > 0) {
+        return `Calls: ${pc.function_calls.map((fc: any) => fc.name).join(', ')}`;
+      }
+    } else {
+      out = pc?.output ?? pc?.result ?? pc?.data;
     }
-    const s = String(out).replace(/\s+/g, ' ').trim();
-    return trimToOneSentence(s, 140);
+
+    if (out == null) return undefined;
+    const s = typeof out === 'string' ? out : JSON.stringify(out);
+    return trimToOneSentence(s.replace(/\s+/g, ' ').trim(), 140);
   } catch {
     return undefined;
   }
 }
 
-function extractToolOutputFull(step: { payload_started?: any, payload_completed?: any }): string | undefined {
+function extractToolOutputFull(step: { label?: string; payload_completed?: any }): string | undefined {
   try {
-    const ps = step.payload_started || {};
     const pc = step.payload_completed || {};
-    // AssistantOutput has a 'text' field, ToolOutput has 'output'
-    let out: any = ps?.text ?? ps?.output ?? ps?.result ?? ps?.data;
-    if (out == null) out = pc?.output ?? pc?.result ?? pc?.data;
-    if (out == null) return undefined;
-    if (typeof out !== 'string') {
-      try { out = JSON.stringify(out, null, 2); } catch { out = String(out); }
+    let out: any;
+
+    if (step.label === ThoughtFlowStepType.AssistantCall) {
+      out = pc.text;
+    } else {
+      out = pc?.output ?? pc?.result ?? pc?.data;
     }
-    return String(out);
+
+    if (out == null) return undefined;
+    return typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+  } catch {
+    return undefined;
+  }
+}
+
+function buildToolTooltip(step: { label?: string, payload_started?: any; payload_completed?: any; duration_ms?: number }): string | undefined {
+  const head = extractToolSnippet(step);
+  if (!head) return undefined;
+  const dur = step.duration_ms != null ? `\nms: ${step.duration_ms}` : '';
+
+  let tooltip = `${head}${dur}`;
+
+  const ps = step.payload_started || {};
+  const pc = step.payload_completed || {};
+
+  // For Assistant Calls, add prompt provenance
+  if (step.label === ThoughtFlowStepType.AssistantCall && ps.prompt_provenance) {
+    const pp = ps.prompt_provenance;
+    const parts = Array.isArray(pp.parts) ? pp.parts : [];
+    const promptHead = `\n\nPrompt (${pp.token_count || '...'} tokens):\n${'-'.repeat(20)}`;
+    const promptParts = parts.map((p: any, i: number) => {
+      // Use a more descriptive fallback label
+      const label = p.label || (i === 0 ? 'system_prompt' : `message_${i}`);
+      return `[${label}]\n${truncate(String(p.content || ''), 400)}`;
+    }).join('\n\n');
+    tooltip += `${promptHead}\n${promptParts}`;
+  }
+
+  // For Assistant Calls, add output text and function calls
+  if (step.label === ThoughtFlowStepType.AssistantCall) {
+    if (pc.text) {
+      tooltip += `\n\nOutput Text:\n${'-'.repeat(20)}\n${pc.text}`;
+    }
+    if (Array.isArray(pc.function_calls) && pc.function_calls.length > 0) {
+      const fcLines = pc.function_calls.map((fc: any) => `- ${fc.name}(${truncate(JSON.stringify(fc.args) || '', 120)})`);
+      tooltip += `\n\nFunction Calls:\n${'-'.repeat(20)}\n${fcLines.join('\n')}`;
+    }
+  } else {
+    // For regular Tool Calls, add the output
+    const toolOutput = extractToolOutputFull(step);
+    if (toolOutput) {
+      tooltip += `\n\nOutput:\n${'-'.repeat(20)}\n${toolOutput}`;
+    }
+  }
+
+  return tooltip;
+}
+
+function buildSnapshotTooltip(step: { label?: string; payload_started?: any }): string | undefined {
+  try {
+    const lbl = (step.label || '').toLowerCase();
+    if (lbl.includes('snapshot')) {
+      const ps = step.payload_started || {};
+      const lines = [
+        `version: ${ps.version || 'n/a'}`, 
+        `produced_at: ${ps.produced_at || 'n/a'}`,
+      ];
+      if (ps.count != null) lines.push(`count: ${ps.count}`);
+      if (Array.isArray(ps.names)) {
+        lines.push(`names: ${ps.names.slice(0, 20).join(', ')}`);
+      }
+      if (ps.schemas_preview) {
+        lines.push('', 'schemas_preview:', ps.schemas_preview);
+      }
+      return lines.join('\n');
+    }
+    return undefined;
   } catch {
     return undefined;
   }
@@ -458,59 +502,22 @@ function sanitizeTooltip(s: string): string {
   return quoteEscaped.replace(/\n/g, '\\n');
 }
 
-function buildToolTooltip(step: { payload_started?: any; duration_ms?: number }): string | undefined {
-  const head = extractToolSnippet(step);
-  if (!head) return undefined;
-  const dur = step.duration_ms != null ? `\nms: ${step.duration_ms}` : '';
-  const ps = step.payload_started || {};
-  const pp = ps?.prompt_provenance;
-  if (!pp) return `${head}${dur}`;
-  const parts = Array.isArray(pp.parts) ? pp.parts : [];
-  const lines: string[] = [head + dur, '', 'prompt inputs:'];
-  parts.forEach((p: any, idx: number) => {
-    const t = typeof p?.type === 'string' ? p.type : 'part';
-    let v = p?.value;
-    if (v == null) v = '';
-    if (typeof v !== 'string') {
-      try { v = JSON.stringify(v); } catch { v = String(v); }
-    }
-    const preview = truncate(v, 300);
-    lines.push(`- [${idx}] ${t}: ${preview}`);
-  });
-  if (typeof pp.final_prompt === 'string') {
-    lines.push('', `final_prompt (${pp.final_prompt.length} chars)`);
-  }
-  return lines.join('\n');
-}
-
-function buildSnapshotTooltip(step: { label?: string; payload_started?: any }): string | undefined {
-  try {
-    const lbl = (step.label || '').toLowerCase();
-    const ps = step.payload_started || {};
-    if (lbl === 'policy.snapshot') {
-      const ver = ps?.version ? `version: ${ps.version}` : undefined;
-      const produced = ps?.produced_at ? `produced_at: ${ps.produced_at}` : undefined;
-      const preview = typeof ps?.content_preview === 'string' ? ps.content_preview : '';
-      const lines = ['policy snapshot', ver, produced, '', truncate(preview, 600)].filter(Boolean);
-      return lines.join('\n');
-    }
-    if (lbl === 'tool.schemas.snapshot') {
-      const ver = ps?.version ? `version: ${ps.version}` : undefined;
-      const count = ps?.count != null ? `tools: ${ps.count}` : undefined;
-      const namesArr: string[] = Array.isArray(ps?.names) ? ps.names.slice(0, 20) : [];
-      const names = namesArr.length ? `names: ${namesArr.join(', ')}` : undefined;
-      const previewRaw = typeof ps?.schemas_preview === 'string' ? ps.schemas_preview : '';
-      const preview = previewRaw ? `\n---\n${truncate(previewRaw, 2000)}` : '';
-      return ['tools snapshot', ver, count, names].filter(Boolean).join('\n') + preview;
-    }
-    if (lbl === 'channel.preamble') {
-      const ch = ps?.channel ? `channel: ${ps.channel}` : undefined;
-      return ['channel preamble', ch].filter(Boolean).join('\n');
-    }
-    return undefined;
-  } catch {
-    return undefined;
-  }
+function stepClass(label?: string): string {
+  const l = (label || '').toLowerCase();
+  const t = (label || '') as ThoughtFlowStepType | string;
+  // Prefer explicit enum matches first
+  if (t === ThoughtFlowStepType.UserMessage) return 'user';
+  if (t === ThoughtFlowStepType.AssistantMessage) return 'assistant';
+  if (t === ThoughtFlowStepType.AssistantCall) return 'assistantcall';
+  if (t === ThoughtFlowStepType.ToolError) return 'error';
+  if (t === ThoughtFlowStepType.ToolCall) return 'tool';
+  // Fallback heuristics for legacy labels
+  if (l.includes('user')) return 'user';
+  if (l.includes('assistant_call')) return 'assistantcall';
+  if (l.includes('assistant')) return 'assistant';
+  if (l.includes('tool_error') || l.includes('error')) return 'error';
+  if (l.includes('tool')) return 'tool';
+  return 'tool';
 }
 
 function trimToOneSentence(s: string, maxChars = 140): string {
@@ -536,26 +543,4 @@ function getToolNameForOutput(step: any, stepById: Record<string, any>): string 
   if (!parent) return undefined;
   const ps = parent.payload_started || {};
   return ps?.name || ps?.tool || ps?.function || undefined;
-}
-
-function stepClass(label?: string): string {
-  const l = (label || '').toLowerCase();
-  const t = (label || '') as ThoughtFlowStepType | string;
-  // Prefer explicit enum matches first
-  if (t === ThoughtFlowStepType.UserMessage) return 'user';
-  if (t === ThoughtFlowStepType.AssistantMessage) return 'assistant';
-  if (t === ThoughtFlowStepType.AssistantCall) return 'assistantcall';
-  if (t === ThoughtFlowStepType.AssistantOutput) return 'assistantout';
-  if (t === ThoughtFlowStepType.ToolError) return 'error';
-  if (t === ThoughtFlowStepType.ToolOutput) return 'toolout';
-  if (t === ThoughtFlowStepType.ToolCall) return 'tool';
-  // Fallback heuristics for legacy labels
-  if (l.includes('user')) return 'user';
-  if (l.includes('assistant_output')) return 'assistantout';
-  if (l.includes('assistant_call')) return 'assistantcall';
-  if (l.includes('assistant')) return 'assistant';
-  if (l.includes('tool_error') || l.includes('error')) return 'error';
-  if (l.includes('tool_output')) return 'toolout';
-  if (l.includes('tool')) return 'tool';
-  return 'tool';
 }
