@@ -247,13 +247,24 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
     lines.push('  class: runbox');
     const stepNodes: string[] = [];
     const idToNode: Record<string, string> = {};
+    const stepById: Record<string, any> = {};
+    run.steps.forEach((s) => { stepById[s.step_id] = s; });
     run.steps.forEach((step, sIdx) => {
       const node = `s${sIdx + 1}`; // Scoped inside run box
       idToNode[step.step_id] = node;
       const baseLabel = `${sIdx + 1}. ${step.label || 'step'}${step.duration_ms != null ? ` (${step.duration_ms}ms)` : ''}`;
-      const isTool = (step.label || '').toLowerCase().includes('tool');
-      const snippet = isTool ? extractToolSnippet(step) : extractSnippet(step);
-      const klass = isTool ? 'tool' : stepClass(step.label);
+      const l = (step.label || '').toLowerCase();
+      const isToolOutput = l.includes('tool_output');
+      const isToolCall = l.includes('tool_call') || (l.includes('tool') && !isToolOutput);
+      const snippetCore = isToolOutput ? extractToolOutput(step) : isToolCall ? extractToolSnippet(step) : extractSnippet(step);
+      let snippet = snippetCore;
+      let toolNameForOutput: string | undefined;
+      if (isToolOutput) {
+        toolNameForOutput = getToolNameForOutput(step, stepById);
+        if (toolNameForOutput && snippetCore) snippet = `tool: ${toolNameForOutput} — ${snippetCore}`;
+        else if (toolNameForOutput) snippet = `tool: ${toolNameForOutput}`;
+      }
+      const klass = isToolOutput ? 'toolout' : isToolCall ? 'tool' : stepClass(step.label);
       // Emit block node with properly terminated |md when snippet exists
       lines.push(`  ${node}: {`);
       if (snippet) {
@@ -268,31 +279,16 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
       lines.push('    shape: rectangle');
       lines.push(`    class: ${klass}`);
       // Tooltip: include fuller details
-      const tip = isTool ? buildToolTooltip(step) : extractFullText(step);
+      let tip: string | undefined;
+      if (isToolOutput) {
+        const full = extractToolOutputFull(step) || '';
+        const nm = toolNameForOutput || getToolNameForOutput(step, stepById);
+        tip = nm ? `tool: ${nm}\n${full}` : full;
+      }
+      else if (isToolCall) tip = buildToolTooltip(step);
+      else tip = extractFullText(step);
       if (tip) lines.push(`    tooltip: "${sanitizeTooltip(tip)}"`);
       lines.push('  }');
-      // If tool, also emit an output node to the right
-      if (isTool) {
-        const outNode = `${node}_out`;
-        const outSnippet = extractToolOutput(step);
-        lines.push(`  ${outNode}: {`);
-        if (outSnippet) {
-          lines.push('    label: |md');
-          lines.push(`      tool_output`);
-          lines.push('      ---');
-          lines.push(`      ${sanitizeLabel(outSnippet)}`);
-          lines.push('    |');
-        } else {
-          lines.push('    label: "tool_output"');
-        }
-        lines.push('    shape: rectangle');
-        lines.push('    class: toolout');
-        const outTip = extractToolOutputFull(step);
-        if (outTip) lines.push(`    tooltip: "${sanitizeTooltip(outTip)}"`);
-        lines.push('  }');
-        // Link call -> output horizontally
-        lines.push(`  ${node} -> ${outNode}`);
-      }
       stepNodes.push(node);
     });
     // Build dependency links if present; otherwise fallback to simple chaining
@@ -363,10 +359,13 @@ function extractToolSnippet(step: { payload_started?: any }): string | undefined
   }
 }
 
-function extractToolOutput(step: { payload_completed?: any }): string | undefined {
+function extractToolOutput(step: { label?: string; payload_started?: any; payload_completed?: any }): string | undefined {
   try {
+    const ps = step.payload_started || {};
     const pc = step.payload_completed || {};
-    let out: any = pc?.output ?? pc?.result ?? pc?.data;
+    // Prefer payload_started.output for explicit tool_output steps; fallback to completed
+    let out: any = ps?.output ?? ps?.result ?? ps?.data;
+    if (out == null) out = pc?.output ?? pc?.result ?? pc?.data;
     if (out == null) return undefined;
     if (typeof out !== 'string') {
       try { out = JSON.stringify(out); } catch { out = String(out); }
@@ -426,11 +425,23 @@ function trimToOneSentence(s: string, maxChars = 140): string {
   return out;
 }
 
+function getToolNameForOutput(step: any, stepById: Record<string, any>): string | undefined {
+  const deps = (step as any).depends_on as string | string[] | undefined;
+  if (!deps) return undefined;
+  const first = Array.isArray(deps) ? deps[0] : deps;
+  if (!first) return undefined;
+  const parent = stepById[first];
+  if (!parent) return undefined;
+  const ps = parent.payload_started || {};
+  return ps?.name || ps?.tool || ps?.function || undefined;
+}
+
 function stepClass(label?: string): string {
   const l = (label || '').toLowerCase();
   if (l.includes('user')) return 'user';
   if (l.includes('assistant')) return 'assistant';
   if (l.includes('tool_error') || l.includes('error')) return 'error';
+  if (l.includes('tool_output')) return 'toolout';
   if (l.includes('tool')) return 'tool';
   return 'tool';
 }

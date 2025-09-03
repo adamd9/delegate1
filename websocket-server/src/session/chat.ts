@@ -224,7 +224,11 @@ export async function handleTextChatMessage(
             { name: functionCall.name, arguments: functionCall.arguments, call_id: functionCall.call_id },
             { mode: 'chat', logsClients, confirm: false }
           );
-          appendEvent({ type: 'step.completed', run_id: runId, step_id: toolStepId, payload: { output: functionResult }, timestamp: Date.now() });
+          appendEvent({ type: 'step.completed', run_id: runId, step_id: toolStepId, payload: { meta: { status: 'ok' } }, timestamp: Date.now() });
+          // Emit a separate tool_output step that depends on the tool call
+          const toolOutputStepId = `step_tool_output_${functionCall.call_id}`;
+          appendEvent({ type: 'step.started', run_id: runId, step_id: toolOutputStepId, label: 'tool_output', depends_on: toolStepId, payload: { output: functionResult }, timestamp: Date.now() });
+          appendEvent({ type: 'step.completed', run_id: runId, step_id: toolOutputStepId, timestamp: Date.now() });
           // Check cancel before proceeding
           if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
             console.log(`[${requestId}] Aborting after tool execution due to cancel`);
@@ -283,7 +287,7 @@ export async function handleTextChatMessage(
               if (confirmResponseId) session.previousResponseId = confirmResponseId;
               const text = confirmText || followUpResponse.output_text || "(action completed)";
               const assistantStepId_handled = `step_assistant_${Date.now()}`;
-              appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_handled, label: 'assistant_message', payload: { text }, depends_on: toolStepId, timestamp: Date.now() });
+              appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_handled, label: 'assistant_message', payload: { text }, depends_on: toolOutputStepId, timestamp: Date.now() });
               const assistantMessage = {
                 type: 'assistant' as const,
                 content: text,
@@ -325,7 +329,7 @@ export async function handleTextChatMessage(
           }
           const finalResponse = followUpResponse.output_text || "Supervisor agent completed.";
           const assistantStepId_supervisor = `step_assistant_${Date.now()}`;
-          appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_supervisor, label: 'assistant_message', payload: { text: finalResponse }, depends_on: toolStepId, timestamp: Date.now() });
+          appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_supervisor, label: 'assistant_message', payload: { text: finalResponse }, depends_on: toolOutputStepId, timestamp: Date.now() });
           const assistantMessage = {
             type: "assistant" as const,
             content: finalResponse,
