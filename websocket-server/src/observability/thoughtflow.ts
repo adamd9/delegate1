@@ -215,6 +215,13 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
   lines.push('      border-radius: 6');
   lines.push('    }');
   lines.push('  }');
+  lines.push('  toolout: {');
+  lines.push('    style: {');
+  lines.push('      fill: "#FFFDF2"');
+  lines.push('      stroke: "#E6C200"');
+  lines.push('      border-radius: 6');
+  lines.push('    }');
+  lines.push('  }');
   lines.push('  error: {');
   lines.push('    style: {');
   lines.push('      fill: "#FFE8E8"');
@@ -241,8 +248,9 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
     run.steps.forEach((step, sIdx) => {
       const node = `s${sIdx + 1}`; // Scoped inside run box
       const baseLabel = `${sIdx + 1}. ${step.label || 'step'}${step.duration_ms != null ? ` (${step.duration_ms}ms)` : ''}`;
-      const snippet = extractSnippet(step);
-      const klass = stepClass(step.label);
+      const isTool = (step.label || '').toLowerCase().includes('tool');
+      const snippet = isTool ? extractToolSnippet(step) : extractSnippet(step);
+      const klass = isTool ? 'tool' : stepClass(step.label);
       // Emit block node with properly terminated |md when snippet exists
       lines.push(`  ${node}: {`);
       if (snippet) {
@@ -256,7 +264,32 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
       }
       lines.push('    shape: rectangle');
       lines.push(`    class: ${klass}`);
+      // Tooltip: include fuller details
+      const tip = isTool ? buildToolTooltip(step) : extractFullText(step);
+      if (tip) lines.push(`    tooltip: "${sanitizeTooltip(tip)}"`);
       lines.push('  }');
+      // If tool, also emit an output node to the right
+      if (isTool) {
+        const outNode = `${node}_out`;
+        const outSnippet = extractToolOutput(step);
+        lines.push(`  ${outNode}: {`);
+        if (outSnippet) {
+          lines.push('    label: |md');
+          lines.push(`      tool_output`);
+          lines.push('      ---');
+          lines.push(`      ${sanitizeLabel(outSnippet)}`);
+          lines.push('    |');
+        } else {
+          lines.push('    label: "tool_output"');
+        }
+        lines.push('    shape: rectangle');
+        lines.push('    class: toolout');
+        const outTip = extractToolOutputFull(step);
+        if (outTip) lines.push(`    tooltip: "${sanitizeTooltip(outTip)}"`);
+        lines.push('  }');
+        // Link call -> output horizontally
+        lines.push(`  ${node} -> ${outNode}`);
+      }
       stepNodes.push(node);
     });
     // Chain steps within run
@@ -289,6 +322,82 @@ function extractSnippet(step: { label?: string; payload_started?: any; payload_c
   } catch {
     return undefined;
   }
+}
+
+function extractToolSnippet(step: { payload_started?: any }): string | undefined {
+  try {
+    const ps = step.payload_started || {};
+    const name: string | undefined = ps?.name || ps?.tool || ps?.function || undefined;
+    let args: any = ps?.arguments;
+    if (typeof args === 'string') {
+      try { args = JSON.parse(args); } catch { /* keep as string */ }
+    }
+    const argsStr = typeof args === 'string' ? args : (args ? JSON.stringify(args) : undefined);
+    const lines: string[] = [];
+    if (name) lines.push(`tool: ${name}`);
+    if (argsStr) lines.push(`args: ${argsStr}`);
+    const joined = lines.join('\n');
+    if (!joined) return undefined;
+    const trimmed = joined.replace(/\s+/g, ' ').trim();
+    return trimmed.length > 200 ? trimmed.slice(0, 197) + '…' : trimmed;
+  } catch {
+    return undefined;
+  }
+}
+
+function extractToolOutput(step: { payload_completed?: any }): string | undefined {
+  try {
+    const pc = step.payload_completed || {};
+    let out: any = pc?.output ?? pc?.result ?? pc?.data;
+    if (out == null) return undefined;
+    if (typeof out !== 'string') {
+      try { out = JSON.stringify(out); } catch { out = String(out); }
+    }
+    const s = String(out).replace(/\s+/g, ' ').trim();
+    return s.length > 200 ? s.slice(0, 197) + '…' : s;
+  } catch {
+    return undefined;
+  }
+}
+
+function extractToolOutputFull(step: { payload_completed?: any }): string | undefined {
+  try {
+    const pc = step.payload_completed || {};
+    let out: any = pc?.output ?? pc?.result ?? pc?.data;
+    if (out == null) return undefined;
+    if (typeof out !== 'string') {
+      try { out = JSON.stringify(out, null, 2); } catch { out = String(out); }
+    }
+    return String(out);
+  } catch {
+    return undefined;
+  }
+}
+
+function extractFullText(step: { payload_started?: any }): string | undefined {
+  try {
+    const ps = step.payload_started || {};
+    const text = (typeof ps?.text === 'string' ? ps.text : undefined)
+      || (typeof ps?.content === 'string' ? ps.content : undefined);
+    return text ? String(text) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sanitizeTooltip(s: string): string {
+  // Escape backslashes, quotes and newlines for inline D2 string
+  return String(s)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n');
+}
+
+function buildToolTooltip(step: { payload_started?: any; duration_ms?: number }): string | undefined {
+  const head = extractToolSnippet(step);
+  if (!head) return undefined;
+  const dur = step.duration_ms != null ? `\nms: ${step.duration_ms}` : '';
+  return `${head}${dur}`;
 }
 
 function stepClass(label?: string): string {
