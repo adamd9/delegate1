@@ -166,6 +166,18 @@ export async function handleTextChatMessage(
     // Define system instructions
     const baseInstructions = getDefaultAgent().instructions;
     const instructions = [channelInstructions(channel), baseInstructions].join('\n');
+    // ThoughtFlow snapshots for long-lived prompt inputs (Approach B)
+    const policyHash = Buffer.from(baseInstructions, 'utf8').toString('base64').slice(0, 12);
+    const toolsHash = Buffer.from(JSON.stringify(functionSchemas), 'utf8').toString('base64').slice(0, 12);
+    const policyStepId = `snp_policy_${policyHash}`;
+    const toolsStepId = `snp_tools_${toolsHash}`;
+    const channelStepId = `snp_channel_${channel}`;
+    appendEvent({ type: 'step.started', run_id: runId, step_id: policyStepId, label: 'policy.snapshot', payload: { version: policyHash, produced_at: (session.thoughtflow as any)?.startedAt || Date.now(), content_preview: baseInstructions.slice(0, 240) }, timestamp: Date.now() });
+    appendEvent({ type: 'step.completed', run_id: runId, step_id: policyStepId, timestamp: Date.now() });
+    appendEvent({ type: 'step.started', run_id: runId, step_id: toolsStepId, label: 'tool.schemas.snapshot', payload: { version: toolsHash, count: functionSchemas.length }, timestamp: Date.now() });
+    appendEvent({ type: 'step.completed', run_id: runId, step_id: toolsStepId, timestamp: Date.now() });
+    appendEvent({ type: 'step.started', run_id: runId, step_id: channelStepId, label: 'channel.preamble', payload: { channel }, timestamp: Date.now() });
+    appendEvent({ type: 'step.completed', run_id: runId, step_id: channelStepId, timestamp: Date.now() });
     // Prepare request body for Responses API
     const requestBody: any = {
       model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
@@ -186,7 +198,39 @@ export async function handleTextChatMessage(
     };
     requestBody.input = [userInput];
     console.log("[DEBUG] Responses API Request:", JSON.stringify(requestBody, null, 2));
+    // ThoughtFlow: LLM tool_call with prompt_provenance (Approach B)
+    const llmStepId = `step_llm_${requestId}`;
+    const provenanceParts = [
+      { type: 'channel_preamble', value: channelInstructions(channel) },
+      { type: 'personality', value: baseInstructions },
+      ...(session.previousResponseId ? [{ type: 'previous_response_id', value: String(session.previousResponseId) }] : []),
+      { type: 'user_instruction', value: content },
+      { type: 'tool_schemas_snapshot', value: `tools:${functionSchemas.length}` },
+    ];
+    const promptProvenance = {
+      parts: provenanceParts,
+      final_prompt: instructions,
+      assembly: [
+        { part: 0, start: 0, end: channelInstructions(channel).length },
+        { part: 1, start: channelInstructions(channel).length + 1, end: instructions.length }
+      ]
+    };
+    appendEvent({
+      type: 'step.started',
+      run_id: runId,
+      step_id: llmStepId,
+      label: ThoughtFlowStepType.ToolCall,
+      depends_on: [userStepId, policyStepId, toolsStepId, channelStepId],
+      payload: {
+        name: 'openai.responses.create',
+        model: requestBody.model,
+        arguments: { instructions_preview: instructions.slice(0, 200), tools_count: functionSchemas.length },
+        prompt_provenance: promptProvenance,
+      },
+      timestamp: Date.now(),
+    });
     const response = await session.openaiClient.responses.create(requestBody);
+    appendEvent({ type: 'step.completed', run_id: runId, step_id: llmStepId, payload: { meta: { status: 'ok' } }, timestamp: Date.now() });
     // If canceled mid-flight, abort committing
     if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
       console.log(`[${requestId}] Aborting post-response handling due to cancel`);
@@ -203,6 +247,10 @@ export async function handleTextChatMessage(
         2
       )
     );
+    // Emit tool_output for LLM text before branching into tool calls
+    const llmOutStepId = `step_llm_output_${requestId}`;
+    appendEvent({ type: 'step.started', run_id: runId, step_id: llmOutStepId, label: ThoughtFlowStepType.ToolOutput, depends_on: llmStepId, payload: { output: response.output_text || response.output }, timestamp: Date.now() });
+    appendEvent({ type: 'step.completed', run_id: runId, step_id: llmOutStepId, timestamp: Date.now() });
     const functionCalls = response.output?.filter((output: any) => output.type === "function_call");
     if (functionCalls && functionCalls.length > 0) {
       const functionCall = functionCalls[0];
@@ -420,7 +468,7 @@ export async function handleTextChatMessage(
     // Fallback to assistant text output
     const assistantText = response.output_text || "(No text output)";
     const assistantStepId_fallback = `step_assistant_${Date.now()}`;
-    appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_fallback, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, depends_on: userStepId, timestamp: Date.now() });
+    appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_fallback, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, depends_on: llmOutStepId, timestamp: Date.now() });
     const assistantMessage = {
       type: "assistant" as const,
       content: assistantText,
