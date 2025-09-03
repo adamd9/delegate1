@@ -164,6 +164,54 @@ Artifact generation and access:
 
 ---
 
+## **6.1 Prompt provenance and snapshots (Approach B)**
+
+To understand how prompts are constructed, each LLM `tool_call` now includes inline `prompt_provenance` and depends on lightweight snapshot steps for long‑lived inputs.
+
+- __Snapshots__: small steps emitted when an input is used, even if it was produced earlier (e.g., at boot). Examples:
+  - `policy.snapshot::<hash>` with a preview and produced_at
+  - `tool.schemas.snapshot::<hash>` with tool count
+  - `channel.preamble::<channel>`
+- __Dependencies__: the LLM `tool_call` step has `depends_on` edges pointing to the relevant snapshots and the current `user_message`.
+- __Inline provenance__: the `tool_call.payload.prompt_provenance` contains:
+  - `parts`: ordered list of prompt components (e.g., `channel_preamble`, `personality`, `user_instruction`, `tool_schemas_snapshot`)
+  - `final_prompt`: the final instruction string sent to the model
+  - `assembly`: optional spans mapping parts into the final string
+
+Example LLM step (excerpt):
+
+```json
+{
+  "step_id": "step_llm_req_123",
+  "label": "tool_call",
+  "depends_on": ["step_user_req_123", "snp_policy_ab12cd34", "snp_tools_ef56gh78", "snp_channel_text"],
+  "payload_started": {
+    "name": "openai.responses.create",
+    "model": "gpt-5-mini",
+    "arguments": { "instructions_preview": "You are...", "tools_count": 7 },
+    "prompt_provenance": {
+      "parts": [
+        { "type": "channel_preamble", "value": "Text channel guidance..." },
+        { "type": "personality", "value": "You are helpful..." },
+        { "type": "user_instruction", "value": "what's the weather?" },
+        { "type": "tool_schemas_snapshot", "value": "tools:7" }
+      ],
+      "final_prompt": "Text channel guidance...\nYou are helpful...",
+      "assembly": [ { "part": 0, "start": 0, "end": 24 }, { "part": 1, "start": 25, "end": 58 } ]
+    }
+  }
+}
+```
+
+Rendering in D2:
+
+- Snapshot nodes appear as regular steps and feed edges directly into the LLM `tool_call` node.
+- Hovering the `tool_call` shows a tooltip with model and arguments; use the JSON view to inspect the full `prompt_provenance`.
+
+This keeps the graph compact (no extra composition node) while preserving full traceability of prompt inputs, including artifacts produced before the session.
+
+---
+
 ## **7. Closing Thought**
 
 A chat transcript shows what was said.
