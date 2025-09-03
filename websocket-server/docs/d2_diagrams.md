@@ -11,6 +11,58 @@ Use this as a quick reference for editing D2 files like `docs/sales_process_simp
 stage0: { ... }
 ```
 
+## Tooltips
+- Use `tooltip: "..."` to add hover text to any node.
+- Escape quotes `"` and newlines `\n` inside tooltip strings.
+- Keep tooltips concise; the generator truncates long content.
+
+```d2
+# Simple tooltip example
+x: { tooltip: "Total abstinence is easier than perfect moderation" }
+y: { tooltip: "Gee, I feel kind of LIGHT in the head now,\nknowing I can't make my satellite dish PAYMENTS!" }
+x -> y
+```
+
+### ThoughtFlow usage
+- User/assistant steps: tooltip shows full input text (when available).
+- Tool call steps: tooltip includes tool name, args, and duration in ms.
+- Tool output nodes: tooltip contains the full JSON/string result.
+
+```d2
+run_1: {
+  label: "Run 1 — completed, 842ms"
+  direction: down
+  class: runbox
+  s2: {
+    label: |md
+      2. tool_call (157ms)
+      ---
+      tool: weather.get
+      args: {"city":"Melbourne"}
+    |
+    shape: rectangle
+    class: tool
+    tooltip: "tool: weather.get\nargs: {\"city\":\"Melbourne\"}\nms: 157"
+  }
+  s2_out: {
+    label: |md
+      tool_output
+      ---
+      {"tempC":13,"conditions":"Showers"}
+    |
+    shape: rectangle
+    class: toolout
+    tooltip: "{\n  \"tempC\": 13,\n  \"conditions\": \"Showers\"\n}"
+  }
+  s2 -> s2_out
+}
+```
+
+Best practices:
+- Keep labels short; move verbose details into tooltips.
+- Prefer JSON for args/output; newlines are supported in tooltips.
+- Avoid putting style keys in tooltips; they’re plain text.
+
 ## Classes (reuse styles)
 - Define once under `classes:`.
 - Apply with `class: name` on nodes (or `classes: [a, b]` for multiples).
