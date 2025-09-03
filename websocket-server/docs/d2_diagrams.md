@@ -24,9 +24,24 @@ x -> y
 ```
 
 ### ThoughtFlow usage
-- User/assistant steps: tooltip shows full input text (when available).
-- Tool call steps: tooltip includes tool name, args, and duration in ms.
-- Tool output nodes: tooltip contains the full JSON/string result.
+
+Step types (enum):
+- `user_message`, `assistant_message`, `tool_call`, `tool_output`, `tool_error`, `generic`
+
+Dependency model:
+- Each step may set `depends_on` as a string or string[] of prior `step_id`s.
+- The D2 generator draws edges from each dependency to the step.
+- If no steps include `depends_on`, a simple linear chain is rendered.
+
+First-class tool output:
+- `tool_output` is emitted as its own step, depending on the `tool_call` step.
+- Its label includes the tool name and a short snippet of the output when available.
+
+Snippet and tooltip policy:
+- Labels show a short, single-sentence snippet (~140 chars) for readability.
+- `user_message`/`assistant_message`: label snippet is the first sentence of the text; tooltip shows the full text (when available).
+- `tool_call`: label includes call index and duration; tooltip shows tool name, args, and duration in ms.
+- `tool_output`: label includes the tool name and output snippet; tooltip contains the full JSON/string output.
 
 ```d2
 run_1: {
@@ -57,6 +72,17 @@ run_1: {
   s2 -> s2_out
 }
 ```
+
+Rendering styles:
+- Node classes applied by step type: `user`, `assistant`, `tool`, `toolout`, `error`.
+- Top-level run container uses `class: runbox`.
+
+Artifact locations and UI link:
+- On session finalization, artifacts are written under `websocket-server/runtime-data/thoughtflow/`:
+  - `<session_id>.json` (consolidated ThoughtFlow runs/steps)
+  - `<session_id>.d2` (auto-generated diagram)
+- The server emits a `thoughtflow.artifacts` event via `/logs` with `json_path` and `d2_path`.
+- The web app surfaces a breadcrumb titled "🧩 ThoughtFlow artifacts" linking to these paths.
 
 Best practices:
 - Keep labels short; move verbose details into tooltips.

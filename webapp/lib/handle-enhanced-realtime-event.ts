@@ -370,6 +370,20 @@ export default function handleEnhancedRealtimeEvent(
       );
       break;
 
+    // ThoughtFlow artifacts (JSON + D2) after session finalization
+    case "thoughtflow.artifacts":
+      addTranscriptBreadcrumb(
+        "🧩 ThoughtFlow artifacts",
+        {
+          session_id: event.session_id,
+          json_path: event.json_path,
+          d2_path: event.d2_path,
+          timestamp: event.timestamp,
+          note: "Artifacts written on server under websocket-server/runtime-data/thoughtflow"
+        }
+      );
+      break;
+
     // Error events
     case "error":
       addTranscriptBreadcrumb(

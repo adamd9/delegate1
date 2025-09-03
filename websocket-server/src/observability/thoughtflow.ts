@@ -2,6 +2,16 @@ import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync } fr
 import { join } from 'path';
 import { session } from '../session/state';
 
+// Explicit step types for ThoughtFlow events
+export enum ThoughtFlowStepType {
+  UserMessage = 'user_message',
+  AssistantMessage = 'assistant_message',
+  ToolCall = 'tool_call',
+  ToolOutput = 'tool_output',
+  ToolError = 'tool_error',
+  Generic = 'generic',
+}
+
 // Store artifacts under websocket-server/runtime-data/thoughtflow (project root relative)
 // At runtime __dirname is dist/observability, so go up two levels.
 const BASE_DIR = join(__dirname, '..', '..', 'runtime-data', 'thoughtflow');
@@ -38,7 +48,7 @@ export function appendEvent(event: any) {
   }
 }
 
-export function endSession(): { id: string; jsonPath: string } | null {
+export function endSession(): { id: string; jsonPath: string; d2Path: string } | null {
   try {
     const { id, jsonlPath } = ensureSession();
     const jsonPath = join(BASE_DIR, `${id}.json`);
@@ -168,7 +178,7 @@ export function endSession(): { id: string; jsonPath: string } | null {
     const d2Path = join(BASE_DIR, `${id}.d2`);
     writeFileSync(d2Path, d2);
     appendFileSync(jsonlPath, JSON.stringify({ type: 'session.ended', session_id: id, ended_at: consolidated.ended_at }) + '\n');
-    return { id, jsonPath };
+    return { id, jsonPath, d2Path };
   } catch (e) {
     console.warn('[thoughtflow] endSession failed:', (e as any)?.message || e);
     return null;
@@ -254,8 +264,9 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
       idToNode[step.step_id] = node;
       const baseLabel = `${sIdx + 1}. ${step.label || 'step'}${step.duration_ms != null ? ` (${step.duration_ms}ms)` : ''}`;
       const l = (step.label || '').toLowerCase();
-      const isToolOutput = l.includes('tool_output');
-      const isToolCall = l.includes('tool_call') || (l.includes('tool') && !isToolOutput);
+      const typeStr = (step.label || '') as ThoughtFlowStepType | string;
+      const isToolOutput = typeStr === ThoughtFlowStepType.ToolOutput || l.includes('tool_output');
+      const isToolCall = typeStr === ThoughtFlowStepType.ToolCall || (l.includes('tool_call') || (l.includes('tool') && !isToolOutput));
       const snippetCore = isToolOutput ? extractToolOutput(step) : isToolCall ? extractToolSnippet(step) : extractSnippet(step);
       let snippet = snippetCore;
       let toolNameForOutput: string | undefined;
@@ -438,6 +449,14 @@ function getToolNameForOutput(step: any, stepById: Record<string, any>): string 
 
 function stepClass(label?: string): string {
   const l = (label || '').toLowerCase();
+  const t = (label || '') as ThoughtFlowStepType | string;
+  // Prefer explicit enum matches first
+  if (t === ThoughtFlowStepType.UserMessage) return 'user';
+  if (t === ThoughtFlowStepType.AssistantMessage) return 'assistant';
+  if (t === ThoughtFlowStepType.ToolError) return 'error';
+  if (t === ThoughtFlowStepType.ToolOutput) return 'toolout';
+  if (t === ThoughtFlowStepType.ToolCall) return 'tool';
+  // Fallback heuristics for legacy labels
   if (l.includes('user')) return 'user';
   if (l.includes('assistant')) return 'assistant';
   if (l.includes('tool_error') || l.includes('error')) return 'error';
