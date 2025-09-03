@@ -2,6 +2,11 @@ import { RawData, WebSocket } from "ws";
 import { session, parseMessage, jsonSend, isOpen } from "./state";
 import { endSession, ensureSession } from "../observability/thoughtflow";
 
+// Build a base URL consistent with server.ts EFFECTIVE_PUBLIC_URL
+const PORT = parseInt(process.env.PORT || "8081", 10);
+const PUBLIC_URL = process.env.PUBLIC_URL || "";
+const EFFECTIVE_PUBLIC_URL = (PUBLIC_URL && PUBLIC_URL.trim()) || `http://localhost:${PORT}`;
+
 export function establishLogsSocket(ws: WebSocket, logsClients: Set<WebSocket>) {
   // On new logs/observability connection, replay existing conversation history
   // so the UI can immediately render the current transcript without waiting
@@ -60,12 +65,18 @@ export function processLogsSocketMessage(data: RawData, logsClients: Set<WebSock
       }
       // If we have artifact paths, broadcast them for UI breadcrumbs
       if (result && result.jsonPath && result.d2Path) {
+        const url_json = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${id}.json`;
+        const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${id}.d2`;
+        const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${id}.d2`;
         for (const ws of logsClients) {
           if (isOpen(ws)) jsonSend(ws, {
             type: 'thoughtflow.artifacts',
             session_id: id,
             json_path: result.jsonPath,
             d2_path: result.d2Path,
+            url_json,
+            url_d2,
+            url_d2_raw,
             timestamp: Date.now(),
           });
         }
