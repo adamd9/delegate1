@@ -185,13 +185,43 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
   lines.push(`// session: ${consolidated.session_id}`);
   lines.push('direction: down');
   lines.push('');
-  // Classes per docs guide
+  // Classes per docs guide (multiline maps)
   lines.push('classes: {');
-  lines.push('  runbox: { style: { fill: "#F7F9FC" stroke: "#C9D2E3" border-radius: 8 } }');
-  lines.push('  user: { style: { fill: "#E8F1FF" stroke: "#6FA8FF" border-radius: 6 } }');
-  lines.push('  assistant: { style: { fill: "#E8FFF1" stroke: "#66D19E" border-radius: 6 } }');
-  lines.push('  tool: { style: { fill: "#FFF8E6" stroke: "#F4B400" border-radius: 6 } }');
-  lines.push('  error: { style: { fill: "#FFE8E8" stroke: "#FF6B6B" border-radius: 6 } }');
+  lines.push('  runbox: {');
+  lines.push('    style: {');
+  lines.push('      fill: "#F7F9FC"');
+  lines.push('      stroke: "#C9D2E3"');
+  lines.push('      border-radius: 8');
+  lines.push('    }');
+  lines.push('  }');
+  lines.push('  user: {');
+  lines.push('    style: {');
+  lines.push('      fill: "#E8F1FF"');
+  lines.push('      stroke: "#6FA8FF"');
+  lines.push('      border-radius: 6');
+  lines.push('    }');
+  lines.push('  }');
+  lines.push('  assistant: {');
+  lines.push('    style: {');
+  lines.push('      fill: "#E8FFF1"');
+  lines.push('      stroke: "#66D19E"');
+  lines.push('      border-radius: 6');
+  lines.push('    }');
+  lines.push('  }');
+  lines.push('  tool: {');
+  lines.push('    style: {');
+  lines.push('      fill: "#FFF8E6"');
+  lines.push('      stroke: "#F4B400"');
+  lines.push('      border-radius: 6');
+  lines.push('    }');
+  lines.push('  }');
+  lines.push('  error: {');
+  lines.push('    style: {');
+  lines.push('      fill: "#FFE8E8"');
+  lines.push('      stroke: "#FF6B6B"');
+  lines.push('      border-radius: 6');
+  lines.push('    }');
+  lines.push('  }');
   lines.push('}');
   lines.push('');
   if (!consolidated.runs.length) {
@@ -212,12 +242,21 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
       const node = `s${sIdx + 1}`; // Scoped inside run box
       const baseLabel = `${sIdx + 1}. ${step.label || 'step'}${step.duration_ms != null ? ` (${step.duration_ms}ms)` : ''}`;
       const snippet = extractSnippet(step);
-      const md = snippet
-        ? `|md\n  ${sanitizeLabel(baseLabel)}\n  ---\n  ${sanitizeLabel(snippet)}\n  |`
-        : `"${sanitizeLabel(baseLabel)}"`;
-      const shape = 'rectangle';
       const klass = stepClass(step.label);
-      lines.push(`  ${node}: { label: ${md} shape: ${shape} class: ${klass} }`);
+      // Emit block node with properly terminated |md when snippet exists
+      lines.push(`  ${node}: {`);
+      if (snippet) {
+        lines.push('    label: |md');
+        lines.push(`      ${sanitizeLabel(baseLabel)}`);
+        lines.push('      ---');
+        lines.push(`      ${sanitizeLabel(snippet)}`);
+        lines.push('    |');
+      } else {
+        lines.push(`    label: "${sanitizeLabel(baseLabel)}"`);
+      }
+      lines.push('    shape: rectangle');
+      lines.push(`    class: ${klass}`);
+      lines.push('  }');
       stepNodes.push(node);
     });
     // Chain steps within run
