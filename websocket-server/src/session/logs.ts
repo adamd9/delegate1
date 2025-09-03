@@ -58,6 +58,18 @@ export function processLogsSocketMessage(data: RawData, logsClients: Set<WebSock
       for (const ws of logsClients) {
         if (isOpen(ws)) jsonSend(ws, { type: 'session.finalized', session_id: id, ok: Boolean(result), timestamp: Date.now() });
       }
+      // If we have artifact paths, broadcast them for UI breadcrumbs
+      if (result && result.jsonPath && result.d2Path) {
+        for (const ws of logsClients) {
+          if (isOpen(ws)) jsonSend(ws, {
+            type: 'thoughtflow.artifacts',
+            session_id: id,
+            json_path: result.jsonPath,
+            d2_path: result.d2Path,
+            timestamp: Date.now(),
+          });
+        }
+      }
     } catch (e: any) {
       for (const ws of logsClients) {
         if (isOpen(ws)) jsonSend(ws, { type: 'session.finalized', error: e?.message || String(e), timestamp: Date.now() });

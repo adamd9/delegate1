@@ -8,7 +8,7 @@ import { channelInstructions, Channel } from "../agentConfigs/channel";
 import { isSmsWindowOpen, getNumbers } from "../smsState";
 import { sendSms } from "../sms";
 import { session, parseMessage, jsonSend, isOpen } from "./state";
-import { ensureSession, appendEvent } from "../observability/thoughtflow";
+import { ensureSession, appendEvent, ThoughtFlowStepType } from "../observability/thoughtflow";
 
 export function establishChatSocket(
   ws: WebSocket,
@@ -103,7 +103,7 @@ export async function handleTextChatMessage(
     const runId = `run_${requestId}`;
     appendEvent({ type: 'run.started', run_id: runId, request_id: requestId, channel, started_at: new Date().toISOString() });
     const userStepId = `step_user_${requestId}`;
-    appendEvent({ type: 'step.started', run_id: runId, step_id: userStepId , label: 'user_message', payload: { content }, timestamp: Date.now() });
+    appendEvent({ type: 'step.started', run_id: runId, step_id: userStepId , label: ThoughtFlowStepType.UserMessage, payload: { content }, timestamp: Date.now() });
     // Inform UI that work has started
     for (const ws of chatClients) {
       if (isOpen(ws)) jsonSend(ws, { type: "chat.working", request_id: requestId, timestamp: Date.now() });
@@ -219,7 +219,7 @@ export async function handleTextChatMessage(
         if (functionHandler) {
           const args = JSON.parse(functionCall.arguments);
           // Execute via orchestrator to standardize breadcrumbs and completion
-          appendEvent({ type: 'step.started', run_id: runId, step_id: toolStepId, label: 'tool_call', payload: { name: functionCall.name, arguments: functionCall.arguments }, depends_on: userStepId, timestamp: Date.now() });
+          appendEvent({ type: 'step.started', run_id: runId, step_id: toolStepId, label: ThoughtFlowStepType.ToolCall, payload: { name: functionCall.name, arguments: functionCall.arguments }, depends_on: userStepId, timestamp: Date.now() });
           const functionResult = await executeFunctionCall(
             { name: functionCall.name, arguments: functionCall.arguments, call_id: functionCall.call_id },
             { mode: 'chat', logsClients, confirm: false }
@@ -227,7 +227,7 @@ export async function handleTextChatMessage(
           appendEvent({ type: 'step.completed', run_id: runId, step_id: toolStepId, payload: { meta: { status: 'ok' } }, timestamp: Date.now() });
           // Emit a separate tool_output step that depends on the tool call
           const toolOutputStepId = `step_tool_output_${functionCall.call_id}`;
-          appendEvent({ type: 'step.started', run_id: runId, step_id: toolOutputStepId, label: 'tool_output', depends_on: toolStepId, payload: { output: functionResult }, timestamp: Date.now() });
+          appendEvent({ type: 'step.started', run_id: runId, step_id: toolOutputStepId, label: ThoughtFlowStepType.ToolOutput, depends_on: toolStepId, payload: { output: functionResult }, timestamp: Date.now() });
           appendEvent({ type: 'step.completed', run_id: runId, step_id: toolOutputStepId, timestamp: Date.now() });
           // Check cancel before proceeding
           if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
@@ -287,7 +287,7 @@ export async function handleTextChatMessage(
               if (confirmResponseId) session.previousResponseId = confirmResponseId;
               const text = confirmText || followUpResponse.output_text || "(action completed)";
               const assistantStepId_handled = `step_assistant_${Date.now()}`;
-              appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_handled, label: 'assistant_message', payload: { text }, depends_on: toolOutputStepId, timestamp: Date.now() });
+              appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_handled, label: ThoughtFlowStepType.AssistantMessage, payload: { text }, depends_on: toolOutputStepId, timestamp: Date.now() });
               const assistantMessage = {
                 type: 'assistant' as const,
                 content: text,
@@ -329,7 +329,7 @@ export async function handleTextChatMessage(
           }
           const finalResponse = followUpResponse.output_text || "Supervisor agent completed.";
           const assistantStepId_supervisor = `step_assistant_${Date.now()}`;
-          appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_supervisor, label: 'assistant_message', payload: { text: finalResponse }, depends_on: toolOutputStepId, timestamp: Date.now() });
+          appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_supervisor, label: ThoughtFlowStepType.AssistantMessage, payload: { text: finalResponse }, depends_on: toolOutputStepId, timestamp: Date.now() });
           const assistantMessage = {
             type: "assistant" as const,
             content: finalResponse,
@@ -412,7 +412,7 @@ export async function handleTextChatMessage(
               },
             });
         }
-        appendEvent({ type: 'step.completed', run_id: runId, step_id: `step_error_${Date.now()}`, label: 'tool_error', payload: { error: err?.message || String(err) }, timestamp: Date.now() });
+        appendEvent({ type: 'step.completed', run_id: runId, step_id: `step_error_${Date.now()}`, label: ThoughtFlowStepType.ToolError, payload: { error: err?.message || String(err) }, timestamp: Date.now() });
         appendEvent({ type: 'run.completed', run_id: runId, request_id: requestId, ended_at: new Date().toISOString(), status: 'error' });
         return;
       }
@@ -420,7 +420,7 @@ export async function handleTextChatMessage(
     // Fallback to assistant text output
     const assistantText = response.output_text || "(No text output)";
     const assistantStepId_fallback = `step_assistant_${Date.now()}`;
-    appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_fallback, label: 'assistant_message', payload: { text: assistantText }, depends_on: userStepId, timestamp: Date.now() });
+    appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_fallback, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, depends_on: userStepId, timestamp: Date.now() });
     const assistantMessage = {
       type: "assistant" as const,
       content: assistantText,
