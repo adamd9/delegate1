@@ -1,4 +1,4 @@
-import express from "express";
+import express, { type Request, type Response } from 'express';
 import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage } from "http";
 import dotenv from "dotenv";
@@ -56,8 +56,11 @@ app.use(express.urlencoded({ extended: false }));
 // Enable JSON body parsing for API endpoints
 app.use(express.json());
 
+// Allow webapp (different origin) to fetch artifacts
+app.use('/thoughtflow', cors());
+
 // ThoughtFlow D2 raw route: force text/plain inline for immediate viewing
-app.get('/thoughtflow/raw/:id.d2', (req, res) => {
+app.get('/thoughtflow/raw/:id.d2', (req: Request, res: Response) => {
   try {
     const id = req.params.id;
     const filePath = join(__dirname, '..', 'runtime-data', 'thoughtflow', `${id}.d2`);
@@ -69,6 +72,7 @@ app.get('/thoughtflow/raw/:id.d2', (req, res) => {
     res.status(404).send('Not found');
   }
 });
+
 
 // Serve ThoughtFlow artifacts (JSON, D2) so the webapp can link to them
 // Dist layout: __dirname is dist/src; artifacts live at dist/runtime-data/thoughtflow

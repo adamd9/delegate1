@@ -226,26 +226,21 @@ export function EnhancedTranscript({
                   {/* ThoughtFlow artifact quick links (only when expanded) */}
                   {!isCanvasLink && hasTfLinks && expanded && (
                     <div className="mt-2 ml-6 flex gap-3 flex-wrap">
-                      <a
-                        href={(data as any).url_json as string}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50"
-                        title="Open consolidated ThoughtFlow JSON"
-                      >
-                        <span>JSON</span>
-                        <ChevronRightIcon className="w-3 h-3" />
-                      </a>
-                      <a
-                        href={((data as any).url_d2_raw as string) || ((data as any).url_d2 as string)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                        title="Open D2 diagram (inline text if available)"
-                      >
-                        <span>D2</span>
-                        <ChevronRightIcon className="w-3 h-3" />
-                      </a>
+                      {/* Prefer in-app viewer when session_id is present */}
+                      {((data as any).session_id || (data as any).url_d2_viewer) && (
+                        <a
+                          href={((data as any).session_id
+                            ? `/thoughtflow/viewer/${(data as any).session_id}`
+                            : (data as any).url_d2_viewer) as string}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded border border-green-200 text-green-700 hover:bg-green-50"
+                          title="Open D2 in browser viewer"
+                        >
+                          <span>Viewer</span>
+                          <ChevronRightIcon className="w-3 h-3" />
+                        </a>
+                      )}
                     </div>
                   )}
                   {/* Default expanded JSON dump for other breadcrumbs; suppress for ThoughtFlow artifacts */}

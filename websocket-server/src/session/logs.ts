@@ -68,6 +68,7 @@ export function processLogsSocketMessage(data: RawData, logsClients: Set<WebSock
         const url_json = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${id}.json`;
         const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${id}.d2`;
         const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${id}.d2`;
+        const url_d2_viewer = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/viewer/${id}`;
         for (const ws of logsClients) {
           if (isOpen(ws)) jsonSend(ws, {
             type: 'thoughtflow.artifacts',
@@ -77,6 +78,7 @@ export function processLogsSocketMessage(data: RawData, logsClients: Set<WebSock
             url_json,
             url_d2,
             url_d2_raw,
+            url_d2_viewer,
             timestamp: Date.now(),
           });
         }
