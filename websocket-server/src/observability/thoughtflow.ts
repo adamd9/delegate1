@@ -99,6 +99,7 @@ export function endSession(): { id: string; jsonPath: string } | null {
           started_at: evt.timestamp ? new Date(evt.timestamp).toISOString() : new Date().toISOString(),
           payload_started: evt.payload,
         };
+        if (evt.depends_on) (s as any).depends_on = evt.depends_on;
         r.steps.push(s);
         r._stepIndex[step_id] = s;
         runsMap.set(run_id, r);
@@ -245,8 +246,10 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
     lines.push('  direction: down');
     lines.push('  class: runbox');
     const stepNodes: string[] = [];
+    const idToNode: Record<string, string> = {};
     run.steps.forEach((step, sIdx) => {
       const node = `s${sIdx + 1}`; // Scoped inside run box
+      idToNode[step.step_id] = node;
       const baseLabel = `${sIdx + 1}. ${step.label || 'step'}${step.duration_ms != null ? ` (${step.duration_ms}ms)` : ''}`;
       const isTool = (step.label || '').toLowerCase().includes('tool');
       const snippet = isTool ? extractToolSnippet(step) : extractSnippet(step);
@@ -292,9 +295,24 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
       }
       stepNodes.push(node);
     });
-    // Chain steps within run
-    for (let i = 1; i < stepNodes.length; i++) {
-      lines.push(`  ${stepNodes[i - 1]} -> ${stepNodes[i]}`);
+    // Build dependency links if present; otherwise fallback to simple chaining
+    let anyDeps = false;
+    run.steps.forEach((step) => {
+      const to = idToNode[step.step_id];
+      const deps = (step as any).depends_on as string | string[] | undefined;
+      if (deps) {
+        anyDeps = true;
+        const arr = Array.isArray(deps) ? deps : [deps];
+        for (const dep of arr) {
+          const from = idToNode[dep];
+          if (from && to) lines.push(`  ${from} -> ${to}`);
+        }
+      }
+    });
+    if (!anyDeps) {
+      for (let i = 1; i < stepNodes.length; i++) {
+        lines.push(`  ${stepNodes[i - 1]} -> ${stepNodes[i]}`);
+      }
     }
     lines.push('}');
     lines.push('');
@@ -316,9 +334,9 @@ function extractSnippet(step: { label?: string; payload_started?: any; payload_c
       : undefined;
     const raw = text || undefined;
     if (!raw) return undefined;
-    const trimmed = raw.replace(/\s+/g, ' ').trim();
-    if (!trimmed) return undefined;
-    return trimmed.length > 120 ? trimmed.slice(0, 117) + '…' : trimmed;
+    const collapsed = raw.replace(/\s+/g, ' ').trim();
+    if (!collapsed) return undefined;
+    return trimToOneSentence(collapsed, 140);
   } catch {
     return undefined;
   }
@@ -354,7 +372,7 @@ function extractToolOutput(step: { payload_completed?: any }): string | undefine
       try { out = JSON.stringify(out); } catch { out = String(out); }
     }
     const s = String(out).replace(/\s+/g, ' ').trim();
-    return s.length > 200 ? s.slice(0, 197) + '…' : s;
+    return trimToOneSentence(s, 140);
   } catch {
     return undefined;
   }
@@ -398,6 +416,14 @@ function buildToolTooltip(step: { payload_started?: any; duration_ms?: number })
   if (!head) return undefined;
   const dur = step.duration_ms != null ? `\nms: ${step.duration_ms}` : '';
   return `${head}${dur}`;
+}
+
+function trimToOneSentence(s: string, maxChars = 140): string {
+  const text = String(s).trim();
+  const stop = text.search(/[\.!?](\s|$)/);
+  let out = stop >= 0 ? text.slice(0, stop + 1) : text.slice(0, maxChars);
+  if (out.length > maxChars) out = out.slice(0, maxChars - 1) + '…';
+  return out;
 }
 
 function stepClass(label?: string): string {

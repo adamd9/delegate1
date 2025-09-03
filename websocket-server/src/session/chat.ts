@@ -206,6 +206,7 @@ export async function handleTextChatMessage(
     const functionCalls = response.output?.filter((output: any) => output.type === "function_call");
     if (functionCalls && functionCalls.length > 0) {
       const functionCall = functionCalls[0];
+      const toolStepId = `step_tool_${functionCall.call_id}`;
       // Defer both console logging and breadcrumb emission to the orchestrator for consistency
       // --- SMS placeholder for tool call ---
       if (isSmsWindowOpen()) {
@@ -218,12 +219,12 @@ export async function handleTextChatMessage(
         if (functionHandler) {
           const args = JSON.parse(functionCall.arguments);
           // Execute via orchestrator to standardize breadcrumbs and completion
-          appendEvent({ type: 'step.started', run_id: runId, step_id: `step_tool_${functionCall.call_id}`, label: 'tool_call', payload: { name: functionCall.name, arguments: functionCall.arguments }, timestamp: Date.now() });
+          appendEvent({ type: 'step.started', run_id: runId, step_id: toolStepId, label: 'tool_call', payload: { name: functionCall.name, arguments: functionCall.arguments }, depends_on: userStepId, timestamp: Date.now() });
           const functionResult = await executeFunctionCall(
             { name: functionCall.name, arguments: functionCall.arguments, call_id: functionCall.call_id },
             { mode: 'chat', logsClients, confirm: false }
           );
-          appendEvent({ type: 'step.completed', run_id: runId, step_id: `step_tool_${functionCall.call_id}`, payload: { output: functionResult }, timestamp: Date.now() });
+          appendEvent({ type: 'step.completed', run_id: runId, step_id: toolStepId, payload: { output: functionResult }, timestamp: Date.now() });
           // Check cancel before proceeding
           if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
             console.log(`[${requestId}] Aborting after tool execution due to cancel`);
@@ -282,7 +283,7 @@ export async function handleTextChatMessage(
               if (confirmResponseId) session.previousResponseId = confirmResponseId;
               const text = confirmText || followUpResponse.output_text || "(action completed)";
               const assistantStepId_handled = `step_assistant_${Date.now()}`;
-              appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_handled, label: 'assistant_message', payload: { text }, timestamp: Date.now() });
+              appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_handled, label: 'assistant_message', payload: { text }, depends_on: toolStepId, timestamp: Date.now() });
               const assistantMessage = {
                 type: 'assistant' as const,
                 content: text,
@@ -324,7 +325,7 @@ export async function handleTextChatMessage(
           }
           const finalResponse = followUpResponse.output_text || "Supervisor agent completed.";
           const assistantStepId_supervisor = `step_assistant_${Date.now()}`;
-          appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_supervisor, label: 'assistant_message', payload: { text: finalResponse }, timestamp: Date.now() });
+          appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_supervisor, label: 'assistant_message', payload: { text: finalResponse }, depends_on: toolStepId, timestamp: Date.now() });
           const assistantMessage = {
             type: "assistant" as const,
             content: finalResponse,
@@ -415,7 +416,7 @@ export async function handleTextChatMessage(
     // Fallback to assistant text output
     const assistantText = response.output_text || "(No text output)";
     const assistantStepId_fallback = `step_assistant_${Date.now()}`;
-    appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_fallback, label: 'assistant_message', payload: { text: assistantText }, timestamp: Date.now() });
+    appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_fallback, label: 'assistant_message', payload: { text: assistantText }, depends_on: userStepId, timestamp: Date.now() });
     const assistantMessage = {
       type: "assistant" as const,
       content: assistantText,
