@@ -8,6 +8,7 @@ import { channelInstructions, Channel } from "../agentConfigs/channel";
 import { isSmsWindowOpen, getNumbers } from "../smsState";
 import { sendSms } from "../sms";
 import { session, parseMessage, jsonSend, isOpen } from "./state";
+import { ensureSession, appendEvent } from "../observability/thoughtflow";
 
 export function establishChatSocket(
   ws: WebSocket,
@@ -61,6 +62,10 @@ export async function processChatSocketMessage(
       if (session.currentRequest && (!reqId || session.currentRequest.id === reqId)) {
         session.currentRequest.canceled = true;
         console.log(`✋ Cancel requested for ${session.currentRequest.id}`);
+        try {
+          ensureSession();
+          appendEvent({ type: 'run.canceled', request_id: session.currentRequest.id, timestamp: Date.now() });
+        } catch {}
         // Notify chat clients and logs
         for (const ws of chatClients) {
           if (isOpen(ws)) jsonSend(ws, { type: "chat.canceled", request_id: session.currentRequest.id, timestamp: Date.now() });
@@ -93,6 +98,12 @@ export async function handleTextChatMessage(
     // Create a new request id and mark as in-flight (cancel any previous text/sms request implicitly for safety)
     const requestId = `req_${Date.now()}`;
     session.currentRequest = { id: requestId, channel, canceled: false, startedAt: Date.now() };
+    // ThoughtFlow: ensure session and start run
+    ensureSession();
+    const runId = `run_${requestId}`;
+    appendEvent({ type: 'run.started', run_id: runId, request_id: requestId, channel, started_at: new Date().toISOString() });
+    const userStepId = `step_user_${requestId}`;
+    appendEvent({ type: 'step.started', run_id: runId, step_id: userStepId , label: 'user_message', payload: { content }, timestamp: Date.now() });
     // Inform UI that work has started
     for (const ws of chatClients) {
       if (isOpen(ws)) jsonSend(ws, { type: "chat.working", request_id: requestId, timestamp: Date.now() });
@@ -144,6 +155,8 @@ export async function handleTextChatMessage(
           },
         });
     }
+    // Mark user message step as completed for clean duration computation
+    appendEvent({ type: 'step.completed', run_id: runId, step_id: userStepId, timestamp: Date.now() });
     // Text channel: expose only base agent tools (supervisor MCP tools are used internally by supervisor flow)
     const baseFunctions = (getAgent('base').tools as FunctionHandler[])
       .filter(Boolean)
@@ -177,6 +190,7 @@ export async function handleTextChatMessage(
     // If canceled mid-flight, abort committing
     if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
       console.log(`[${requestId}] Aborting post-response handling due to cancel`);
+      appendEvent({ type: 'run.aborted', run_id: runId, request_id: requestId, timestamp: Date.now() });
       return;
     }
     // Persist thread state regardless of tool usage so subsequent turns chain correctly
@@ -204,13 +218,16 @@ export async function handleTextChatMessage(
         if (functionHandler) {
           const args = JSON.parse(functionCall.arguments);
           // Execute via orchestrator to standardize breadcrumbs and completion
+          appendEvent({ type: 'step.started', run_id: runId, step_id: `step_tool_${functionCall.call_id}`, label: 'tool_call', payload: { name: functionCall.name, arguments: functionCall.arguments }, timestamp: Date.now() });
           const functionResult = await executeFunctionCall(
             { name: functionCall.name, arguments: functionCall.arguments, call_id: functionCall.call_id },
             { mode: 'chat', logsClients, confirm: false }
           );
+          appendEvent({ type: 'step.completed', run_id: runId, step_id: `step_tool_${functionCall.call_id}`, payload: { output: functionResult }, timestamp: Date.now() });
           // Check cancel before proceeding
           if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
             console.log(`[${requestId}] Aborting after tool execution due to cancel`);
+            appendEvent({ type: 'run.aborted', run_id: runId, request_id: requestId, timestamp: Date.now() });
             return;
           }
           // Orchestrator prints the standard result log
@@ -236,6 +253,7 @@ export async function handleTextChatMessage(
           const followUpResponse = await session.openaiClient.responses.create(followUpBody);
           if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
             console.log(`[${requestId}] Aborting after follow-up due to cancel`);
+            appendEvent({ type: 'run.aborted', run_id: runId, request_id: requestId, timestamp: Date.now() });
             return;
           }
           console.log(
@@ -263,6 +281,8 @@ export async function handleTextChatMessage(
             if (handled) {
               if (confirmResponseId) session.previousResponseId = confirmResponseId;
               const text = confirmText || followUpResponse.output_text || "(action completed)";
+              const assistantStepId_handled = `step_assistant_${Date.now()}`;
+              appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_handled, label: 'assistant_message', payload: { text }, timestamp: Date.now() });
               const assistantMessage = {
                 type: 'assistant' as const,
                 content: text,
@@ -297,10 +317,14 @@ export async function handleTextChatMessage(
                     },
                   });
               }
+              appendEvent({ type: 'step.completed', run_id: runId, step_id: assistantStepId_handled, timestamp: Date.now() });
+              appendEvent({ type: 'run.completed', run_id: runId, request_id: requestId, ended_at: new Date().toISOString() });
               return;
             }
           }
           const finalResponse = followUpResponse.output_text || "Supervisor agent completed.";
+          const assistantStepId_supervisor = `step_assistant_${Date.now()}`;
+          appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_supervisor, label: 'assistant_message', payload: { text: finalResponse }, timestamp: Date.now() });
           const assistantMessage = {
             type: "assistant" as const,
             content: finalResponse,
@@ -343,6 +367,8 @@ export async function handleTextChatMessage(
                 },
               });
           }
+          appendEvent({ type: 'step.completed', run_id: runId, step_id: assistantStepId_supervisor, timestamp: Date.now() });
+          appendEvent({ type: 'run.completed', run_id: runId, request_id: requestId, ended_at: new Date().toISOString() });
           return;
         }
       } catch (err: any) {
@@ -381,11 +407,15 @@ export async function handleTextChatMessage(
               },
             });
         }
+        appendEvent({ type: 'step.completed', run_id: runId, step_id: `step_error_${Date.now()}`, label: 'tool_error', payload: { error: err?.message || String(err) }, timestamp: Date.now() });
+        appendEvent({ type: 'run.completed', run_id: runId, request_id: requestId, ended_at: new Date().toISOString(), status: 'error' });
         return;
       }
     }
     // Fallback to assistant text output
     const assistantText = response.output_text || "(No text output)";
+    const assistantStepId_fallback = `step_assistant_${Date.now()}`;
+    appendEvent({ type: 'step.started', run_id: runId, step_id: assistantStepId_fallback, label: 'assistant_message', payload: { text: assistantText }, timestamp: Date.now() });
     const assistantMessage = {
       type: "assistant" as const,
       content: assistantText,
@@ -408,6 +438,8 @@ export async function handleTextChatMessage(
       if (isOpen(ws)) jsonSend(ws, { type: "chat.done", request_id: requestId, timestamp: Date.now() });
     }
     session.currentRequest = undefined;
+    appendEvent({ type: 'step.completed', run_id: runId, step_id: assistantStepId_fallback, timestamp: Date.now() });
+    appendEvent({ type: 'run.completed', run_id: runId, request_id: requestId, ended_at: new Date().toISOString() });
     // Forward assistant response to observability clients (/logs)
     for (const ws of logsClients) {
       if (isOpen(ws))
