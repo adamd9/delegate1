@@ -56,6 +56,24 @@ app.use(express.urlencoded({ extended: false }));
 // Enable JSON body parsing for API endpoints
 app.use(express.json());
 
+// ThoughtFlow D2 raw route: force text/plain inline for immediate viewing
+app.get('/thoughtflow/raw/:id.d2', (req, res) => {
+  try {
+    const id = req.params.id;
+    const filePath = join(__dirname, '..', 'runtime-data', 'thoughtflow', `${id}.d2`);
+    const content = readFileSync(filePath, 'utf8');
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', 'inline');
+    res.send(content);
+  } catch (e: any) {
+    res.status(404).send('Not found');
+  }
+});
+
+// Serve ThoughtFlow artifacts (JSON, D2) so the webapp can link to them
+// Dist layout: __dirname is dist/src; artifacts live at dist/runtime-data/thoughtflow
+app.use('/thoughtflow', express.static(join(__dirname, '..', 'runtime-data', 'thoughtflow')));
+
 // --- Twilio SMS webhook route ---
 app.post('/sms', async (req, res) => {
   const messageText = req.body?.Body ?? '';

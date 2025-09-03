@@ -26,11 +26,12 @@ Together, these form a **ThoughtFlow**: a traceable structure the platform can u
 | ------------ | -------------------------------------------------------------------------- |
 | **Session**  | Container for related runs (one conversation, one job, or one context).    |
 | **Run**      | A single task starting with a user input or a trigger.                     |
-| **Step**     | One atomic operation (chat input, LLM call, tool call, memory read/write). |
-| **Artifact** | Data created or consumed by steps (messages, API results, memory entries). |
-| **Edges**    | Links between steps and artifacts that show cause-and-effect.              |
+| **Step**     | One atomic operation (user/assistant message, tool call/output, etc.).     |
+| **Edges**    | Dependencies between steps via `depends_on` (string or string[] of step IDs). |
 
-Think of this less like a “chat log” and more like a **structured event log with relationships**.
+Notes:
+- Steps are explicitly typed using an enum: `user_message`, `assistant_message`, `tool_call`, `tool_output`, `tool_error`, `generic`.
+- Data created/consumed by steps (args/results/text) are kept within the step payloads; there is no separate "Artifact" entity in the current implementation.
 
 ---
 
@@ -81,60 +82,55 @@ A simple weather interaction produces a ThoughtFlow like this:
 
 ## **5. JSON as the Source of Truth**
 
-All ThoughtFlow diagrams and dashboards should be generated from a single, structured JSON representation.
+All ThoughtFlow visualizations are generated from a consolidated JSON representation written at session finalization.
 
-### **Example Schema**
+### **Current Consolidated JSON Shape**
 
 ```
 {
-  "session_id": "sess_2025-09-02",
+  "session_id": "sess_1693660012345",
   "started_at": "2025-09-02T20:11:35.442Z",
+  "ended_at": "2025-09-02T20:12:05.442Z",
   "runs": [
     {
       "run_id": "run_1",
-      "trigger": "chat.on_message",
-      "input_text": "what’s the weather today?",
+      "channel": "text",
+      "status": "completed",
+      "started_at": "2025-09-02T20:11:35.500Z",
+      "ended_at": "2025-09-02T20:11:40.100Z",
+      "duration_ms": 4600,
       "steps": [
         {
           "step_id": "s1",
-          "type": "chat.on_message",
-          "payload": "what’s the weather today?",
-          "timestamp": "2025-09-02T20:12:01.144Z"
+          "label": "user_message",
+          "started_at": "2025-09-02T20:11:35.500Z",
+          "ended_at": "2025-09-02T20:11:35.550Z",
+          "duration_ms": 50,
+          "payload_started": { "text": "what’s the weather today?" },
+          "payload_completed": { "ok": true }
         },
         {
           "step_id": "s2",
-          "type": "responses.request",
-          "model": "gpt-5",
-          "mode": "text",
-          "store": true
+          "label": "tool_call",
+          "depends_on": "s1",
+          "started_at": "2025-09-02T20:11:36.000Z",
+          "ended_at": "2025-09-02T20:11:36.200Z",
+          "duration_ms": 200,
+          "payload_started": { "name": "get_weather", "args": { "city": "Canberra" } },
+          "payload_completed": { "ok": true }
+        },
+        {
+          "step_id": "s2_out",
+          "label": "tool_output",
+          "depends_on": "s2",
+          "payload_started": { },
+          "payload_completed": { "result": { "tempC": 13, "conditions": "Showers" } }
         },
         {
           "step_id": "s3",
-          "type": "assistant.output",
-          "output_text": "To fetch today’s weather, I need your location..."
-        }
-      ]
-    },
-    {
-      "run_id": "run_2",
-      "trigger": "chat.on_message",
-      "input_text": "canberra",
-      "steps": [
-        {
-          "step_id": "s1",
-          "type": "chat.on_message",
-          "payload": "canberra"
-        },
-        {
-          "step_id": "s2",
-          "type": "tool.get_weather_from_coords",
-          "args": { "lat": -35.2809, "lon": 149.13 },
-          "result": { "temp": "2°C", "summary": "chilly" }
-        },
-        {
-          "step_id": "s3",
-          "type": "assistant.output",
-          "output_text": "In Canberra right now it’s about 2°C (very chilly)."
+          "label": "assistant_message",
+          "depends_on": ["s1", "s2_out"],
+          "payload_completed": { "text": "In Canberra it's ~13°C with showers." }
         }
       ]
     }
@@ -144,9 +140,9 @@ All ThoughtFlow diagrams and dashboards should be generated from a single, struc
 
 This structure allows you to:
 
-* Generate **D2 diagrams** automatically.
+* Generate **D2 diagrams** automatically (including `depends_on` edges).
 * Feed **analytics** or dashboards.
-* Replay sessions or runs for debugging or training.
+* Replay sessions or runs for debugging.
 
 ---
 
@@ -158,12 +154,13 @@ From this JSON:
 * **Drill-down diagrams** show step-level detail within a single run.
 * Nodes link back to source log IDs or response IDs for debugging.
 
-Example CLI for automated generation:
+Artifact generation and access:
 
-```
-flowgen render --input thoughtflow.json --view session --output session.svg
-flowgen render --input thoughtflow.json --view run --run-id run_2 --output run2.svg
-```
+- On session finalization, the server writes two artifacts under `websocket-server/runtime-data/thoughtflow/`:
+  - `<session_id>.json`: consolidated ThoughtFlow JSON
+  - `<session_id>.d2`: auto-generated D2 diagram source
+- These are served over HTTP at `/thoughtflow/<session_id>.json` and `/thoughtflow/<session_id>.d2`.
+- A `thoughtflow.artifacts` event is emitted to the web app with absolute URLs so they can be opened directly.
 
 ---
 

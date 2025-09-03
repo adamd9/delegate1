@@ -378,6 +378,9 @@ export default function handleEnhancedRealtimeEvent(
           session_id: event.session_id,
           json_path: event.json_path,
           d2_path: event.d2_path,
+          url_json: event.url_json,
+          url_d2: event.url_d2,
+          url_d2_raw: event.url_d2_raw,
           timestamp: event.timestamp,
           note: "Artifacts written on server under websocket-server/runtime-data/thoughtflow"
         }
