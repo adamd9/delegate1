@@ -2,7 +2,6 @@ import { registerTools, ToolOrigin } from "../registry";
 import { getWeatherFunction } from "../handlers/weather";
 import { sendCanvas } from "../handlers/canvas";
 import { sendSmsTool } from "../handlers/sms";
-import { getCurrentTimeFunction } from "../handlers/current-time";
 import { getNextResponseFromSupervisorFunction } from "../handlers/supervisor-escalation";
 import { memAddFunction, memSearchFunction } from "../handlers/mem0";
 import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction } from "../handlers/notes";
@@ -63,15 +62,6 @@ export function registerLocalTools() {
       'local',
       ['local', 'base-default'],
       (args) => sendSmsTool.handler(args)
-    ),
-    // Supervisor-local utility
-    wrap(
-      getCurrentTimeFunction.schema.name,
-      getCurrentTimeFunction.schema.description || '',
-      getCurrentTimeFunction.schema.parameters,
-      'local',
-      ['local', 'supervisor-allowed'],
-      (args) => getCurrentTimeFunction.handler(args)
     ),
     wrap(
       createNoteFunction.schema.name,

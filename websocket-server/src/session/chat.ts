@@ -4,7 +4,7 @@ import { ProxyAgent } from "undici";
 import { ResponsesTextInput } from "../types";
 import { getAgent, getDefaultAgent, FunctionHandler } from "../agentConfigs";
 import { executeFunctionCalls, executeFunctionCall } from "../tools/orchestrators/functionCallExecutor";
-import { channelInstructions, Channel } from "../agentConfigs/channel";
+import { contextInstructions, Context, Channel } from "../agentConfigs/context";
 import { isSmsWindowOpen, getNumbers } from "../smsState";
 import { sendSms } from "../sms";
 import { session, parseMessage, jsonSend, isOpen } from "./state";
@@ -93,6 +93,10 @@ export async function handleTextChatMessage(
   logsClients: Set<WebSocket>,
   channel: Channel = 'text'
 ) {
+  const context: Context = {
+    channel,
+    currentTime: new Date().toLocaleString(),
+  };
   try {
     console.log("🔤 Processing text message:", content);
     // Create a new request id and mark as in-flight (cancel any previous text/sms request implicitly for safety)
@@ -165,21 +169,22 @@ export async function handleTextChatMessage(
     console.log("🤖 Calling OpenAI Responses API for text response...");
     // Define system instructions
     const baseInstructions = getDefaultAgent().instructions;
-    const instructions = [channelInstructions(channel), baseInstructions].join('\n');
+    const contextInstructionString = contextInstructions(context);
+    const instructions = [contextInstructionString, baseInstructions].join('\n');
     // ThoughtFlow snapshots for long-lived prompt inputs (Approach B)
     const policyHash = Buffer.from(baseInstructions, 'utf8').toString('base64').slice(0, 12);
     const toolsHash = Buffer.from(JSON.stringify(functionSchemas), 'utf8').toString('base64').slice(0, 12);
     const policyStepId = `snp_policy_${policyHash}`;
     const toolsStepId = `snp_tools_${toolsHash}`;
-    const channelStepId = `snp_channel_${channel}`;
+    const contextStepId = `snp_context_${requestId}`;
     appendEvent({ type: 'step.started', run_id: runId, step_id: policyStepId, label: 'policy.snapshot', payload: { version: policyHash, produced_at: (session.thoughtflow as any)?.startedAt || Date.now(), content_preview: baseInstructions.slice(0, 240) }, timestamp: Date.now() });
     appendEvent({ type: 'step.completed', run_id: runId, step_id: policyStepId, timestamp: Date.now() });
     const toolNames = functionSchemas.map((s: any) => s?.name).filter(Boolean);
     const schemasPreview = JSON.stringify(functionSchemas.slice(0, 3), null, 2);
     appendEvent({ type: 'step.started', run_id: runId, step_id: toolsStepId, label: 'tool.schemas.snapshot', payload: { version: toolsHash, count: functionSchemas.length, names: toolNames, schemas_preview: schemasPreview }, timestamp: Date.now() });
     appendEvent({ type: 'step.completed', run_id: runId, step_id: toolsStepId, timestamp: Date.now() });
-    appendEvent({ type: 'step.started', run_id: runId, step_id: channelStepId, label: 'channel.preamble', payload: { channel }, timestamp: Date.now() });
-    appendEvent({ type: 'step.completed', run_id: runId, step_id: channelStepId, timestamp: Date.now() });
+    appendEvent({ type: 'step.started', run_id: runId, step_id: contextStepId, label: 'context.preamble', payload: { context }, timestamp: Date.now() });
+    appendEvent({ type: 'step.completed', run_id: runId, step_id: contextStepId, timestamp: Date.now() });
     // Prepare request body for Responses API
     const requestBody: any = {
       model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
@@ -203,7 +208,7 @@ export async function handleTextChatMessage(
     // ThoughtFlow: LLM tool_call with prompt_provenance (Approach B)
     const llmStepId = `step_llm_${requestId}`;
     const provenanceParts = [
-      { type: 'channel_preamble', value: channelInstructions(channel) },
+      { type: 'context_preamble', value: contextInstructionString },
       { type: 'personality', value: baseInstructions },
       ...(session.previousResponseId ? [{ type: 'previous_response_id', value: String(session.previousResponseId) }] : []),
       { type: 'user_instruction', value: content },
@@ -213,8 +218,8 @@ export async function handleTextChatMessage(
       parts: provenanceParts,
       final_prompt: instructions,
       assembly: [
-        { part: 0, start: 0, end: channelInstructions(channel).length },
-        { part: 1, start: channelInstructions(channel).length + 1, end: instructions.length }
+        { part: 0, start: 0, end: contextInstructionString.length },
+        { part: 1, start: contextInstructionString.length + 1, end: instructions.length }
       ]
     };
     appendEvent({
@@ -222,7 +227,7 @@ export async function handleTextChatMessage(
       run_id: runId,
       step_id: llmStepId,
       label: ThoughtFlowStepType.AssistantCall,
-      depends_on: [userStepId, policyStepId, toolsStepId, channelStepId],
+      depends_on: [userStepId, policyStepId, toolsStepId, contextStepId],
       payload: {
         name: 'openai.responses.create',
         model: requestBody.model,

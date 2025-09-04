@@ -1,5 +1,4 @@
 import { AgentConfig } from './types';
-import { getCurrentTimeFunction } from '../tools/handlers/current-time';
 import { agentPersonality } from "./personality";
 import { getDiscoveredMcpHandlers } from '../tools/mcp/adapter';
 
@@ -33,7 +32,6 @@ Guidelines:
   tools: [
     // Tools listed here inform the registry policy (allowNames) for the supervisor agent.
     // They must also be registered by a provider (builtin/local/MCP) to be available at runtime.
-    getCurrentTimeFunction,
     // Dynamically discovered MCP tools (supervisor-only)
     ...getDiscoveredMcpHandlers()
   ],
