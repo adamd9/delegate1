@@ -2,7 +2,7 @@ import { RawData, WebSocket } from "ws";
 import { getDefaultAgent } from "../agentConfigs";
 import { getAgent, FunctionHandler } from "../agentConfigs";
 import { executeFunctionCall } from "../tools/orchestrators/functionCallExecutor";
-import { channelInstructions } from "../agentConfigs/channel";
+import { contextInstructions, Context } from "../agentConfigs/context";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 import { HOLD_MUSIC_ULAW_BASE64, HOLD_MUSIC_DURATION_MS } from "../assets/holdMusic";
 
@@ -124,7 +124,11 @@ export function establishRealtimeModelConnection() {
     const baseFunctions = getAgent('base').tools as FunctionHandler[];
     const functionSchemas = baseFunctions.map((f: FunctionHandler) => f.schema);
     const baseInstructions = getDefaultAgent().instructions;
-    const agentInstructions = [channelInstructions('voice'), baseInstructions].join('\n');
+    const context: Context = {
+      channel: 'voice',
+      currentTime: new Date().toLocaleString(),
+    };
+    const agentInstructions = [contextInstructions(context), baseInstructions].join('\n');
     jsonSend(session.modelConn, {
       type: "session.update",
       session: {

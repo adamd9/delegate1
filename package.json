@@ -6,7 +6,7 @@
   "scripts": {
     "kill-ports": "bash scripts/kill-ports.sh",
     "predev": "npm run kill-ports",
-    "dev": "concurrently -k \"npm run backend:dev\" \"npm run frontend:dev\"",
+    "dev": "npm run kill-ports && concurrently -k \"npm run backend:dev\" \"npm run frontend:dev\"",
     "dev:core": "concurrently -k \"npm run backend:dev\" \"npm run frontend:dev\"",
     "prestart": "npm run kill-ports",
     "start": "concurrently \"npm run backend:start\" \"npm run frontend:start\"",

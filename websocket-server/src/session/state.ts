@@ -1,4 +1,5 @@
 import { RawData, WebSocket } from "ws";
+import { Channel } from '../agentConfigs/context';
 
 // Mirror of the Session shape used by the current sessionManager
 export type ConversationItem =
@@ -6,7 +7,7 @@ export type ConversationItem =
       type: 'user' | 'assistant';
       content: string;
       timestamp: number;
-      channel: 'voice' | 'text' | 'sms';
+      channel: Channel;
       supervisor?: boolean;
     }
   | {
@@ -36,7 +37,7 @@ export interface Session {
   // Minimal in-flight chat request tracking
   currentRequest?: {
     id: string;
-    channel: 'voice' | 'text' | 'sms';
+    channel: Channel;
     canceled?: boolean;
     startedAt: number;
   };

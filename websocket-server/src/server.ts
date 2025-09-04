@@ -19,6 +19,7 @@ import { setNumbers } from "./smsState";
 import { initMCPDiscovery } from './tools/mcp/adapter';
 import { initToolsRegistry } from './tools/init';
 import { getAgentsDebug, getSchemasForAgent } from './tools/registry';
+import { startEmailPolling } from './emailPoller';
 import { listAllTools } from './tools/registry';
 
 // Ensure we load the env file from this package even if process is started from repo root
@@ -39,6 +40,12 @@ app.use(cors());
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+const logsClients = new Set<WebSocket>();
+const chatClients = new Set<WebSocket>();
+// Make available on globalThis for sessionManager event forwarding
+(globalThis as any).logsClients = logsClients;
+(globalThis as any).chatClients = chatClients;
+
 // Kick off MCP discovery (non-blocking)
 (async () => {
   try {
@@ -51,6 +58,9 @@ const wss = new WebSocketServer({ server });
     console.warn('[startup] MCP discovery failed to initialize:', e?.message || e);
   }
 })();
+
+// Start polling for incoming emails
+startEmailPolling(chatClients, logsClients);
 
 app.use(express.urlencoded({ extended: false }));
 // Enable JSON body parsing for API endpoints
@@ -300,11 +310,6 @@ app.post("/access-token", (req, res) => {
 
 import session from "./sessionSingleton";
 // No callClients Set for call/voice; use single session.twilioConn
-const logsClients = new Set<WebSocket>();
-const chatClients = new Set<WebSocket>();
-// Make available on globalThis for sessionManager event forwarding
-(globalThis as any).logsClients = logsClients;
-(globalThis as any).chatClients = chatClients;
 
 wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
   const url = new URL(req.url || "", `http://${req.headers.host}`);
