@@ -7,6 +7,8 @@ import { executeFunctionCalls, executeFunctionCall } from "../tools/orchestrator
 import { contextInstructions, Context, Channel } from "../agentConfigs/context";
 import { isSmsWindowOpen, getNumbers } from "../smsState";
 import { sendSms } from "../sms";
+import { getReplyTo } from "../emailState";
+import { sendEmail } from "../email";
 import { session, parseMessage, jsonSend, isOpen } from "./state";
 import { ensureSession, appendEvent, ThoughtFlowStepType } from "../observability/thoughtflow";
 
@@ -91,7 +93,8 @@ export async function handleTextChatMessage(
   content: string,
   chatClients: Set<WebSocket>,
   logsClients: Set<WebSocket>,
-  channel: Channel = 'text'
+  channel: Channel = 'text',
+  metadata: { subject?: string } = {}
 ) {
   const context: Context = {
     channel,
@@ -402,11 +405,17 @@ export async function handleTextChatMessage(
             supervisor: true,
           };
           session.conversationHistory.push(assistantMessage);
-          if (isSmsWindowOpen()) {
+          if (channel === 'sms' && isSmsWindowOpen()) {
             const { smsUserNumber, smsTwilioNumber } = getNumbers();
             sendSms(finalResponse, smsTwilioNumber, smsUserNumber).catch((e) =>
               console.error("sendSms error", e)
             );
+          } else if (channel === 'email') {
+            const recipient = getReplyTo();
+            if (recipient) {
+              const replySubject = metadata.subject?.startsWith('Re: ') ? metadata.subject : `Re: ${metadata.subject}`;
+              sendEmail(replySubject, finalResponse, recipient).catch((e) => console.error('sendEmail error', e));
+            }
           }
           for (const ws of chatClients) {
             if (isOpen(ws))
@@ -493,11 +502,17 @@ export async function handleTextChatMessage(
       supervisor: false,
     };
     session.conversationHistory.push(assistantMessage);
-    if (isSmsWindowOpen()) {
+    if (channel === 'sms' && isSmsWindowOpen()) {
       const { smsUserNumber, smsTwilioNumber } = getNumbers();
       sendSms(assistantText, smsTwilioNumber, smsUserNumber).catch((e) =>
         console.error("sendSms error", e)
       );
+    } else if (channel === 'email') {
+      const recipient = getReplyTo();
+      if (recipient) {
+        const replySubject = metadata.subject?.startsWith('Re: ') ? metadata.subject : `Re: ${metadata.subject}`;
+        sendEmail(replySubject, assistantText, recipient).catch((e) => console.error('sendEmail error', e));
+      }
     }
     for (const ws of chatClients) {
       if (isOpen(ws))

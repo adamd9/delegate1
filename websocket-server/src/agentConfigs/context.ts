@@ -1,4 +1,4 @@
-export type Channel = 'voice' | 'text' | 'sms';
+export type Channel = 'voice' | 'text' | 'sms' | 'email';
 
 export interface Context {
   channel: Channel;

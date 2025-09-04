@@ -55,6 +55,11 @@ export async function listNotes(filter?: { query?: string }): Promise<NoteData[]
   return notes;
 }
 
+export async function getNote(id: string): Promise<NoteData | undefined> {
+  const notes = await readAll();
+  return notes.find(n => n.id === id);
+}
+
 export async function updateNote(
   id: string,
   updates: { title?: string; content?: string }

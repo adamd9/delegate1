@@ -1,3 +1,4 @@
+
 import { AgentConfig } from './types';
 import { agentPersonality } from "./personality";
 import { getDiscoveredMcpHandlers } from '../tools/mcp/adapter';

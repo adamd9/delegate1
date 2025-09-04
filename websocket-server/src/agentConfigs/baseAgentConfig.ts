@@ -2,8 +2,9 @@ import { AgentConfig } from './types';
 // import { getWeatherFunction } from '../tools/handlers/weather';
 import { sendCanvas } from '../tools/handlers/canvas';
 import { sendSmsTool } from '../tools/handlers/sms';
+import { sendEmailTool } from '../tools/handlers/email';
 import { memAddFunction, memSearchFunction } from '../tools/handlers/mem0';
-import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction } from '../tools/handlers/notes';
+import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction, getNoteFunction } from '../tools/handlers/notes';
 import { hangupCallTool } from '../tools/handlers/hangup';
 import { agentPersonality } from "./personality";
 
@@ -46,12 +47,14 @@ Persistent memory:
   tools: [
     sendCanvas,
     sendSmsTool,
+    sendEmailTool,
     memAddFunction,
     memSearchFunction,
     createNoteFunction,
     listNotesFunction,
     updateNoteFunction,
     deleteNoteFunction,
+    getNoteFunction,
     hangupCallTool,
   ],
   // Text (Responses API) model for chat interactions

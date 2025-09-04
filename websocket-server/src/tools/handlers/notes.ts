@@ -1,5 +1,5 @@
 import { FunctionHandler } from '../../agentConfigs/types';
-import { createNote, listNotes, updateNote, deleteNote } from '../../noteStore';
+import { createNote, listNotes, updateNote, deleteNote, getNote } from '../../noteStore';
 
 export const createNoteFunction: FunctionHandler = {
   schema: {
@@ -83,5 +83,26 @@ export const deleteNoteFunction: FunctionHandler = {
   handler: async ({ note_id }: { note_id: string }) => {
     const ok = await deleteNote(note_id);
     return { status: ok ? 'deleted' : 'not_found' };
+  }
+};
+
+export const getNoteFunction: FunctionHandler = {
+  schema: {
+    name: 'get_note',
+    type: 'function',
+    description: 'Get or read a note by its identifier, including its content.',
+    parameters: {
+      type: 'object',
+      properties: {
+        note_id: { type: 'string' }
+      },
+      required: ['note_id'],
+      additionalProperties: false
+    }
+  },
+  handler: async ({ note_id }: { note_id: string }) => {
+    const note = await getNote(note_id);
+    if (!note) return { error: 'not_found' };
+    return { note };
   }
 };
