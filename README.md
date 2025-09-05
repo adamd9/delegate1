@@ -18,11 +18,13 @@ The core purpose of Delegate 1 is to create a truly integrated AI assistant that
 Delegate 1 employs a **backend-centric architecture** that centralizes session management and conversation state. This design enables:
 
 #### Single-Threaded Session Management
+
 - All communication channels connect to a single, unified session object
 - Conversation history and context are maintained across channel switches
 - Real-time event streaming for observability and monitoring
 
 #### Multi-Channel Support
+
 The system supports multiple communication channels:
 
 1. **Text Channel**: Traditional text-based chat interface
@@ -31,6 +33,7 @@ The system supports multiple communication channels:
 4. **API Channel**: Programmatic access for external integrations
 
 #### Technology Stack
+
 - **OpenAI Realtime API**: Core conversational AI capabilities
 - **Next.js + TypeScript**: Frontend web application
 - **Express.js**: Backend server for session management
@@ -46,6 +49,7 @@ This project builds upon two key reference implementations:
 2. **Twilio Demo**: Serves as the primary architectural base, offering a backend-centric, single-session implementation pattern that perfectly aligns with Delegate 1's requirements
 
 The Twilio demo's architecture is particularly valuable as it already demonstrates:
+
 - Centralized session management on the backend
 - Multi-connection coordination (Twilio ↔ OpenAI ↔ Frontend)
 - Real-time event streaming for observability
@@ -62,6 +66,7 @@ The Twilio demo's architecture is particularly valuable as it already demonstrat
 ### Use Cases
 
 Delegate 1 is designed for scenarios where users need:
+
 - Continuous assistance across different communication preferences
 - Context-aware interactions that span multiple sessions
 - Professional-grade AI assistance with phone call capabilities
@@ -82,6 +87,7 @@ Delegate 1 is designed for scenarios where users need:
 The easiest way to get Delegate 1 running is to use our unified startup scripts:
 
 #### Option 1: Using the startup script (Recommended)
+
 ```bash
 # Clone the repository
 git clone <repository-url>
@@ -95,6 +101,7 @@ npm run install:all
 ```
 
 #### Option 2: Using npm scripts
+
 ```bash
 # Install dependencies for the root project
 npm install
@@ -107,6 +114,7 @@ npm run dev
 ```
 
 #### Option 3: Manual startup
+
 ```bash
 # Terminal 1 - Backend (websocket-server)
 cd websocket-server
@@ -122,13 +130,14 @@ npm run dev
 ### Environment Setup
 
 1. Copy the environment files:
+
    ```bash
    cp websocket-server/.env.example websocket-server/.env
    cp webapp/.env.example webapp/.env
    cp voice-client/.env.example voice-client/.env
    ```
-
 2. Configure your environment variables:
+
    - **OpenAI API key**: Required for all AI functionality
    - **Twilio credentials**: Required for phone call functionality
    - **Public URL**: Required for Twilio webhook integration (see Twilio Setup below)
@@ -245,15 +254,16 @@ For detailed documentation, see [`scripts/README.md`](scripts/README.md).
 #### Step 4: Test Phone Integration
 
 1. **Start all services**:
+
    ```bash
    npm run dev
    ```
-
 2. **Connect frontend to logs** (optional, for monitoring):
+
    - Your webapp will automatically connect to `wss://your-ngrok-url.ngrok.io/logs`
    - This provides real-time call monitoring and transcripts
-
 3. **Make a test call**:
+
    - Call your Twilio phone number
    - The call should connect to your Delegate 1 backend
    - Monitor logs in your frontend or terminal
@@ -316,7 +326,7 @@ Without the region specification, you'll get `AccessTokenInvalid (20101)` errors
 
 ## Development
 
-[Development guidelines and contribution information will be added here]
+[Development guidelines and contribution information will be added here].
 
 ## License
 
