@@ -21,6 +21,7 @@ import { initToolsRegistry } from './tools/init';
 import { getAgentsDebug, getSchemasForAgent } from './tools/registry';
 import { startEmailPolling } from './emailPoller';
 import { listAllTools } from './tools/registry';
+import { createNote, listNotes, updateNote } from './noteStore';
 
 // Ensure we load the env file from this package even if process is started from repo root
 dotenv.config({ path: join(__dirname, '../.env') });
@@ -46,6 +47,52 @@ const chatClients = new Set<WebSocket>();
 (globalThis as any).logsClients = logsClients;
 (globalThis as any).chatClients = chatClients;
 
+// Track readiness across async startup steps so we can persist a startup note
+let toolsReady = false;
+let serverListening = false;
+let startupNoteWritten = false;
+
+async function writeLatestStartupResultsIfReady() {
+  if (startupNoteWritten) return;
+  if (!(toolsReady && serverListening)) return;
+  startupNoteWritten = true;
+  try {
+    const title = 'Latest Startup Results';
+    const logs = getLogs().join('\n');
+    const tools = listAllTools();
+    const agents = getAgentsDebug();
+    const toolSummaryLines = tools.map(t => `- ${t.name} [${t.origin}]${t.tags && t.tags.length ? ` tags: ${t.tags.join(', ')}` : ''}`);
+    const agentNames = Object.keys(agents || {});
+    const content = [
+      `Title: ${title}`,
+      `Timestamp: ${new Date().toISOString()}`,
+      '',
+      '== Tool Catalog ==',
+      `Count: ${tools.length}`,
+      toolSummaryLines.join('\n'),
+      '',
+      '== Agents ==',
+      `Agents: ${agentNames.join(', ')}`,
+      '',
+      '== Buffered Logs ==',
+      logs || '(no logs captured)'
+    ].join('\n');
+
+    // Create or update a single fixed-title note
+    const existing = (await listNotes({ query: title }))
+      .find(n => n.title.toLowerCase() === title.toLowerCase());
+    if (existing) {
+      await updateNote(existing.id, { title, content });
+      console.log('[startup] Updated note with latest startup results');
+    } else {
+      await createNote(title, content);
+      console.log('[startup] Created note with latest startup results');
+    }
+  } catch (err) {
+    console.warn('[startup] Failed to write latest startup results note:', (err as any)?.message || err);
+  }
+}
+
 // Kick off MCP discovery (non-blocking)
 (async () => {
   try {
@@ -54,6 +101,9 @@ const chatClients = new Set<WebSocket>();
     // Initialize centralized tools registry after MCP discovery
     await initToolsRegistry();
     console.log('[startup] Tools registry initialized');
+    toolsReady = true;
+    // If the server is already listening, this will write immediately
+    await writeLatestStartupResultsIfReady();
   } catch (e: any) {
     console.warn('[startup] MCP discovery failed to initialize:', e?.message || e);
   }
@@ -354,4 +404,7 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
 
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  serverListening = true;
+  // If tools are already ready, this will write immediately
+  void writeLatestStartupResultsIfReady();
 });
