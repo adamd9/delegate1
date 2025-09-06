@@ -6,7 +6,6 @@ import { setReplyTo } from './emailState';
 const POLLING_INTERVAL_MS = 30000; // 30 seconds
 
 async function processNewEmails(chatClients: Set<WebSocket>, logsClients: Set<WebSocket>) {
-  console.log('[EmailPoller] Checking for new emails...');
   const emails = await checkInbox();
 
   if (emails.length > 0) {
@@ -29,8 +28,6 @@ async function processNewEmails(chatClients: Set<WebSocket>, logsClients: Set<We
         console.error(`[EmailPoller] Failed to process email from ${email.from}`, { err });
       }
     }
-  } else {
-    console.log('[EmailPoller] No new emails found.');
   }
 }
 
@@ -42,3 +39,4 @@ export function startEmailPolling(chatClients: Set<WebSocket>, logsClients: Set<
   // Run once immediately on start
   poll();
 }
+

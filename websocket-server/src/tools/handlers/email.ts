@@ -6,7 +6,7 @@ export const sendEmailTool: FunctionHandler = {
   schema: {
     name: 'send_email',
     type: 'function',
-    description: 'Send an email to the user. The user\'s email address is known to the tool, so it doesn\'t need to be specified as part of the tool call and the user doesn\'t need to provide it.',
+    description: 'Send an email to an email recipient. If the current conversation channel is email, the recipient will be the email address of the sender of the current email. If the current conversation channel is not email, the recipient will be the default recipient specified in the environment variables.',
     parameters: {
       type: 'object',
       properties: {
@@ -19,12 +19,18 @@ export const sendEmailTool: FunctionHandler = {
   },
   handler: async ({ subject, message }: { subject: string; message: string }) => {
     console.debug('[sendEmailTool] Invoked', { hasSubject: Boolean(subject?.length), hasBody: Boolean(message?.length) });
-    const recipient = getReplyTo();
+    const currentReplyTo = getReplyTo();
+    const defaultRecipient = process.env.EMAIL_DEFAULT_TO || '';
+    const recipient = currentReplyTo || defaultRecipient;
 
     if (!recipient) {
-      const errorMessage = 'No recipient address is available for the reply. An email must be received first.';
+      const errorMessage = 'No recipient address is available. Set EMAIL_DEFAULT_TO in environment variables or receive an email first to establish a reply-to address.';
       console.warn(`[sendEmailTool] ${errorMessage}`);
       return { status: 'failed', reason: errorMessage };
+    }
+
+    if (!currentReplyTo && defaultRecipient) {
+      console.info('[sendEmailTool] No current email channel open; falling back to default user email address.');
     }
 
     try {

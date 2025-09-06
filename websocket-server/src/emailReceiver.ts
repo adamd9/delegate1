@@ -20,35 +20,25 @@ const isReceivingFilterEnabled = (process.env.EMAIL_RECEIVING_FILTER_ENABLED || 
 
 export async function checkInbox() {
   if (!config.imap.user || !config.imap.password || !config.imap.host) {
-    console.warn('[checkInbox] Skipping check: IMAP configuration is missing.');
     return [];
   }
   if (!recipientAddress) {
-    console.warn('[checkInbox] Skipping check: EMAIL_DEFAULT_FROM is not set.');
     return [];
   }
 
   let connection: imaps.ImapSimple | null = null;
   try {
-    console.log('[checkInbox] Connecting to IMAP server...');
     connection = await imaps.connect(config);
-    console.log('[checkInbox] IMAP connection successful.');
 
     await connection.openBox('INBOX');
-    console.log('[checkInbox] Opened INBOX.');
 
     const searchCriteria: (string | string[])[] = ['UNSEEN'];
     if (isReceivingFilterEnabled && recipientAddress) {
       searchCriteria.push(['TO', recipientAddress]);
-      console.log(`[checkInbox] Filtering enabled: searching for emails to ${recipientAddress}.`);
-    } else {
-      console.log('[checkInbox] Filtering disabled: searching for all unseen emails.');
     }
     const fetchOptions = { bodies: [''], markSeen: true };
 
-    console.log(`[checkInbox] Searching for unseen emails to ${recipientAddress}...`);
     const messages = await connection.search(searchCriteria, fetchOptions);
-    console.log(`[checkInbox] Found ${messages.length} matching emails.`);
 
     if (!connection) {
       throw new Error('IMAP connection is not available.');
@@ -68,7 +58,6 @@ export async function checkInbox() {
       if (processedMailbox) {
         try {
           await imapConnection.moveMessage(uid.toString(), processedMailbox);
-          console.log(`[checkInbox] Moved email UID ${uid} to mailbox '${processedMailbox}'.`);
         } catch (moveError) {
           console.warn(`[checkInbox] Could not move email UID ${uid} to mailbox '${processedMailbox}'.`, { error: moveError });
         }
@@ -91,7 +80,7 @@ export async function checkInbox() {
   } finally {
     if (connection) {
       connection.end();
-      console.log('[checkInbox] IMAP connection closed.');
     }
   }
 }
+
