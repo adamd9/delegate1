@@ -225,7 +225,7 @@ app.get("/canvas/:id", async (req, res) => {
     res.status(404).send("Not found");
     return;
   }
-  const html = marked.parse(data.content);
+  const html = marked.parse(data.content ?? "");
   res.send(`<!doctype html><html><head><title>${data.title || "Canvas"}</title></head><body>${html}</body></html>`);
 });
 
