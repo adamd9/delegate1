@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { getBackendUrl } from "@/lib/get-backend-url";
 
 type Props = {
   id: string;
@@ -16,9 +17,7 @@ export default function ThoughtflowD2Viewer({ id, baseUrl }: Props) {
   const svgRef = useRef<HTMLDivElement>(null);
 
   const effectiveBase = useMemo(() => {
-    return (
-      baseUrl || process.env.NEXT_PUBLIC_THOUGHTFLOW_BASE || "http://localhost:8081"
-    );
+    return baseUrl || getBackendUrl();
   }, [baseUrl]);
 
   useEffect(() => {
