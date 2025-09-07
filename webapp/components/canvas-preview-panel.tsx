@@ -25,6 +25,13 @@ export default function CanvasPreviewPanel({ open, onOpenChange, canvas }: Canva
     }
   };
 
+  const viewerHref = React.useMemo(() => {
+    if (!canvas?.url) return "";
+    const u = encodeURIComponent(canvas.url);
+    const t = encodeURIComponent(canvas.title || "Canvas");
+    return `/canvas/viewer?url=${u}&title=${t}`;
+  }, [canvas?.url, canvas?.title]);
+
   // Desktop panel (inline right column)
   const desktopPanel = (
     <div
@@ -39,6 +46,15 @@ export default function CanvasPreviewPanel({ open, onOpenChange, canvas }: Canva
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <a
+            href={viewerHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm px-2 py-1 rounded-md border hover:bg-gray-50"
+            aria-label="Open in Viewer"
+          >
+            Viewer
+          </a>
           <button
             className="inline-flex items-center gap-1 text-sm px-2 py-1 rounded-md border hover:bg-gray-50"
             onClick={handleOpenNewTab}
@@ -94,6 +110,15 @@ export default function CanvasPreviewPanel({ open, onOpenChange, canvas }: Canva
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <a
+            href={viewerHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm px-2 py-1 rounded-md border hover:bg-gray-50"
+            aria-label="Open in Viewer"
+          >
+            Viewer
+          </a>
           <button
             className="inline-flex items-center gap-1 text-sm px-2 py-1 rounded-md border hover:bg-gray-50"
             onClick={handleOpenNewTab}

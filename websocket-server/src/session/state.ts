@@ -16,6 +16,17 @@ export type ConversationItem =
       title?: string;
       timestamp: number;
       id: string;
+    }
+  | {
+      type: 'thoughtflow';
+      session_id: string;
+      json_path: string;
+      d2_path: string;
+      url_json: string;
+      url_d2: string;
+      url_d2_raw: string;
+      url_d2_viewer: string;
+      timestamp: number;
     };
 
 export interface Session {

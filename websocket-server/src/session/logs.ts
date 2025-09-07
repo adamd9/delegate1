@@ -13,7 +13,19 @@ export function establishLogsSocket(ws: WebSocket, logsClients: Set<WebSocket>) 
   // for new events. This stream is consumed by the web frontend at `/logs`.
   if (session.conversationHistory) {
     for (const msg of session.conversationHistory) {
-      if (msg.type === 'canvas') {
+      if (msg.type === 'thoughtflow') {
+        jsonSend(ws, {
+          type: 'thoughtflow.artifacts',
+          session_id: msg.session_id,
+          json_path: msg.json_path,
+          d2_path: msg.d2_path,
+          url_json: msg.url_json,
+          url_d2: msg.url_d2,
+          url_d2_raw: msg.url_d2_raw,
+          url_d2_viewer: msg.url_d2_viewer,
+          timestamp: msg.timestamp,
+        });
+      } else if (msg.type === 'canvas') {
         jsonSend(ws, {
           type: 'chat.canvas',
           content: msg.content,
@@ -21,7 +33,7 @@ export function establishLogsSocket(ws: WebSocket, logsClients: Set<WebSocket>) 
           timestamp: msg.timestamp,
           id: msg.id,
         });
-      } else {
+      } else if (msg.type === 'user' || msg.type === 'assistant') {
         jsonSend(ws, {
           type: "conversation.item.created",
           item: {
@@ -69,6 +81,23 @@ export function processLogsSocketMessage(data: RawData, logsClients: Set<WebSock
         const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${id}.d2`;
         const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${id}.d2`;
         const url_d2_viewer = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/viewer/${id}`;
+
+        // Persist a durable ThoughtFlow entry so it survives reloads
+        if (!session.conversationHistory) {
+          session.conversationHistory = [];
+        }
+        session.conversationHistory.push({
+          type: 'thoughtflow',
+          session_id: id,
+          json_path: result.jsonPath,
+          d2_path: result.d2Path,
+          url_json,
+          url_d2,
+          url_d2_raw,
+          url_d2_viewer,
+          timestamp: Date.now(),
+        } as any);
+
         for (const ws of logsClients) {
           if (isOpen(ws)) jsonSend(ws, {
             type: 'thoughtflow.artifacts',
