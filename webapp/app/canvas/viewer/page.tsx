@@ -1,10 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { ExternalLink, RefreshCw, Copy, ArrowLeft } from "lucide-react";
 
-export default function CanvasViewerPage() {
+function CanvasViewer() {
   const searchParams = useSearchParams();
   const url = searchParams.get("url") || "";
   const title = searchParams.get("title") || "Canvas Viewer";
@@ -96,5 +96,13 @@ export default function CanvasViewerPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function CanvasViewerPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <CanvasViewer />
+    </Suspense>
   );
 }
