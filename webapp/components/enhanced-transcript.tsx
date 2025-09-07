@@ -179,29 +179,50 @@ export function EnhancedTranscript({
                   <span className="text-xs font-mono text-gray-400 mb-1">{timestamp}</span>
                   {/* Canvas link style */}
                   {isCanvasLink ? (
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      className="inline-flex items-center gap-2 text-sm font-mono text-blue-600 hover:text-blue-700 underline underline-offset-2 cursor-pointer"
-                      onClick={() => {
-                        const url = (data as any).content as string;
-                        const providedTitle = (data as any).title as string | undefined;
-                        if (onOpenCanvas) onOpenCanvas({ url, title: providedTitle || title });
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
+                    <div className="flex items-center gap-3">
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        className="inline-flex items-center gap-2 text-sm font-mono text-blue-600 hover:text-blue-700 underline underline-offset-2 cursor-pointer"
+                        onClick={() => {
                           const url = (data as any).content as string;
                           const providedTitle = (data as any).title as string | undefined;
                           if (onOpenCanvas) onOpenCanvas({ url, title: providedTitle || title });
-                        }
-                      }}
-                    >
-                      <span className="text-blue-500">📝</span>
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            const url = (data as any).content as string;
+                            const providedTitle = (data as any).title as string | undefined;
+                            if (onOpenCanvas) onOpenCanvas({ url, title: providedTitle || title });
+                          }
+                        }}
+                      >
+                        <span className="text-blue-500">📝</span>
+                        {(() => {
+                          const raw = ((data as any).title as string | undefined) || title || "Canvas";
+                          const cleaned = raw.replace(/^([📝🔧]\s*)/, "").trim();
+                          return <span>{cleaned}</span>;
+                        })()}
+                      </div>
+                      {/* Open in full-screen in-app viewer */}
                       {(() => {
-                        const raw = ((data as any).title as string | undefined) || title || "Canvas";
-                        const cleaned = raw.replace(/^([📝🔧]\s*)/, "").trim();
-                        return <span>{cleaned}</span>;
+                        const url = (data as any).content as string;
+                        const providedTitle = (data as any).title as string | undefined;
+                        const t = encodeURIComponent((providedTitle || title || "Canvas") as string);
+                        const u = encodeURIComponent(url || "");
+                        const viewerHref = `/canvas/viewer?url=${u}&title=${t}`;
+                        return (
+                          <a
+                            href={viewerHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs"
+                            title="Open in Viewer"
+                          >
+                            Viewer
+                          </a>
+                        );
                       })()}
                     </div>
                   ) : (

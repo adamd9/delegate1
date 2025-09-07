@@ -15,6 +15,8 @@ export default function ThoughtflowD2Viewer({ id, baseUrl }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const svgRef = useRef<HTMLDivElement>(null);
+  const [d2Text, setD2Text] = useState<string>("");
+  const [copied, setCopied] = useState<"d2" | "json" | null>(null);
 
   const effectiveBase = useMemo(() => {
     return baseUrl || getBackendUrl();
@@ -39,6 +41,7 @@ export default function ThoughtflowD2Viewer({ id, baseUrl }: Props) {
         });
         if (!src.ok) throw new Error("Failed to load D2 source");
         const text = await src.text();
+        if (!cancelled) setD2Text(text);
         const result = await d2.compile(text, {
           sketch,
           theme: dark ? "200" : "0",
@@ -59,57 +62,99 @@ export default function ThoughtflowD2Viewer({ id, baseUrl }: Props) {
     };
   }, [id, effectiveBase, sketch, dark]);
 
+  const jsonUrl = useMemo(() => `${effectiveBase}/thoughtflow/${id}.json`, [effectiveBase, id]);
+  const d2Url = useMemo(() => `${effectiveBase}/thoughtflow/${id}.d2`, [effectiveBase, id]);
+
+  async function handleCopyD2() {
+    try {
+      await navigator.clipboard.writeText(d2Text || "");
+      setCopied("d2");
+      setTimeout(() => setCopied(null), 1200);
+    } catch (e) {
+      console.warn("Copy D2 failed", e);
+    }
+  }
+
+  async function handleCopyJSON() {
+    try {
+      const res = await fetch(jsonUrl, { cache: "no-store" });
+      if (!res.ok) throw new Error("Failed to fetch JSON");
+      const txt = await res.text();
+      await navigator.clipboard.writeText(txt);
+      setCopied("json");
+      setTimeout(() => setCopied(null), 1200);
+    } catch (e) {
+      console.warn("Copy JSON failed", e);
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-3 border-b px-3 py-2">
-        <strong>ThoughtFlow D2 Viewer</strong>
-        <span className="text-gray-400">•</span>
-        <span className="text-gray-500">{id}.d2</span>
+      <div className="flex items-center gap-2 border-b px-3 py-2 sticky top-0 bg-white z-10 overflow-x-auto">
+        <strong className="whitespace-nowrap">ThoughtFlow D2 Viewer</strong>
+        <span className="text-gray-400 hidden sm:inline">•</span>
+        <span className="text-gray-500 truncate">{id}.d2</span>
         <div className="flex-1" />
-        <label className="inline-flex items-center gap-2 text-sm">
-          <span>Scale</span>
-          <input
-            type="range"
-            min={0.25}
-            max={2}
-            step={0.05}
-            value={scale}
-            onChange={(e) => setScale(parseFloat(e.target.value))}
-          />
-          <span className="w-10 text-right">{Math.round(scale * 100)}%</span>
-        </label>
-        <label className="inline-flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={sketch}
-            onChange={(e) => setSketch(e.target.checked)}
-          />
-          Sketch
-        </label>
-        <label className="inline-flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={dark}
-            onChange={(e) => setDark(e.target.checked)}
-          />
-          Dark
-        </label>
-        <a
-          className="text-blue-600 hover:underline text-sm"
-          href={`${effectiveBase}/thoughtflow/${id}.d2`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Open .d2
-        </a>
-        <a
-          className="text-blue-600 hover:underline text-sm"
-          href={`${effectiveBase}/thoughtflow/${id}.json`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Open JSON
-        </a>
+        <div className="flex items-center gap-2">
+          <label className="inline-flex items-center gap-2 text-xs sm:text-sm whitespace-nowrap">
+            <span>Scale</span>
+            <input
+              type="range"
+              min={0.25}
+              max={2}
+              step={0.05}
+              value={scale}
+              onChange={(e) => setScale(parseFloat(e.target.value))}
+            />
+            <span className="w-10 text-right">{Math.round(scale * 100)}%</span>
+          </label>
+          <label className="inline-flex items-center gap-2 text-xs sm:text-sm whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={sketch}
+              onChange={(e) => setSketch(e.target.checked)}
+            />
+            Sketch
+          </label>
+          <label className="inline-flex items-center gap-2 text-xs sm:text-sm whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={dark}
+              onChange={(e) => setDark(e.target.checked)}
+            />
+            Dark
+          </label>
+          <button
+            onClick={handleCopyD2}
+            className="inline-flex items-center gap-1 text-xs sm:text-sm px-2 py-1 rounded-md border hover:bg-gray-50 whitespace-nowrap"
+            title="Copy D2 source"
+          >
+            {copied === 'd2' ? 'Copied D2' : 'Copy D2'}
+          </button>
+          <button
+            onClick={handleCopyJSON}
+            className="inline-flex items-center gap-1 text-xs sm:text-sm px-2 py-1 rounded-md border hover:bg-gray-50 whitespace-nowrap"
+            title="Copy JSON artifact"
+          >
+            {copied === 'json' ? 'Copied JSON' : 'Copy JSON'}
+          </button>
+          <a
+            className="inline-flex items-center gap-1 text-xs sm:text-sm px-2 py-1 rounded-md border hover:bg-gray-50 whitespace-nowrap"
+            href={d2Url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open .d2
+          </a>
+          <a
+            className="inline-flex items-center gap-1 text-xs sm:text-sm px-2 py-1 rounded-md border hover:bg-gray-50 whitespace-nowrap"
+            href={jsonUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open JSON
+          </a>
+        </div>
       </div>
       <div className="flex-1 overflow-auto bg-gray-50">
         <div className="p-4">
