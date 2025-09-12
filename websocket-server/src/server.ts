@@ -52,10 +52,34 @@ function finalizeOpenSessionsOnStartup() {
         const raw = readFileSync(join(dir, f), 'utf8');
         const lines = raw.split(/\n+/).filter(Boolean);
         const last = lines[lines.length - 1] || '';
-        if (!last.includes('session.ended')) {
-          console.log(`[startup] Finalizing partial session ${id}`);
-          endSession({ sessionId: id, statusOverride: 'partial' });
+        if (last.includes('session.ended')) continue;
+        // Only finalize if there is evidence of a real conversation/run activity
+        let hasActivity = false;
+        for (const line of lines) {
+          try {
+            const evt = JSON.parse(line);
+            const t = evt?.type as string | undefined;
+            if (t === 'run.started' || t === 'step.started' || t === 'run.completed') {
+              hasActivity = true;
+              break;
+            }
+          } catch {}
         }
+        if (!hasActivity) {
+          // Skip auto-finalization for empty sessions (prevents phantom history rows after DB reset)
+          continue;
+        }
+        // Only finalize if DB already has at least one real transcript message for this session
+        try {
+          const items = listTranscriptItems(id);
+          const hasRealMsgs = Array.isArray(items) && items.some((r: any) => r.kind === 'message_user' || r.kind === 'message_assistant');
+          if (!hasRealMsgs) {
+            // DB was likely wiped or there was no real conversation; do not finalize
+            continue;
+          }
+        } catch {}
+        console.log(`[startup] Finalizing partial session ${id}`);
+        endSession({ sessionId: id, statusOverride: 'partial' });
       } catch (e) {
         console.warn(`[startup] Failed to inspect/finalize ${f}:`, (e as any)?.message || e);
       }

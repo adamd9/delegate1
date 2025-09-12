@@ -24,7 +24,7 @@ export function EnhancedTranscript({
   onCancel,
   onOpenCanvas,
 }: EnhancedTranscriptProps) {
-  const { transcriptItems, toggleTranscriptItemExpand, updateTranscriptItem } = useTranscript();
+  const { transcriptItems, toggleTranscriptItemExpand, updateTranscriptItem, historyHeaderCount, historyAnchorMs } = useTranscript();
   const DEBUG = String(process.env.NEXT_PUBLIC_DEBUG_TRANSCRIPT || '').toLowerCase() === 'true';
   const [debugOpen, setDebugOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
@@ -129,9 +129,64 @@ export function EnhancedTranscript({
             <pre className="text-xs overflow-auto max-h-64 whitespace-pre-wrap">{JSON.stringify(transcriptItems, null, 2)}</pre>
           </div>
         )}
-        {[...transcriptItems]
-          .sort((a, b) => a.createdAtMs - b.createdAtMs)
-          .map((item) => {
+        {(() => {
+          const sorted = [...transcriptItems].sort((a, b) => a.createdAtMs - b.createdAtMs);
+          const hasHeader = (historyHeaderCount || 0) > 0; // anchor not required anymore
+          // Identify history items without relying on timestamps.
+          const isHistoryItem = (it: typeof transcriptItems[number]) => {
+            if (it.isHidden) return false; // hidden items don't affect separator placement
+            if (it.itemId.startsWith('replay_')) return true;
+            if (it.type === 'BREADCRUMB') {
+              const d: any = (it as any).data;
+              return Boolean(d && d._replay === true);
+            }
+            return false;
+          };
+          let lastHistoryIdx = -1;
+          for (let i = 0; i < sorted.length; i++) {
+            if (isHistoryItem(sorted[i])) lastHistoryIdx = i;
+          }
+          const renderList: Array<any> = [];
+          for (let i = 0; i < sorted.length; i++) {
+            const it = sorted[i];
+            renderList.push(it);
+            if (hasHeader && lastHistoryIdx >= 0 && i === lastHistoryIdx) {
+              // Insert the universal separator immediately after the last history item
+              renderList.push({ __separator__: true, key: `sep-history` });
+            }
+          }
+          if (hasHeader && lastHistoryIdx < 0) {
+            // No history items at all; put separator at the start
+            renderList.unshift({ __separator__: true, key: `sep-history` });
+          }
+          return renderList.map((item: any) => {
+            if (item && item.__separator__) {
+              return (
+                <div
+                  key={item.key}
+                  className="flex items-center my-2 cursor-pointer select-none"
+                  title="Toggle history visibility"
+                  onClick={() => {
+                    const next = !historyExpanded;
+                    setHistoryExpanded(next);
+                    try { (globalThis as any).__historyExpanded = next; } catch {}
+                    for (const it of transcriptItems) {
+                      const isReplay = it.itemId.startsWith('replay_');
+                      const isReplayBreadcrumb = it.type === 'BREADCRUMB' && (it as any).data && (it as any).data._replay === true;
+                      if (isReplay || isReplayBreadcrumb) updateTranscriptItem(it.itemId, { isHidden: !next });
+                    }
+                  }}
+                >
+                  <div className="flex-1 h-px bg-gray-200" />
+                  <span className="mx-2 text-sm text-gray-700">
+                    📜 Previous conversations ({historyHeaderCount})
+                    <span className="ml-2 text-xs text-gray-400">{historyExpanded ? 'click to hide' : 'click to show'}</span>
+                  </span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
+              );
+            }
+            const current = item as typeof transcriptItems[number];
             const {
               itemId,
               type,
@@ -143,19 +198,15 @@ export function EnhancedTranscript({
               isHidden,
               channel,
               supervisor,
-            } = item;
-
-            if (isHidden) {
-              return null;
-            }
-
+            } = current;
+            
+            if (isHidden) return null;
+            
+            // Existing render branches follow
             if (type === "MESSAGE") {
               const isUser = role === "user";
               const isHistory = itemId.startsWith('replay_');
-              const containerClasses = `flex ${
-                isUser ? "justify-end" : "justify-start"
-              }`;
-              
+              const containerClasses = `flex ${isUser ? "justify-end" : "justify-start"}`;
               const bubbleClasses = `max-w-lg p-3 rounded-lg ${
                 isUser
                   ? (isHistory ? "bg-gray-800 text-white opacity-85" : "bg-gray-900 text-white")
@@ -163,41 +214,37 @@ export function EnhancedTranscript({
                   ? (isHistory ? "bg-purple-50 text-purple-900 border border-purple-200 opacity-85" : "bg-purple-50 text-purple-900 border border-purple-200")
                   : (isHistory ? "bg-gray-50 text-gray-700 border border-gray-200" : "bg-gray-100 text-gray-900")
               }`;
-
               const channelBadge = channel && (
                 <span className={`inline-block px-2 py-1 text-xs rounded-full mr-2 ${
-                  channel === "voice" 
-                    ? "bg-green-100 text-green-800" 
-                    : "bg-gray-100 text-gray-800"
-                }`}>
-                  {channel}
-                </span>
+                  channel === "voice" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
+                }`}>{channel}</span>
               );
-
               const supervisorBadge = supervisor && (
-                <span className="inline-block px-2 py-1 text-xs rounded-full mr-2 bg-purple-100 text-purple-800">
-                  supervisor
-                </span>
+                <span className="inline-block px-2 py-1 text-xs rounded-full mr-2 bg-purple-100 text-purple-800">supervisor</span>
               );
-
               return (
                 <div key={itemId} className={containerClasses}>
                   <div className="max-w-lg">
                     <div className={bubbleClasses}>
-                      <div className={`text-xs mb-1 ${
-                        isUser ? "text-gray-300" : "text-gray-500"
-                      } font-mono`}>
+                      <div className={`text-xs mb-1 ${isUser ? "text-gray-300" : "text-gray-500"} font-mono`}>
                         {timestamp}
                         {!isUser && (channelBadge || supervisorBadge)}
                         {isHistory && (
-                          <span className="inline-block ml-2 px-2 py-0.5 text-[10px] rounded-full bg-gray-200 text-gray-700 align-middle">
-                            history
-                          </span>
+                          <span className="inline-block ml-2 px-2 py-0.5 text-[10px] rounded-full bg-gray-200 text-gray-700 align-middle">history</span>
                         )}
+                        {/* Run badge (history items) */}
+                        {(() => {
+                          const runId: string | undefined = (data as any)?._meta?.run_id;
+                          if (!runId) return null;
+                          const short = runId.length > 8 ? `${runId.slice(0, 8)}` : runId;
+                          return (
+                            <span className="inline-block ml-2 px-2 py-0.5 text-[10px] rounded-full bg-blue-100 text-blue-800 align-middle" title={`run: ${runId}`}>
+                              run:{short}
+                            </span>
+                          );
+                        })()}
                       </div>
-                      <div className="whitespace-pre-wrap">
-                        {title}
-                      </div>
+                      <div className="whitespace-pre-wrap">{title}</div>
                       {DEBUG && (
                         <div className="mt-2 text-[10px] font-mono text-gray-400">
                           {(() => {
@@ -205,7 +252,7 @@ export function EnhancedTranscript({
                             const callId = (data as any)?.call_id;
                             const parts: string[] = [];
                             parts.push(`ui.id=${itemId}`);
-                            parts.push(`ts=${item.createdAtMs}`);
+                            parts.push(`ts=${current.createdAtMs}`);
                             if (meta.session_id) parts.push(`session=${meta.session_id}`);
                             if (meta.run_id) parts.push(`run=${meta.run_id}`);
                             if (meta.step_id) parts.push(`step=${meta.step_id}`);
@@ -223,12 +270,21 @@ export function EnhancedTranscript({
               const isCanvasLink = !!(data && typeof (data as any).content === "string" && /^https?:\/\//.test((data as any).content));
               const hasTfLinks = !!(data && (data as any).url_json && (data as any).url_d2);
               return (
-                <div
-                  key={itemId}
-                  className="flex flex-col text-gray-600 text-sm"
-                >
-                  <span className="text-xs font-mono text-gray-400 mb-1">{timestamp}</span>
-                  {/* Canvas link style */}
+                <div key={itemId} className="flex flex-col text-gray-600 text-sm">
+                  <span className="text-xs font-mono text-gray-400 mb-1">
+                    {timestamp}
+                    {/* Run badge for breadcrumb if present */}
+                    {(() => {
+                      const runId: string | undefined = (data as any)?._meta?.run_id;
+                      if (!runId) return null;
+                      const short = runId.length > 8 ? `${runId.slice(0, 8)}` : runId;
+                      return (
+                        <span className="inline-block ml-2 px-2 py-0.5 text-[10px] rounded-full bg-blue-100 text-blue-800 align-middle" title={`run: ${runId}`}>
+                          run:{short}
+                        </span>
+                      );
+                    })()}
+                  </span>
                   {isCanvasLink ? (
                     <div className="flex items-center gap-3">
                       <div
@@ -256,7 +312,6 @@ export function EnhancedTranscript({
                           return <span>{cleaned}</span>;
                         })()}
                       </div>
-                      {/* Open in full-screen in-app viewer */}
                       {(() => {
                         const url = (data as any).content as string;
                         const providedTitle = (data as any).title as string | undefined;
@@ -264,30 +319,18 @@ export function EnhancedTranscript({
                         const u = encodeURIComponent(url || "");
                         const viewerHref = `/canvas/viewer?url=${u}&title=${t}`;
                         return (
-                          <a
-                            href={viewerHref}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs"
-                            title="Open in Viewer"
-                          >
-                            Viewer
-                          </a>
+                          <a href={viewerHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs" title="Open in Viewer">Viewer</a>
                         );
                       })()}
                     </div>
                   ) : (
-                    // Default breadcrumb (plus special handling for history header)
                     <div
-                      className={`flex items-center font-mono text-sm ${
-                        (data || isHistoryHeader) ? "cursor-pointer hover:text-gray-800" : ""
-                      }`}
+                      className={`flex items-center font-mono text-sm ${(data || isHistoryHeader) ? "cursor-pointer hover:text-gray-800" : ""}`}
                       onClick={() => {
                         if (isHistoryHeader) {
                           const next = !historyExpanded;
                           setHistoryExpanded(next);
                           try { (globalThis as any).__historyExpanded = next; } catch {}
-                          // Show/hide ALL replay items and replay breadcrumbs
                           for (const it of transcriptItems) {
                             const isReplay = it.itemId.startsWith('replay_');
                             const isReplayBreadcrumb = it.type === 'BREADCRUMB' && (it as any).data && (it as any).data._replay === true;
@@ -299,42 +342,25 @@ export function EnhancedTranscript({
                       }}
                     >
                       {(data || isHistoryHeader) && (
-                        <ChevronRightIcon
-                          className={`w-4 h-4 mr-1 transition-transform duration-200 ${
-                            (expanded || historyExpanded && isHistoryHeader) ? "rotate-90" : "rotate-0"
-                          }`}
-                        />
+                        <ChevronRightIcon className={`w-4 h-4 mr-1 transition-transform duration-200 ${(expanded || historyExpanded && isHistoryHeader) ? "rotate-90" : "rotate-0"}`} />
                       )}
                       <span className="text-orange-600">🔧</span>
                       <span className="ml-2">{title}</span>
                     </div>
                   )}
-                  {/* ThoughtFlow artifact quick links (only when expanded) */}
                   {!isCanvasLink && hasTfLinks && expanded && (
                     <div className="mt-2 ml-6 flex gap-3 flex-wrap">
-                      {/* Prefer in-app viewer when session_id is present */}
                       {((data as any).session_id || (data as any).url_d2_viewer) && (
-                        <a
-                          href={((data as any).session_id
-                            ? `/thoughtflow/viewer/${(data as any).session_id}`
-                            : (data as any).url_d2_viewer) as string}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded border border-green-200 text-green-700 hover:bg-green-50"
-                          title="Open D2 in browser viewer"
-                        >
+                        <a href={((data as any).session_id ? `/thoughtflow/viewer/${(data as any).session_id}` : (data as any).url_d2_viewer) as string} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded border border-green-200 text-green-700 hover:bg-green-50" title="Open D2 in browser viewer">
                           <span>Viewer</span>
                           <ChevronRightIcon className="w-3 h-3" />
                         </a>
                       )}
                     </div>
                   )}
-                  {/* Default expanded JSON dump for other breadcrumbs; suppress for ThoughtFlow artifacts */}
                   {!isCanvasLink && expanded && data && !hasTfLinks && (
                     <div className="mt-2 ml-6">
-                      <pre className="bg-gray-50 border-l-2 border-orange-200 p-2 text-xs overflow-x-auto whitespace-pre-wrap font-mono text-gray-700">
-                        {JSON.stringify(data, null, 2)}
-                      </pre>
+                      <pre className="bg-gray-50 border-l-2 border-orange-200 p-2 text-xs overflow-x-auto whitespace-pre-wrap font-mono text-gray-700">{JSON.stringify(data, null, 2)}</pre>
                     </div>
                   )}
                   {DEBUG && (
@@ -344,7 +370,7 @@ export function EnhancedTranscript({
                         const callId = (data as any)?.call_id;
                         const parts: string[] = [];
                         parts.push(`ui.id=${itemId}`);
-                        parts.push(`ts=${item.createdAtMs}`);
+                        parts.push(`ts=${current.createdAtMs}`);
                         if (meta.session_id) parts.push(`session=${meta.session_id}`);
                         if (meta.run_id) parts.push(`run=${meta.run_id}`);
                         if (meta.step_id) parts.push(`step=${meta.step_id}`);
@@ -356,9 +382,9 @@ export function EnhancedTranscript({
                 </div>
               );
             }
-
             return null;
-          })}
+          });
+        })()}
       </div>
 
       {/* Input Area and Additional Tools */}
