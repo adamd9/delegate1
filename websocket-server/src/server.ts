@@ -3,7 +3,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage } from "http";
 import dotenv from "dotenv";
 import http from "http";
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import cors from "cors";
 import { establishCallSocket } from "./session/call";
@@ -20,6 +20,8 @@ import { initMCPDiscovery } from './tools/mcp/adapter';
 import { initToolsRegistry } from './tools/init';
 import { getAgentsDebug, getSchemasForAgent } from './tools/registry';
 import { startEmailPolling } from './emailPoller';
+import { listSessions as dbListSessions, getSessionDetail, listTranscriptItems } from './db/sqlite';
+import { endSession } from './observability/thoughtflow';
 import { listAllTools } from './tools/registry';
 import { createNote, listNotes, updateNote } from './noteStore';
 
@@ -30,10 +32,37 @@ const PORT = parseInt(process.env.PORT || "8081", 10);
 const PUBLIC_URL = process.env.PUBLIC_URL || "";
 const EFFECTIVE_PUBLIC_URL = (PUBLIC_URL && PUBLIC_URL.trim()) || `http://localhost:${PORT}`;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+const SESSION_HISTORY_LIMIT = parseInt(process.env.SESSION_HISTORY_LIMIT || '3', 10);
 
 if (!OPENAI_API_KEY) {
   console.error("OPENAI_API_KEY environment variable is required");
   process.exit(1);
+}
+
+// Finalize any sessions that were left open (no session.ended) across restarts
+function finalizeOpenSessionsOnStartup() {
+  try {
+    const dir = join(__dirname, '..', 'runtime-data', 'thoughtflow');
+    let files: string[] = [];
+    try { files = readdirSync(dir); } catch { files = []; }
+    const jsonl = files.filter(f => f.endsWith('.jsonl'));
+    for (const f of jsonl) {
+      const id = f.replace(/\.jsonl$/, '');
+      try {
+        const raw = readFileSync(join(dir, f), 'utf8');
+        const lines = raw.split(/\n+/).filter(Boolean);
+        const last = lines[lines.length - 1] || '';
+        if (!last.includes('session.ended')) {
+          console.log(`[startup] Finalizing partial session ${id}`);
+          endSession({ sessionId: id, statusOverride: 'partial' });
+        }
+      } catch (e) {
+        console.warn(`[startup] Failed to inspect/finalize ${f}:`, (e as any)?.message || e);
+      }
+    }
+  } catch (e) {
+    console.warn('[startup] finalizeOpenSessionsOnStartup failed:', (e as any)?.message || e);
+  }
 }
 
 const app = express();
@@ -214,6 +243,60 @@ app.get('/agents/:id/tools', (req, res) => {
 // Endpoint to retrieve latest server logs
 app.get("/logs", (req, res) => {
   res.type("text/plain").send(getLogs().join("\n"));
+});
+
+// Sessions list endpoint
+app.get('/api/sessions', (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(50, Number(req.query.limit) || SESSION_HISTORY_LIMIT));
+    const list = dbListSessions(limit);
+    res.json(list);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to list sessions' });
+  }
+});
+
+// Session detail endpoint
+app.get('/api/sessions/:id', (req, res) => {
+  try {
+    const id = req.params.id;
+    const detail = getSessionDetail(id);
+    if (!detail) return res.status(404).json({ error: 'Not found' });
+    res.json(detail);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to get session' });
+  }
+});
+
+// Transcript items endpoint (canonical, ordered by seq)
+app.get('/api/sessions/:id/items', (req, res) => {
+  try {
+    const id = req.params.id;
+    const detail = getSessionDetail(id);
+    if (!detail) return res.status(404).json({ error: 'Not found' });
+    const items = listTranscriptItems(id);
+    const out = items.map((row: any) => ({
+      id: row.id,
+      session_id: row.session_id,
+      seq: row.seq,
+      kind: row.kind,
+      payload: (() => { try { return JSON.parse(row.payload_json || '{}'); } catch { return {}; } })(),
+      created_at_ms: row.created_at_ms,
+    }));
+    if ((process.env.ITEMS_DEBUG || '').toLowerCase() === 'true') {
+      try {
+        const counts: Record<string, number> = {};
+        for (const it of out) counts[it.kind] = (counts[it.kind] || 0) + 1;
+        const seqs = out.map((i: any) => i.seq);
+        const minSeq = Math.min(...seqs);
+        const maxSeq = Math.max(...seqs);
+        console.debug(`[items] session=${id} total=${out.length} kinds=${JSON.stringify(counts)} seq=[${minSeq}..${maxSeq}]`);
+      } catch {}
+    }
+    res.json(out);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to get transcript items' });
+  }
 });
 
 // (removed /sms/debug temporary diagnostics)
@@ -405,6 +488,8 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   serverListening = true;
+  // Finalize any open sessions at startup for consistency
+  finalizeOpenSessionsOnStartup();
   // If tools are already ready, this will write immediately
   void writeLatestStartupResultsIfReady();
 });

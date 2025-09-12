@@ -11,6 +11,7 @@ import { getReplyTo } from "../emailState";
 import { sendEmail } from "../email";
 import { session, parseMessage, jsonSend, isOpen } from "./state";
 import { ensureSession, appendEvent, ThoughtFlowStepType } from "../observability/thoughtflow";
+import { addTranscriptItem } from "../db/sqlite";
 
 export function establishChatSocket(
   ws: WebSocket,
@@ -148,6 +149,15 @@ export async function handleTextChatMessage(
       session.conversationHistory = [];
     }
     session.conversationHistory.push(userMessage);
+    try {
+      const { id: sessionId } = ensureSession();
+      addTranscriptItem({
+        session_id: sessionId,
+        kind: 'message_user',
+        payload: { text: content, channel, supervisor: false },
+        created_at_ms: userMessage.timestamp,
+      });
+    } catch {}
     // Forward user message to observability clients
     for (const ws of logsClients) {
       if (isOpen(ws))
@@ -363,6 +373,15 @@ export async function handleTextChatMessage(
                 supervisor: true,
               };
               session.conversationHistory.push(assistantMessage);
+              try {
+                const { id: sessionId } = ensureSession();
+                addTranscriptItem({
+                  session_id: sessionId,
+                  kind: 'message_assistant',
+                  payload: { text, channel: 'text', supervisor: true },
+                  created_at_ms: assistantMessage.timestamp,
+                });
+              } catch {}
               if (isSmsWindowOpen()) {
                 const { smsUserNumber, smsTwilioNumber } = getNumbers();
                 sendSms(text, smsTwilioNumber, smsUserNumber).catch((e) => console.error('sendSms error', e));
@@ -405,6 +424,15 @@ export async function handleTextChatMessage(
             supervisor: true,
           };
           session.conversationHistory.push(assistantMessage);
+          try {
+            const { id: sessionId } = ensureSession();
+            addTranscriptItem({
+              session_id: sessionId,
+              kind: 'message_assistant',
+              payload: { text: finalResponse, channel: 'text', supervisor: true },
+              created_at_ms: assistantMessage.timestamp,
+            });
+          } catch {}
           if (channel === 'sms' && isSmsWindowOpen()) {
             const { smsUserNumber, smsTwilioNumber } = getNumbers();
             sendSms(finalResponse, smsTwilioNumber, smsUserNumber).catch((e) =>
@@ -463,6 +491,15 @@ export async function handleTextChatMessage(
           supervisor: true,
         };
         session.conversationHistory.push(assistantMessage);
+        try {
+          const { id: sessionId } = ensureSession();
+          addTranscriptItem({
+            session_id: sessionId,
+            kind: 'message_assistant',
+            payload: { text: errorText, channel: 'text', supervisor: true },
+            created_at_ms: assistantMessage.timestamp,
+          });
+        } catch {}
         for (const ws of chatClients) {
           if (isOpen(ws)) jsonSend(ws, { type: "chat.response", content: errorText, timestamp: Date.now(), supervisor: true });
         }
@@ -502,6 +539,15 @@ export async function handleTextChatMessage(
       supervisor: false,
     };
     session.conversationHistory.push(assistantMessage);
+    try {
+      const { id: sessionId } = ensureSession();
+      addTranscriptItem({
+        session_id: sessionId,
+        kind: 'message_assistant',
+        payload: { text: assistantText, channel: 'text', supervisor: false },
+        created_at_ms: assistantMessage.timestamp,
+      });
+    } catch {}
     if (channel === 'sms' && isSmsWindowOpen()) {
       const { smsUserNumber, smsTwilioNumber } = getNumbers();
       sendSms(assistantText, smsTwilioNumber, smsUserNumber).catch((e) =>

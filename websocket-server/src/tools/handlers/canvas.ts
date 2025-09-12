@@ -2,6 +2,8 @@ import { FunctionHandler } from '../../agentConfigs/types';
 import { WebSocket } from 'ws';
 import { storeCanvas } from '../../canvasStore';
 import { session, type ConversationItem } from '../../session/state';
+import { ensureSession } from '../../observability/thoughtflow';
+import { addCanvas, addTranscriptItem } from '../../db/sqlite';
 
 const PUBLIC_URL = process.env.PUBLIC_URL || '';
 const DEFAULT_PORT = process.env.PORT || '8081';
@@ -58,6 +60,18 @@ export const sendCanvas: FunctionHandler = {
     for (const client of logsClients) {
       jsonSend(client, message);
     }
+
+    // Index canvas in DB for session linkage
+    try {
+      const { id: sessionId } = ensureSession();
+      addCanvas({ id, session_id: sessionId, path: url, type: 'canvas-link' });
+      addTranscriptItem({
+        session_id: sessionId,
+        kind: 'canvas',
+        payload: { id, title: title ?? null, url },
+        created_at_ms: Date.now(),
+      });
+    } catch {}
 
     return { status: "sent", id, url, title: title ?? null };
   }
