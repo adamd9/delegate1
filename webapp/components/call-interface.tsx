@@ -96,9 +96,17 @@ const CallInterface = () => {
       // Add a single header with the count
       handleEnhancedRealtimeEvent({ type: 'history.header', count: sessions.length }, transcript);
       for (const s of sessions) {
-        const r = await fetch(`${backend}/api/sessions/${s.id}/items`);
-        if (!r.ok) continue;
-        const items = await r.json();
+        // Fetch items and session detail (runs) to infer run_id per item
+        const [ri, rd] = await Promise.all([
+          fetch(`${backend}/api/sessions/${s.id}/items`),
+          fetch(`${backend}/api/sessions/${s.id}`),
+        ]);
+        if (!ri.ok) continue;
+        const items = await ri.json();
+        let detail: any = null;
+        try { detail = rd.ok ? await rd.json() : null; } catch {}
+        const runs: Array<{ id: string; started_at: string; ended_at?: string | null }> = (detail && Array.isArray(detail.runs)) ? detail.runs : [];
+        const runWindows = runs.map(rn => ({ id: rn.id, startMs: Date.parse(rn.started_at), endMs: rn.ended_at ? Date.parse(rn.ended_at) : Number.POSITIVE_INFINITY }));
         if (DEBUG) {
           const counts: Record<string, number> = {};
           for (const it of items) counts[it.kind] = (counts[it.kind] || 0) + 1;
@@ -112,6 +120,18 @@ const CallInterface = () => {
           const payload = it.payload || {};
           // Use a synthetic timestamp strictly increasing by seq to avoid jitter
           const ts = (typeof it.seq === 'number' ? (base + it.seq) : (it.created_at_ms || Date.now()));
+          // Infer run_id based on item timestamp falling within a run window
+          let inferredRunId: string | undefined = undefined;
+          if (runWindows.length > 0) {
+            const hit = runWindows.find(w => ts >= w.startMs && ts <= w.endMs);
+            inferredRunId = hit?.id;
+            // If not inside a closed window, use the most recent started run
+            if (!inferredRunId) {
+              const sorted = runWindows.slice().sort((a, b) => a.startMs - b.startMs);
+              const last = sorted.filter(w => ts >= w.startMs).pop();
+              inferredRunId = last?.id;
+            }
+          }
           // Dedupe legacy duplicates: only one ThoughtFlow per session
           if (kind === 'thoughtflow_artifacts') {
             if (seenKinds.has('thoughtflow_artifacts')) continue;
@@ -122,6 +142,7 @@ const CallInterface = () => {
               type: 'conversation.item.created',
               replay: true,
               session_id: s.id,
+              run_id: inferredRunId,
               item: {
                 id: `ti_${it.seq}`,
                 type: 'message',
@@ -137,6 +158,7 @@ const CallInterface = () => {
               type: 'conversation.item.created',
               replay: true,
               session_id: s.id,
+              run_id: inferredRunId,
               item: {
                 id: String(payload.call_id || `call_${it.seq}`),
                 type: 'function_call',
@@ -152,6 +174,7 @@ const CallInterface = () => {
               type: 'conversation.item.completed',
               replay: true,
               session_id: s.id,
+              run_id: inferredRunId,
               item: {
                 id: String(payload.call_id || `call_${it.seq}`),
                 type: 'function_call',
@@ -168,6 +191,7 @@ const CallInterface = () => {
               type: 'chat.canvas',
               replay: true,
               session_id: s.id,
+              run_id: inferredRunId,
               content: payload.url,
               title: payload.title,
               timestamp: ts,
@@ -178,6 +202,7 @@ const CallInterface = () => {
               type: 'thoughtflow.artifacts',
               replay: true,
               session_id: s.id,
+              run_id: inferredRunId,
               json_path: payload.json_path,
               d2_path: payload.d2_path,
               url_json: payload.url_json,

@@ -17,6 +17,8 @@ export interface TranscriptItem {
 
 export interface TranscriptContextValue {
   transcriptItems: TranscriptItem[];
+  historyHeaderCount: number;
+  historyAnchorMs: number | null;
   addTranscriptMessage: (
     itemId: string,
     role: "user" | "assistant",
@@ -30,4 +32,6 @@ export interface TranscriptContextValue {
   toggleTranscriptItemExpand: (itemId: string) => void;
   updateTranscriptItem: (itemId: string, updatedProperties: Partial<TranscriptItem>) => void;
   clearTranscript: () => void;
+  setHistoryHeaderCount: (n: number) => void;
+  setHistoryAnchorMs: (ms: number | null) => void;
 }

@@ -72,20 +72,15 @@ export default function handleEnhancedRealtimeEvent(
   switch (event.type) {
     case "history.header": {
       const count = typeof event.count === 'number' ? event.count : 0;
-      // Hide any previous headers to avoid duplication
+      // Set universal header state instead of adding a breadcrumb item
       try {
-        for (const it of transcriptItems) {
-          if (it.type === 'BREADCRUMB' && typeof it.title === 'string' && it.title.startsWith('📜 Previous conversations') && !it.isHidden) {
-            updateTranscriptItem(it.itemId, { isHidden: true });
-          }
-        }
+        (transcript as any).setHistoryHeaderCount?.(count);
       } catch {}
-      // Non-expandable breadcrumb (no data payload)
-      addTranscriptBreadcrumb(
-        `📜 Previous conversations (${count})`,
-        undefined
-      );
-      historyAnchorMs = Date.now();
+      const anchor = Date.now();
+      try {
+        (transcript as any).setHistoryAnchorMs?.(anchor);
+      } catch {}
+      historyAnchorMs = anchor;
       historyClampOffset = 0;
       break;
     }
@@ -128,6 +123,8 @@ export default function handleEnhancedRealtimeEvent(
             try {
               const meta = {
                 session_id: (event as any).session_id,
+                run_id: (event as any).run_id,
+                step_id: (event as any).step_id,
                 kind: 'message',
               } as any;
               updateTranscriptItem(newId, { data: { ...(event.item as any), _meta: meta } });
@@ -170,6 +167,13 @@ export default function handleEnhancedRealtimeEvent(
             arguments: parsedArgs,
             status: event.item.status || 'created',
             _replay: breadcrumbHidden,
+            ...(isReplay ? { _meta: {
+              session_id: (event as any).session_id,
+              run_id: (event as any).run_id,
+              step_id: (event as any).step_id,
+              call_id: event.item.call_id,
+              kind: 'function_call',
+            } } : {}),
           },
           breadcrumbHidden
         );
@@ -278,6 +282,13 @@ export default function handleEnhancedRealtimeEvent(
             arguments: parsedArgs,
             status: 'completed',
             _replay: isReplay,
+            ...(isReplay ? { _meta: {
+              session_id: (event as any).session_id,
+              run_id: (event as any).run_id,
+              step_id: (event as any).step_id,
+              call_id: event.item.call_id,
+              kind: 'function_call',
+            } } : {}),
           },
           isReplay
         );
@@ -487,6 +498,11 @@ export default function handleEnhancedRealtimeEvent(
           timestamp: event.timestamp,
           note: "Artifacts written on server under websocket-server/runtime-data/thoughtflow",
           _replay: shouldHide,
+          ...(event.replay === true ? { _meta: {
+            session_id: (event as any).session_id,
+            run_id: (event as any).run_id,
+            kind: 'thoughtflow_artifacts',
+          } } : {}),
         },
         shouldHide
       );
@@ -555,6 +571,11 @@ export default function handleEnhancedRealtimeEvent(
           timestamp: event.timestamp,
           supervisor: event.supervisor || false,
           _replay: event.replay === true,
+          ...(event.replay === true ? { _meta: {
+            session_id: (event as any).session_id,
+            run_id: (event as any).run_id,
+            kind: 'canvas',
+          } } : {}),
         },
         event.replay === true && !isHistoryExpanded()
       );
@@ -563,6 +584,7 @@ export default function handleEnhancedRealtimeEvent(
         try {
           const meta = {
             session_id: (event as any).session_id,
+            run_id: (event as any).run_id,
             kind: 'canvas',
           } as any;
           const items = transcript.transcriptItems;

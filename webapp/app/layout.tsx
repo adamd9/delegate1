@@ -6,9 +6,9 @@ import { TranscriptProvider } from "@/contexts/TranscriptContext";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "OpenAI Realtime + Twilio",
+  title: "Delegate (HK-47)",
   description:
-    "Sample phone call assistant app for OpenAI Realtime API and Twilio",
+    "A smart AI assistant accessible via phone, text, and chat, a delegate for you.",
 };
 
 export default function RootLayout({

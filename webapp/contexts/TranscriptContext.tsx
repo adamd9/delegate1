@@ -14,6 +14,8 @@ const TranscriptContext = createContext<TranscriptContextValue | undefined>(unde
 
 export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
   const [transcriptItems, setTranscriptItems] = useState<TranscriptItem[]>([]);
+  const [historyHeaderCount, setHistoryHeaderCount] = useState<number>(0);
+  const [historyAnchorMs, setHistoryAnchorMs] = useState<number | null>(null);
 
   function newTimestampPretty(): string {
     const now = new Date();
@@ -116,12 +118,16 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
     <TranscriptContext.Provider
       value={{
         transcriptItems,
+        historyHeaderCount,
+        historyAnchorMs,
         addTranscriptMessage,
         updateTranscriptMessage,
         addTranscriptBreadcrumb,
         toggleTranscriptItemExpand,
         updateTranscriptItem,
         clearTranscript,
+        setHistoryHeaderCount,
+        setHistoryAnchorMs,
       }}
     >
       {children}
