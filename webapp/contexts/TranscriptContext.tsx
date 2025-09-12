@@ -75,7 +75,7 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
     );
   };
 
-  const addTranscriptBreadcrumb: TranscriptContextValue["addTranscriptBreadcrumb"] = (title, data) => {
+  const addTranscriptBreadcrumb: TranscriptContextValue["addTranscriptBreadcrumb"] = (title, data, isHidden = false) => {
     setTranscriptItems((prev) => [
       ...prev,
       {
@@ -87,7 +87,7 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
         timestamp: newTimestampPretty(),
         createdAtMs: Date.now(),
         status: "DONE",
-        isHidden: false,
+        isHidden,
       },
     ]);
   };

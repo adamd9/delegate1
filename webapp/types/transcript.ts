@@ -26,7 +26,7 @@ export interface TranscriptContextValue {
     isHidden?: boolean
   ) => void;
   updateTranscriptMessage: (itemId: string, text: string, isDelta: boolean) => void;
-  addTranscriptBreadcrumb: (title: string, data?: Record<string, any>) => void;
+  addTranscriptBreadcrumb: (title: string, data?: Record<string, any>, isHidden?: boolean) => void;
   toggleTranscriptItemExpand: (itemId: string) => void;
   updateTranscriptItem: (itemId: string, updatedProperties: Partial<TranscriptItem>) => void;
   clearTranscript: () => void;

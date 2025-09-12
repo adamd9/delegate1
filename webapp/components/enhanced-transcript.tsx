@@ -24,7 +24,10 @@ export function EnhancedTranscript({
   onCancel,
   onOpenCanvas,
 }: EnhancedTranscriptProps) {
-  const { transcriptItems, toggleTranscriptItemExpand } = useTranscript();
+  const { transcriptItems, toggleTranscriptItemExpand, updateTranscriptItem } = useTranscript();
+  const DEBUG = String(process.env.NEXT_PUBLIC_DEBUG_TRANSCRIPT || '').toLowerCase() === 'true';
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   // Track previous items in a ref to avoid triggering re-renders
   const prevLogsRef = useRef(transcriptItems);
@@ -86,6 +89,15 @@ export function EnhancedTranscript({
       <div className="flex items-center justify-between px-6 py-3 border-b bg-white rounded-t-xl">
         <span className="font-semibold">Conversation</span>
         <div className="flex gap-2">
+          {DEBUG && (
+            <button
+              onClick={() => setDebugOpen((v) => !v)}
+              className="w-28 text-sm px-3 py-1 rounded-md bg-orange-100 text-orange-900 hover:bg-orange-200"
+              title="Toggle transcript debug view"
+            >
+              {debugOpen ? 'Hide debug' : 'Show debug'}
+            </button>
+          )}
           <button
             onClick={handleCopyTranscript}
             className="w-24 text-sm px-3 py-1 rounded-md bg-gray-200 hover:bg-gray-300 flex items-center justify-center gap-1"
@@ -101,6 +113,22 @@ export function EnhancedTranscript({
         ref={transcriptRef}
         className="flex-1 overflow-auto p-4 space-y-4 min-h-0"
       >
+        {DEBUG && debugOpen && (
+          <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-mono text-xs text-yellow-900">transcriptItems ({transcriptItems.length})</span>
+              <button
+                className="text-xs px-2 py-1 rounded bg-yellow-200 text-yellow-900 hover:bg-yellow-300"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(JSON.stringify(transcriptItems, null, 2));
+                  } catch {}
+                }}
+              >Copy JSON</button>
+            </div>
+            <pre className="text-xs overflow-auto max-h-64 whitespace-pre-wrap">{JSON.stringify(transcriptItems, null, 2)}</pre>
+          </div>
+        )}
         {[...transcriptItems]
           .sort((a, b) => a.createdAtMs - b.createdAtMs)
           .map((item) => {
@@ -123,16 +151,17 @@ export function EnhancedTranscript({
 
             if (type === "MESSAGE") {
               const isUser = role === "user";
+              const isHistory = itemId.startsWith('replay_');
               const containerClasses = `flex ${
                 isUser ? "justify-end" : "justify-start"
               }`;
               
               const bubbleClasses = `max-w-lg p-3 rounded-lg ${
-                isUser 
-                  ? "bg-gray-900 text-white" 
+                isUser
+                  ? (isHistory ? "bg-gray-800 text-white opacity-85" : "bg-gray-900 text-white")
                   : supervisor
-                  ? "bg-purple-50 text-purple-900 border border-purple-200"
-                  : "bg-gray-100 text-gray-900"
+                  ? (isHistory ? "bg-purple-50 text-purple-900 border border-purple-200 opacity-85" : "bg-purple-50 text-purple-900 border border-purple-200")
+                  : (isHistory ? "bg-gray-50 text-gray-700 border border-gray-200" : "bg-gray-100 text-gray-900")
               }`;
 
               const channelBadge = channel && (
@@ -160,15 +189,37 @@ export function EnhancedTranscript({
                       } font-mono`}>
                         {timestamp}
                         {!isUser && (channelBadge || supervisorBadge)}
+                        {isHistory && (
+                          <span className="inline-block ml-2 px-2 py-0.5 text-[10px] rounded-full bg-gray-200 text-gray-700 align-middle">
+                            history
+                          </span>
+                        )}
                       </div>
                       <div className="whitespace-pre-wrap">
                         {title}
                       </div>
+                      {DEBUG && (
+                        <div className="mt-2 text-[10px] font-mono text-gray-400">
+                          {(() => {
+                            const meta = (data && (data as any)._meta) || {};
+                            const callId = (data as any)?.call_id;
+                            const parts: string[] = [];
+                            parts.push(`ui.id=${itemId}`);
+                            parts.push(`ts=${item.createdAtMs}`);
+                            if (meta.session_id) parts.push(`session=${meta.session_id}`);
+                            if (meta.run_id) parts.push(`run=${meta.run_id}`);
+                            if (meta.step_id) parts.push(`step=${meta.step_id}`);
+                            if (callId) parts.push(`call=${callId}`);
+                            return parts.join(' • ');
+                          })()}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
               );
             } else if (type === "BREADCRUMB") {
+              const isHistoryHeader = typeof title === 'string' && title.startsWith("📜 Previous conversations");
               const isCanvasLink = !!(data && typeof (data as any).content === "string" && /^https?:\/\//.test((data as any).content));
               const hasTfLinks = !!(data && (data as any).url_json && (data as any).url_d2);
               return (
@@ -226,17 +277,31 @@ export function EnhancedTranscript({
                       })()}
                     </div>
                   ) : (
-                    // Default breadcrumb with expandable JSON details
+                    // Default breadcrumb (plus special handling for history header)
                     <div
                       className={`flex items-center font-mono text-sm ${
-                        data ? "cursor-pointer hover:text-gray-800" : ""
+                        (data || isHistoryHeader) ? "cursor-pointer hover:text-gray-800" : ""
                       }`}
-                      onClick={() => data && toggleTranscriptItemExpand(itemId)}
+                      onClick={() => {
+                        if (isHistoryHeader) {
+                          const next = !historyExpanded;
+                          setHistoryExpanded(next);
+                          try { (globalThis as any).__historyExpanded = next; } catch {}
+                          // Show/hide ALL replay items and replay breadcrumbs
+                          for (const it of transcriptItems) {
+                            const isReplay = it.itemId.startsWith('replay_');
+                            const isReplayBreadcrumb = it.type === 'BREADCRUMB' && (it as any).data && (it as any).data._replay === true;
+                            if (isReplay || isReplayBreadcrumb) updateTranscriptItem(it.itemId, { isHidden: !next });
+                          }
+                        } else if (data) {
+                          toggleTranscriptItemExpand(itemId);
+                        }
+                      }}
                     >
-                      {data && (
+                      {(data || isHistoryHeader) && (
                         <ChevronRightIcon
                           className={`w-4 h-4 mr-1 transition-transform duration-200 ${
-                            expanded ? "rotate-90" : "rotate-0"
+                            (expanded || historyExpanded && isHistoryHeader) ? "rotate-90" : "rotate-0"
                           }`}
                         />
                       )}
@@ -270,6 +335,22 @@ export function EnhancedTranscript({
                       <pre className="bg-gray-50 border-l-2 border-orange-200 p-2 text-xs overflow-x-auto whitespace-pre-wrap font-mono text-gray-700">
                         {JSON.stringify(data, null, 2)}
                       </pre>
+                    </div>
+                  )}
+                  {DEBUG && (
+                    <div className="mt-1 ml-6 text-[10px] font-mono text-gray-400">
+                      {(() => {
+                        const meta = (data && (data as any)._meta) || {};
+                        const callId = (data as any)?.call_id;
+                        const parts: string[] = [];
+                        parts.push(`ui.id=${itemId}`);
+                        parts.push(`ts=${item.createdAtMs}`);
+                        if (meta.session_id) parts.push(`session=${meta.session_id}`);
+                        if (meta.run_id) parts.push(`run=${meta.run_id}`);
+                        if (meta.step_id) parts.push(`step=${meta.step_id}`);
+                        if (callId) parts.push(`call=${callId}`);
+                        return parts.join(' • ');
+                      })()}
                     </div>
                   )}
                 </div>

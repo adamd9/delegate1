@@ -54,6 +54,8 @@ const CallInterface = () => {
       newWs.onopen = () => {
         console.log("Connected to logs websocket");
         setCallStatus("connected");
+        // Hydrate history via REST (no /logs replay)
+        void hydrateHistory();
       };
 
       newWs.onmessage = (event) => {
@@ -62,6 +64,11 @@ const CallInterface = () => {
         // Handle both old and new transcript systems
         // handleRealtimeEvent(data, setItems); // setItems is not defined, removed
         handleEnhancedRealtimeEvent(data, transcript);
+        // When a session is finalized, hydrate history again so the just-finished
+        // conversation is available under the history header.
+        if (data?.type === 'session.finalized') {
+          void hydrateHistory();
+        }
       };
 
       newWs.onclose = () => {
@@ -73,6 +80,119 @@ const CallInterface = () => {
       setWs(newWs);
     }
   }, [allConfigsReady, ws]);
+
+  // Hydrate last N sessions via REST and synthesize transcript events with replay:true
+  async function hydrateHistory() {
+    try {
+      const backend = getBackendUrl();
+      const limit = Number(process.env.NEXT_PUBLIC_SESSION_HISTORY_LIMIT || 3);
+      const DEBUG = String(process.env.NEXT_PUBLIC_DEBUG_TRANSCRIPT || '').toLowerCase() === 'true';
+      const resp = await fetch(`${backend}/api/sessions?limit=${limit}`);
+      if (!resp.ok) return;
+      let sessions = await resp.json();
+      if (DEBUG) console.debug('[hydrateHistory] sessions:', sessions);
+      // Ensure oldest-first processing so createdAtMs ascending renders chronologically
+      if (Array.isArray(sessions)) sessions = sessions.slice().reverse();
+      // Add a single header with the count
+      handleEnhancedRealtimeEvent({ type: 'history.header', count: sessions.length }, transcript);
+      for (const s of sessions) {
+        const r = await fetch(`${backend}/api/sessions/${s.id}/items`);
+        if (!r.ok) continue;
+        const items = await r.json();
+        if (DEBUG) {
+          const counts: Record<string, number> = {};
+          for (const it of items) counts[it.kind] = (counts[it.kind] || 0) + 1;
+          console.debug(`[hydrateHistory] session=${s.id} items=${items.length} kinds=`, counts);
+        }
+        // Establish a stable base so we can strictly order by seq
+        const base = (Array.isArray(items) && items.length > 0 && items[0].created_at_ms) || Date.now();
+        const seenKinds = new Set<string>();
+        for (const it of items) {
+          const kind = it.kind as string;
+          const payload = it.payload || {};
+          // Use a synthetic timestamp strictly increasing by seq to avoid jitter
+          const ts = (typeof it.seq === 'number' ? (base + it.seq) : (it.created_at_ms || Date.now()));
+          // Dedupe legacy duplicates: only one ThoughtFlow per session
+          if (kind === 'thoughtflow_artifacts') {
+            if (seenKinds.has('thoughtflow_artifacts')) continue;
+            seenKinds.add('thoughtflow_artifacts');
+          }
+          if (kind === 'message_user' || kind === 'message_assistant') {
+            handleEnhancedRealtimeEvent({
+              type: 'conversation.item.created',
+              replay: true,
+              session_id: s.id,
+              item: {
+                id: `ti_${it.seq}`,
+                type: 'message',
+                role: kind === 'message_user' ? 'user' : 'assistant',
+                content: [{ type: 'text', text: String(payload.text || '') }],
+                channel: payload.channel || 'text',
+                supervisor: Boolean(payload.supervisor),
+              },
+              timestamp: ts,
+            }, transcript);
+          } else if (kind === 'function_call_created') {
+            handleEnhancedRealtimeEvent({
+              type: 'conversation.item.created',
+              replay: true,
+              session_id: s.id,
+              item: {
+                id: String(payload.call_id || `call_${it.seq}`),
+                type: 'function_call',
+                name: payload.name || 'tool',
+                call_id: payload.call_id || `call_${it.seq}`,
+                arguments: typeof payload.arguments === 'string' ? payload.arguments : JSON.stringify(payload.arguments || {}),
+                status: 'created',
+              },
+              timestamp: ts,
+            }, transcript);
+          } else if (kind === 'function_call_completed') {
+            handleEnhancedRealtimeEvent({
+              type: 'conversation.item.completed',
+              replay: true,
+              session_id: s.id,
+              item: {
+                id: String(payload.call_id || `call_${it.seq}`),
+                type: 'function_call',
+                name: payload.name || 'tool',
+                call_id: payload.call_id || `call_${it.seq}`,
+                arguments: typeof payload.arguments === 'string' ? payload.arguments : JSON.stringify(payload.arguments || {}),
+                status: 'completed',
+                result: typeof payload.result === 'string' ? payload.result : (payload.result ? JSON.stringify(payload.result) : undefined),
+              },
+              timestamp: ts,
+            }, transcript);
+          } else if (kind === 'canvas') {
+            handleEnhancedRealtimeEvent({
+              type: 'chat.canvas',
+              replay: true,
+              session_id: s.id,
+              content: payload.url,
+              title: payload.title,
+              timestamp: ts,
+              id: payload.id,
+            }, transcript);
+          } else if (kind === 'thoughtflow_artifacts') {
+            handleEnhancedRealtimeEvent({
+              type: 'thoughtflow.artifacts',
+              replay: true,
+              session_id: s.id,
+              json_path: payload.json_path,
+              d2_path: payload.d2_path,
+              url_json: payload.url_json,
+              url_d2: payload.url_d2,
+              url_d2_raw: payload.url_d2_raw,
+              url_d2_viewer: payload.url_d2_viewer,
+              timestamp: ts,
+            }, transcript);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('hydrateHistory failed', e);
+    }
+  }
 
   // Chat WebSocket connection
   useEffect(() => {

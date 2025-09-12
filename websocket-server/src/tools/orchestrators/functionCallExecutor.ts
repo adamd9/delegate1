@@ -1,5 +1,7 @@
 import { WebSocket } from "ws";
 import { getAgent, FunctionHandler } from "../../agentConfigs";
+import { ensureSession } from "../../observability/thoughtflow";
+import { addTranscriptItem } from "../../db/sqlite";
 import { jsonSend, isOpen } from "../../session/state";
 
 export type OrchestratorMode = "chat" | "voice";
@@ -36,6 +38,16 @@ function emitDelta(logsClients: Set<WebSocket>, name: string, data?: any, call_i
       call_id: call_id || `supervisor_${Date.now()}`,
     });
   }
+  // Persist a created breadcrumb into the transcript ledger
+  try {
+    const { id: sessionId } = ensureSession();
+    addTranscriptItem({
+      session_id: sessionId,
+      kind: 'function_call_created',
+      payload: { name, call_id, arguments: data || {} },
+      created_at_ms: Date.now(),
+    });
+  } catch {}
 }
 
 function emitDone(logsClients: Set<WebSocket>, name: string, originalArgs: any, call_id?: string, result?: any) {
@@ -49,6 +61,16 @@ function emitDone(logsClients: Set<WebSocket>, name: string, originalArgs: any, 
       ...(result !== undefined ? { result: typeof result === 'string' ? result : JSON.stringify(result) } : {}),
     });
   }
+  // Persist a completed breadcrumb into the transcript ledger
+  try {
+    const { id: sessionId } = ensureSession();
+    addTranscriptItem({
+      session_id: sessionId,
+      kind: 'function_call_completed',
+      payload: { name, call_id, arguments: originalArgs, result },
+      created_at_ms: Date.now(),
+    });
+  } catch {}
 }
 
 export async function executeFunctionCall(call: FunctionCallItem, ctx: OrchestratorContext): Promise<any> {

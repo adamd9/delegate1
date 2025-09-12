@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { session } from '../session/state';
+import { upsertSession, finalizeSession, upsertRun, completeRun, stepStarted, stepCompleted, addTranscriptItem, getLastTranscriptTimestamp } from '../db/sqlite';
 
 // Explicit step types for ThoughtFlow events
 export enum ThoughtFlowStepType {
@@ -36,6 +37,10 @@ export function ensureSession(): { id: string; jsonlPath: string } {
     const header = JSON.stringify({ type: 'session.created', session_id: tf.sessionId, started_at: new Date(tf.startedAt!).toISOString() });
     appendFileSync(jsonlPath, header + '\n');
   }
+  try {
+    // Ensure a DB session row exists
+    upsertSession(tf.sessionId, new Date(tf.startedAt!).toISOString());
+  } catch {}
   return { id: tf.sessionId, jsonlPath };
 }
 
@@ -43,14 +48,134 @@ export function appendEvent(event: any) {
   try {
     const { jsonlPath } = ensureSession();
     appendFileSync(jsonlPath, JSON.stringify(event) + '\n');
+    // Mirror to SQLite best-effort
+    try {
+      const tf = (session.thoughtflow || {}) as any;
+      const sid = tf.sessionId as string | undefined;
+      if (sid) {
+        const t = event?.type as string | undefined;
+        if (t === 'run.started') {
+          upsertRun({ id: event.run_id, session_id: sid, channel: event.channel, started_at: event.started_at });
+        } else if (t === 'run.completed' || t === 'run.aborted') {
+          const status = (event.status as any) || (t === 'run.aborted' ? 'aborted' : 'completed');
+          completeRun({ id: event.run_id, status, ended_at: event.ended_at });
+          // Generate per-run ThoughtFlow artifacts at run completion
+          try {
+            const { jsonPath: runJson, d2Path: runD2 } = writeRunArtifacts(sid, event.run_id);
+            const PORT = parseInt(process.env.PORT || '8081', 10);
+            const PUBLIC_URL = process.env.PUBLIC_URL || '';
+            const EFFECTIVE_PUBLIC_URL = (PUBLIC_URL && PUBLIC_URL.trim()) || `http://localhost:${PORT}`;
+            const baseName = `${sid}.${event.run_id}`;
+            const url_json = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.json`;
+            const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.d2`;
+            const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${baseName}.d2`;
+            const url_d2_viewer = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/viewer/${sid}`; // session-level viewer still useful
+            const lastTs = getLastTranscriptTimestamp(sid) || Date.now();
+            addTranscriptItem({
+              id: `ti_tf_run_${event.run_id}`,
+              session_id: sid,
+              kind: 'thoughtflow_artifacts',
+              payload: { session_id: sid, run_id: event.run_id, url_json, url_d2, url_d2_raw, url_d2_viewer },
+              created_at_ms: lastTs + 1,
+            });
+          } catch {}
+        } else if (t === 'step.started') {
+          stepStarted({ id: event.step_id, run_id: event.run_id, label: event.label, started_at: event.timestamp ? new Date(event.timestamp).toISOString() : undefined, payload_started_json: event.payload ? JSON.stringify(event.payload) : undefined });
+        } else if (t === 'step.completed') {
+          stepCompleted({ id: event.step_id, ended_at: event.timestamp ? new Date(event.timestamp).toISOString() : undefined, payload_completed_json: event.payload ? JSON.stringify(event.payload) : undefined });
+        }
+      }
+    } catch {}
   } catch (e) {
     console.warn('[thoughtflow] appendEvent failed:', (e as any)?.message || e);
   }
 }
 
-export function endSession(): { id: string; jsonPath: string; d2Path: string } | null {
+function writeRunArtifacts(sessionId: string, runId: string): { jsonPath: string; d2Path: string } {
+  const tf = (session.thoughtflow ||= {} as any);
+  const jsonlPath = join(BASE_DIR, `${sessionId}.jsonl`);
+  const raw = readFileSync(jsonlPath, 'utf8');
+  const lines = raw.split(/\n+/).filter(Boolean);
+  type Step = {
+    step_id: string;
+    label?: string;
+    started_at?: string;
+    ended_at?: string;
+    duration_ms?: number;
+    payload_started?: any;
+    payload_completed?: any;
+  };
+  const run: any = { run_id: runId, steps: [], _stepIndex: {} };
+  for (const line of lines) {
+    let evt: any; try { evt = JSON.parse(line); } catch { continue; }
+    const t = evt?.type as string | undefined; if (!t) continue;
+    if ((t === 'run.started' || t === 'run.completed' || t === 'run.aborted') && evt.run_id === runId) {
+      if (t === 'run.started') {
+        run.started_at = evt.started_at || new Date().toISOString();
+        if (evt.channel) run.channel = evt.channel;
+      } else {
+        run.ended_at = evt.ended_at || new Date().toISOString();
+        run.status = (evt.status as any) || (t === 'run.aborted' ? 'aborted' : 'completed');
+      }
+      continue;
+    }
+    if ((t === 'step.started' || t === 'step.completed') && evt.run_id === runId) {
+      if (t === 'step.started') {
+        const s: Step = {
+          step_id: evt.step_id,
+          label: evt.label,
+          started_at: evt.timestamp ? new Date(evt.timestamp).toISOString() : new Date().toISOString(),
+          payload_started: evt.payload,
+        };
+        if (evt.depends_on) (s as any).depends_on = evt.depends_on;
+        run.steps.push(s);
+        run._stepIndex[evt.step_id] = s;
+      } else {
+        const s = run._stepIndex[evt.step_id];
+        if (s) {
+          s.ended_at = evt.timestamp ? new Date(evt.timestamp).toISOString() : new Date().toISOString();
+          s.payload_completed = evt.payload;
+        }
+      }
+    }
+  }
+  // Compute durations and sanitize
+  for (const s of run.steps) {
+    if (s.started_at && s.ended_at) s.duration_ms = new Date(s.ended_at).getTime() - new Date(s.started_at).getTime();
+  }
+  if (run.started_at && run.ended_at) run.duration_ms = new Date(run.ended_at).getTime() - new Date(run.started_at).getTime();
+  if (!run.status) run.status = 'unknown';
+  const consolidated = {
+    session_id: sessionId,
+    started_at: new Date((tf.startedAt as any) || Date.now()).toISOString(),
+    ended_at: new Date().toISOString(),
+    runs: [
+      {
+        run_id: run.run_id,
+        channel: run.channel,
+        status: run.status,
+        started_at: run.started_at,
+        ended_at: run.ended_at,
+        duration_ms: run.duration_ms,
+        steps: run.steps.sort((a: any, b: any) => String(a.started_at).localeCompare(String(b.started_at))).map(({ _stepIndex, ...s }: any) => s),
+      },
+    ],
+  } as const;
+  const baseName = `${sessionId}.${runId}`;
+  const jsonPath = join(BASE_DIR, `${baseName}.json`);
+  writeFileSync(jsonPath, JSON.stringify(consolidated, null, 2));
+  const d2 = generateD2(consolidated as any);
+  const d2Path = join(BASE_DIR, `${baseName}.d2`);
+  writeFileSync(d2Path, d2);
+  return { jsonPath, d2Path };
+}
+
+export function endSession(opts?: { statusOverride?: string; sessionId?: string }): { id: string; jsonPath: string; d2Path: string } | null {
   try {
-    const { id, jsonlPath } = ensureSession();
+    const tf = (session.thoughtflow ||= {} as any);
+    const active = ensureSession();
+    const id = opts?.sessionId || active.id;
+    const jsonlPath = opts?.sessionId ? join(BASE_DIR, `${opts.sessionId}.jsonl`) : active.jsonlPath;
     const jsonPath = join(BASE_DIR, `${id}.json`);
     // Read JSONL events and aggregate into runs/steps
     const raw = readFileSync(jsonlPath, 'utf8');
@@ -168,7 +293,7 @@ export function endSession(): { id: string; jsonPath: string; d2Path: string } |
 
     const consolidated = {
       session_id: id,
-      started_at: new Date((session.thoughtflow as any).startedAt!).toISOString(),
+      started_at: new Date((tf.startedAt as any) || Date.now()).toISOString(),
       ended_at: new Date().toISOString(),
       runs,
     } as const;
@@ -178,6 +303,11 @@ export function endSession(): { id: string; jsonPath: string; d2Path: string } |
     const d2Path = join(BASE_DIR, `${id}.d2`);
     writeFileSync(d2Path, d2);
     appendFileSync(jsonlPath, JSON.stringify({ type: 'session.ended', session_id: id, ended_at: consolidated.ended_at }) + '\n');
+    // Finalize in DB with a derived session status
+    try {
+      const sessionStatus = deriveSessionStatus(runs as any) || 'completed';
+      finalizeSession(id, opts?.statusOverride || sessionStatus, consolidated.ended_at);
+    } catch {}
     return { id, jsonPath, d2Path };
   } catch (e) {
     console.warn('[thoughtflow] endSession failed:', (e as any)?.message || e);
@@ -543,4 +673,16 @@ function getToolNameForOutput(step: any, stepById: Record<string, any>): string 
   if (!parent) return undefined;
   const ps = parent.payload_started || {};
   return ps?.name || ps?.tool || ps?.function || undefined;
+}
+
+function deriveSessionStatus(runs: Array<{ status?: string }>): string {
+  try {
+    const statuses = runs.map(r => (r.status || '').toLowerCase());
+    if (statuses.includes('error')) return 'error';
+    if (statuses.includes('aborted')) return 'aborted';
+    if (statuses.every(s => s === 'completed')) return 'completed';
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
