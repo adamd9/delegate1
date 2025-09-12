@@ -281,7 +281,7 @@ export default function handleEnhancedRealtimeEvent(
           },
           isReplay
         );
-        if (isReplay) adjustLastHiddenBreadcrumbTimestamp(transcript);
+        if (isReplay && typeof event.timestamp === 'number') setLastBreadcrumbTimestamp(transcript, event.timestamp);
       }
       break;
 
