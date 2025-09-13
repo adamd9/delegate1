@@ -102,7 +102,8 @@ export default function handleEnhancedRealtimeEvent(
             text = "[Transcribing...]";
           }
           
-          const newId = isReplay ? `replay_${itemId}` : itemId;
+          const sessionIdForReplay = (event as any)?.session_id || 'sess';
+          const newId = isReplay ? `replay_${sessionIdForReplay}_${itemId}` : itemId;
           addTranscriptMessage(
             newId,
             role,
