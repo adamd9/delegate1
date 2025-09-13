@@ -8,27 +8,9 @@ let lastFinalizedVoiceUserItemId: string | null = null;
 const seenFunctionCallRequestBreadcrumbs = new Set<string>();
 // After a session is finalized, hide any immediate ThoughtFlow artifacts so they are part of history only
 let hideArtifactsUntilHistoryExpand = false;
-// History anchor: ensure replayed items always render before the header
-let historyAnchorMs: number | null = null;
-let historyClampOffset = 0;
 
-// Helper to set createdAtMs on the most recently added breadcrumb (e.g., after we add it)
-function setLastBreadcrumbTimestamp(transcript: TranscriptContextValue, ts?: number) {
-  if (!ts) return;
-  try {
-    const items = transcript.transcriptItems;
-    for (let i = items.length - 1; i >= 0; i--) {
-      const it = items[i];
-      if (it.type === 'BREADCRUMB') {
-        const adjusted = (historyAnchorMs != null && ts >= historyAnchorMs)
-          ? (historyAnchorMs - (++historyClampOffset))
-          : ts;
-        transcript.updateTranscriptItem(it.itemId, { createdAtMs: adjusted });
-        break;
-      }
-    }
-  } catch {}
-}
+// No-op placeholder retained for compatibility (timestamp anchoring removed)
+function setLastBreadcrumbTimestamp(_: TranscriptContextValue, __?: number) { /* no-op */ }
 
 function isHistoryExpanded(): boolean {
   try {
@@ -72,16 +54,10 @@ export default function handleEnhancedRealtimeEvent(
   switch (event.type) {
     case "history.header": {
       const count = typeof event.count === 'number' ? event.count : 0;
-      // Set universal header state instead of adding a breadcrumb item
+      // Set universal header count; no timestamp anchor needed
       try {
         (transcript as any).setHistoryHeaderCount?.(count);
       } catch {}
-      const anchor = Date.now();
-      try {
-        (transcript as any).setHistoryAnchorMs?.(anchor);
-      } catch {}
-      historyAnchorMs = anchor;
-      historyClampOffset = 0;
       break;
     }
     // Main conversation item handler - handles both user/assistant messages and function_call items
@@ -112,12 +88,9 @@ export default function handleEnhancedRealtimeEvent(
             supervisor,
             isReplay ? !isHistoryExpanded() : false
           );
-          // For replay, prefer ledger timestamp and clamp to render before header
+          // For replay, set ledger timestamp directly (ordering handled by UI via history flags)
           if (isReplay && typeof event.timestamp === 'number') {
-            const ts = (historyAnchorMs != null && event.timestamp >= historyAnchorMs)
-              ? (historyAnchorMs - (++historyClampOffset))
-              : event.timestamp;
-            updateTranscriptItem(newId, { createdAtMs: ts });
+            updateTranscriptItem(newId, { createdAtMs: event.timestamp });
           }
           // Attach debug metadata when available
           if (isReplay && (event as any).session_id) {
