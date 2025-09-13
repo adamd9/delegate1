@@ -5,6 +5,7 @@ import { executeFunctionCall } from "../tools/orchestrators/functionCallExecutor
 import { contextInstructions, Context } from "../agentConfigs/context";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 import { HOLD_MUSIC_ULAW_BASE64, HOLD_MUSIC_DURATION_MS } from "../assets/holdMusic";
+import { appendEvent, ThoughtFlowStepType, ensureSession } from "../observability/thoughtflow";
 
 // Explicitly type globalThis for logsClients/chatClients to avoid TS7017
 declare global {
@@ -56,13 +57,32 @@ function startHoldMusicLoop() {
   send();
 }
 
+function finalizeRun(status: 'error' | undefined = undefined) {
+  const req = session.currentRequest;
+  if (!req) return;
+  try {
+    ensureSession();
+    const runId = `run_${req.id}`;
+    const event: any = {
+      type: 'run.completed',
+      run_id: runId,
+      request_id: req.id,
+      ended_at: new Date().toISOString(),
+    };
+    if (status) event.status = status;
+    appendEvent(event);
+  } catch {}
+  session.currentRequest = undefined;
+}
+
 export function establishCallSocket(ws: WebSocket, openAIApiKey: string) {
   console.info("📞 New call connection");
   session.openAIApiKey = openAIApiKey;
   session.twilioConn = ws;
   // Twilio realtime media/events from the voice call
   ws.on("message", (data) => processRealtimeCallEvent(data));
-  ws.on("error", ws.close);
+  ws.on("error", () => { finalizeRun('error'); ws.close(); });
+  ws.on("close", () => finalizeRun());
   // Cleanup handled in server.ts on close
 }
 
@@ -93,6 +113,7 @@ export function processRealtimeCallEvent(data: RawData) {
       break;
     case "close":
       console.info("📞 Call closed");
+      finalizeRun();
       closeAllConnections();
       break;
   }
@@ -157,8 +178,8 @@ export function establishRealtimeModelConnection() {
   });
 
   session.modelConn.on("message", (data: RawData) => processRealtimeModelEvent(data, global.logsClients ?? new Set(), global.chatClients ?? new Set()));
-  session.modelConn.on("error", closeModel);
-  session.modelConn.on("close", closeModel);
+  session.modelConn.on("error", () => { finalizeRun('error'); closeModel(); });
+  session.modelConn.on("close", () => { finalizeRun(); closeModel(); });
 }
 
 function shouldForwardToFrontend(event: any): boolean {
@@ -183,12 +204,20 @@ export function processRealtimeModelEvent(
     }
   }
 
-  switch (event.type) {
+  try {
+    switch (event.type) {
     case "conversation.item.input_audio_transcription.completed": {
       // Final user ASR transcript (voice) — log once to server console
       const transcript: string = (event.transcript || event.text || "").toString();
       if (transcript) {
         console.log("[VOICE][USER][FINAL]", transcript);
+        const requestId = `req_${Date.now()}`;
+        session.currentRequest = { id: requestId, channel: 'voice', startedAt: Date.now() } as any;
+        ensureSession();
+        const runId = `run_${requestId}`;
+        appendEvent({ type: 'run.started', run_id: runId, request_id: requestId, channel: 'voice', started_at: new Date().toISOString() });
+        const stepId = `step_user_${requestId}`;
+        appendEvent({ type: 'step.started', run_id: runId, step_id: stepId, label: ThoughtFlowStepType.UserMessage, payload: { content: transcript }, timestamp: Date.now() });
         // Append user voice turn to unified conversation history
         try {
           if (!session.conversationHistory) session.conversationHistory = [];
@@ -202,6 +231,7 @@ export function processRealtimeModelEvent(
         } catch (e) {
           console.warn("⚠️ Failed to append user voice transcript to history", e);
         }
+        appendEvent({ type: 'step.completed', run_id: runId, step_id: stepId, timestamp: Date.now() });
       }
       break;
     }
@@ -267,8 +297,10 @@ export function processRealtimeModelEvent(
           });
       } else if (item.type === "message" && item.role === "assistant") {
         // Handle text responses from assistant (and log voice-only assembled transcript)
+        let assistantText: string | undefined;
         const textContent = item.content?.find((c: any) => c.type === "text");
         if (textContent) {
+          assistantText = textContent.text;
           // Log final assistant text for observability
           try {
             if (typeof textContent.text === "string" && textContent.text.trim()) {
@@ -304,6 +336,7 @@ export function processRealtimeModelEvent(
           const id = item.id;
           const assembled = id ? (assistantVoiceByItem.get(id) || "") : "";
           if (assembled.trim()) {
+            assistantText = assembled;
             console.log("[VOICE][ASSISTANT][FINAL-VOICE]", assembled);
             try {
               if (!session.conversationHistory) session.conversationHistory = [];
@@ -329,9 +362,22 @@ export function processRealtimeModelEvent(
             if (id) assistantVoiceByItem.delete(id);
           }
         }
+
+        const req = session.currentRequest;
+        if (req) {
+          const runId = `run_${req.id}`;
+          const stepId = `step_assistant_${req.id}_${Date.now()}`;
+          appendEvent({ type: 'step.started', run_id: runId, step_id: stepId, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, timestamp: Date.now() });
+          appendEvent({ type: 'step.completed', run_id: runId, step_id: stepId, timestamp: Date.now() });
+          finalizeRun();
+        }
       }
       break;
     }
+    }
+  } catch (err) {
+    console.error('Error processing realtime model event:', err);
+    finalizeRun('error');
   }
 }
 
@@ -342,14 +388,27 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
     session.waitingForTool = true;
     startHoldMusicLoop();
   }
+  const req = session.currentRequest;
+  const runId = req ? `run_${req.id}` : undefined;
+  const stepId = runId ? `step_tool_${item.call_id || Date.now()}` : undefined;
+  if (runId && stepId) {
+    appendEvent({ type: 'step.started', run_id: runId, step_id: stepId, label: ThoughtFlowStepType.ToolCall, payload: { name: item.name, arguments: item.arguments }, timestamp: Date.now() });
+  }
   try {
     const result = await executeFunctionCall(
       { name: item.name, arguments: item.arguments, call_id: item.call_id },
       { mode: 'voice', logsClients, confirm: false }
     );
+    if (runId && stepId) {
+      appendEvent({ type: 'step.completed', run_id: runId, step_id: stepId, payload: { output: result }, timestamp: Date.now() });
+    }
     return result;
   } catch (err: any) {
     console.error("Error running function:", err);
+    if (runId && stepId) {
+      appendEvent({ type: 'step.completed', run_id: runId, step_id: stepId, payload: { error: err?.message || String(err) }, timestamp: Date.now() });
+    }
+    finalizeRun('error');
     return JSON.stringify({ error: `Error running function ${item.name}: ${err?.message || 'unknown'}` });
   } finally {
     if (isSupervisorEscalation) {
