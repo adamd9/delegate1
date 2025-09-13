@@ -69,7 +69,8 @@ export function appendEvent(event: any) {
             const url_json = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.json`;
             const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.d2`;
             const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${baseName}.d2`;
-            const url_d2_viewer = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/viewer/${sid}`; // session-level viewer still useful
+            // Viewer lives on the frontend, so use a relative link instead of server URL
+            const url_d2_viewer = `/thoughtflow/viewer/${sid}`; // session-level viewer still useful
             const lastTs = getLastTranscriptTimestamp(sid) || Date.now();
             addTranscriptItem({
               id: `ti_tf_run_${event.run_id}`,
