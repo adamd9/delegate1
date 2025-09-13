@@ -142,13 +142,27 @@ export function EnhancedTranscript({
             }
             return false;
           };
+          const getRunId = (it: typeof transcriptItems[number]): string | undefined => {
+            const d: any = (it as any).data;
+            return d?._meta?.run_id as (string | undefined);
+          };
           let lastHistoryIdx = -1;
           for (let i = 0; i < sorted.length; i++) {
             if (isHistoryItem(sorted[i])) lastHistoryIdx = i;
           }
           const renderList: Array<any> = [];
+          let prevRunId: string | undefined = undefined;
           for (let i = 0; i < sorted.length; i++) {
             const it = sorted[i];
+            const isHist = isHistoryItem(it);
+            // Insert per-run separator before a history item when the run changes
+            if (hasHeader && lastHistoryIdx >= 0 && isHist) {
+              const runId = getRunId(it);
+              if (runId && runId !== prevRunId) {
+                renderList.push({ __runsep__: true, runId, key: `runsep-${runId}-${i}` });
+                prevRunId = runId;
+              }
+            }
             renderList.push(it);
             if (hasHeader && lastHistoryIdx >= 0 && i === lastHistoryIdx) {
               // Insert the universal separator immediately after the last history item
@@ -183,6 +197,23 @@ export function EnhancedTranscript({
                     <span className="ml-2 text-xs text-gray-400">{historyExpanded ? 'click to hide' : 'click to show'}</span>
                   </span>
                   <div className="flex-1 h-px bg-gray-200" />
+                </div>
+              );
+            }
+            if (item && item.__runsep__) {
+              const short = (() => {
+                const runId = item.runId as string | undefined;
+                if (!runId) return '';
+                const parts = runId.split('_');
+                const tail = parts[parts.length - 1] || runId;
+                if (tail && tail.length >= 4) return tail.length > 8 ? tail.slice(-8) : tail;
+                return runId.length > 8 ? runId.slice(-8) : runId;
+              })();
+              return (
+                <div key={item.key} className="flex items-center my-1">
+                  <div className="w-20 h-px bg-gray-100 mr-2" />
+                  <span className="text-[11px] text-gray-500 font-mono">Run {short}</span>
+                  <div className="flex-1 h-px bg-gray-100 ml-2" />
                 </div>
               );
             }
@@ -236,7 +267,14 @@ export function EnhancedTranscript({
                         {(() => {
                           const runId: string | undefined = (data as any)?._meta?.run_id;
                           if (!runId) return null;
-                          const short = runId.length > 8 ? `${runId.slice(0, 8)}` : runId;
+                          const short = (() => {
+                            // Prefer tail after the last underscore if numeric or long token
+                            const parts = runId.split('_');
+                            const tail = parts[parts.length - 1] || runId;
+                            if (tail && tail.length >= 4) return tail.length > 8 ? tail.slice(-8) : tail;
+                            // Fallback: last 8 chars of full id
+                            return runId.length > 8 ? runId.slice(-8) : runId;
+                          })();
                           return (
                             <span className="inline-block ml-2 px-2 py-0.5 text-[10px] rounded-full bg-blue-100 text-blue-800 align-middle" title={`run: ${runId}`}>
                               run:{short}
@@ -277,7 +315,12 @@ export function EnhancedTranscript({
                     {(() => {
                       const runId: string | undefined = (data as any)?._meta?.run_id;
                       if (!runId) return null;
-                      const short = runId.length > 8 ? `${runId.slice(0, 8)}` : runId;
+                      const short = (() => {
+                        const parts = runId.split('_');
+                        const tail = parts[parts.length - 1] || runId;
+                        if (tail && tail.length >= 4) return tail.length > 8 ? tail.slice(-8) : tail;
+                        return runId.length > 8 ? runId.slice(-8) : runId;
+                      })();
                       return (
                         <span className="inline-block ml-2 px-2 py-0.5 text-[10px] rounded-full bg-blue-100 text-blue-800 align-middle" title={`run: ${runId}`}>
                           run:{short}

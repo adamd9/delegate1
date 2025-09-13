@@ -93,8 +93,7 @@ const CallInterface = () => {
       if (DEBUG) console.debug('[hydrateHistory] sessions:', sessions);
       // Ensure oldest-first processing so createdAtMs ascending renders chronologically
       if (Array.isArray(sessions)) sessions = sessions.slice().reverse();
-      // Add a single header with the count
-      handleEnhancedRealtimeEvent({ type: 'history.header', count: sessions.length }, transcript);
+      let displayedSessionCount = 0;
       for (const s of sessions) {
         // Fetch items and session detail (runs) to infer run_id per item
         const [ri, rd] = await Promise.all([
@@ -115,6 +114,7 @@ const CallInterface = () => {
         // Establish a stable base so we can strictly order by seq
         const base = (Array.isArray(items) && items.length > 0 && items[0].created_at_ms) || Date.now();
         const seenKinds = new Set<string>();
+        let emittedForThisSession = false;
         for (const it of items) {
           const kind = it.kind as string;
           const payload = it.payload || {};
@@ -153,6 +153,7 @@ const CallInterface = () => {
               },
               timestamp: ts,
             }, transcript);
+            emittedForThisSession = true;
           } else if (kind === 'function_call_created') {
             handleEnhancedRealtimeEvent({
               type: 'conversation.item.created',
@@ -169,6 +170,7 @@ const CallInterface = () => {
               },
               timestamp: ts,
             }, transcript);
+            emittedForThisSession = true;
           } else if (kind === 'function_call_completed') {
             handleEnhancedRealtimeEvent({
               type: 'conversation.item.completed',
@@ -186,6 +188,7 @@ const CallInterface = () => {
               },
               timestamp: ts,
             }, transcript);
+            emittedForThisSession = true;
           } else if (kind === 'canvas') {
             handleEnhancedRealtimeEvent({
               type: 'chat.canvas',
@@ -197,6 +200,7 @@ const CallInterface = () => {
               timestamp: ts,
               id: payload.id,
             }, transcript);
+            emittedForThisSession = true;
           } else if (kind === 'thoughtflow_artifacts') {
             handleEnhancedRealtimeEvent({
               type: 'thoughtflow.artifacts',
@@ -211,9 +215,13 @@ const CallInterface = () => {
               url_d2_viewer: payload.url_d2_viewer,
               timestamp: ts,
             }, transcript);
+            emittedForThisSession = true;
           }
         }
+        if (emittedForThisSession) displayedSessionCount += 1;
       }
+      // Send header after tallying actually displayed sessions
+      handleEnhancedRealtimeEvent({ type: 'history.header', count: displayedSessionCount }, transcript);
     } catch (e) {
       console.warn('hydrateHistory failed', e);
     }
