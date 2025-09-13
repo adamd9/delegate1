@@ -65,13 +65,32 @@ export default function ThoughtflowD2Viewer({ id, baseUrl }: Props) {
   const jsonUrl = useMemo(() => `${effectiveBase}/thoughtflow/${id}.json`, [effectiveBase, id]);
   const d2Url = useMemo(() => `${effectiveBase}/thoughtflow/${id}.d2`, [effectiveBase, id]);
 
-  async function handleCopyD2() {
+  async function copyText(txt: string) {
     try {
-      await navigator.clipboard.writeText(d2Text || "");
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(txt);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = txt;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      return true;
+    } catch (e) {
+      console.warn("Copy failed", e);
+      return false;
+    }
+  }
+
+  async function handleCopyD2() {
+    const ok = await copyText(d2Text || "");
+    if (ok) {
       setCopied("d2");
       setTimeout(() => setCopied(null), 1200);
-    } catch (e) {
-      console.warn("Copy D2 failed", e);
     }
   }
 
@@ -80,9 +99,11 @@ export default function ThoughtflowD2Viewer({ id, baseUrl }: Props) {
       const res = await fetch(jsonUrl, { cache: "no-store" });
       if (!res.ok) throw new Error("Failed to fetch JSON");
       const txt = await res.text();
-      await navigator.clipboard.writeText(txt);
-      setCopied("json");
-      setTimeout(() => setCopied(null), 1200);
+      const ok = await copyText(txt);
+      if (ok) {
+        setCopied("json");
+        setTimeout(() => setCopied(null), 1200);
+      }
     } catch (e) {
       console.warn("Copy JSON failed", e);
     }
