@@ -5,7 +5,8 @@ import { executeFunctionCall } from "../tools/orchestrators/functionCallExecutor
 import { contextInstructions, Context } from "../agentConfigs/context";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 import { HOLD_MUSIC_ULAW_BASE64, HOLD_MUSIC_DURATION_MS } from "../assets/holdMusic";
-import { appendEvent, ThoughtFlowStepType, ensureSession } from "../observability/thoughtflow";
+import { appendEvent, ThoughtFlowStepType, ensureSession, endSession } from "../observability/thoughtflow";
+import { addTranscriptItem } from "../db/sqlite";
 
 // Explicitly type globalThis for logsClients/chatClients to avoid TS7017
 declare global {
@@ -22,6 +23,24 @@ const assistantVoiceByItem = new Map<string, string>();
 let holdMusicTimer: NodeJS.Timeout | undefined;
 // Add slight gap between hold music loops to avoid a harsh beat
 const HOLD_MUSIC_LOOP_INTERVAL_MS = HOLD_MUSIC_DURATION_MS + 250;
+
+// ===== Voice Activity Detection (VAD) and Barge-in Configuration =====
+// Adjust these constants to tune sensitivity and interruption behavior for voice calls.
+// Note: These parameters are passed to the OpenAI Realtime session as part of `turn_detection`.
+// The supported fields can vary by model/version; consult the Realtime API docs for your model.
+// Common fields include:
+//  - threshold (0..1): higher = less sensitive; lower = more sensitive
+//  - prefix_padding_ms: speech required to start a chunk; helps avoid short blips
+//  - silence_duration_ms: required silence to end a chunk
+// If any of these are not supported by your model, they will be ignored safely by the API.
+const VAD_TYPE: 'server_vad' | 'semantic_vad' | 'none' = 'server_vad';
+const VAD_THRESHOLD: number = 0.6; // Increase to make VAD less sensitive (defaults are often ~0.5)
+const VAD_PREFIX_PADDING_MS: number = 80; // Require a bit of speech before declaring start
+const VAD_SILENCE_DURATION_MS: number = 300; // Require this much silence to flip turns
+
+// Barge-in grace period: minimum ms of assistant audio that must play before we allow interruption
+// Set to 0 to allow immediate interruption on speech_started.
+const BARGE_IN_GRACE_MS: number = 300;
 
 function stopHoldMusicLoop() {
   if (holdMusicTimer) {
@@ -82,7 +101,7 @@ export function establishCallSocket(ws: WebSocket, openAIApiKey: string) {
   // Twilio realtime media/events from the voice call
   ws.on("message", (data) => processRealtimeCallEvent(data));
   ws.on("error", () => { finalizeRun('error'); ws.close(); });
-  ws.on("close", () => finalizeRun());
+  ws.on("close", () => { finalizeRun(); try { endSession(); } catch {} });
   // Cleanup handled in server.ts on close
 }
 
@@ -115,6 +134,7 @@ export function processRealtimeCallEvent(data: RawData) {
       console.info("📞 Call closed");
       finalizeRun();
       closeAllConnections();
+      try { endSession(); } catch {}
       break;
   }
 }
@@ -150,11 +170,22 @@ export function establishRealtimeModelConnection() {
       currentTime: new Date().toLocaleString(),
     };
     const agentInstructions = [contextInstructions(context), baseInstructions].join('\n');
+
+    // Build turn detection config from constants (can be overridden by saved_config)
+    const turnDetection =
+      VAD_TYPE === 'none'
+        ? { type: 'none' }
+        : {
+            type: VAD_TYPE,
+            threshold: VAD_THRESHOLD,
+            prefix_padding_ms: VAD_PREFIX_PADDING_MS,
+            silence_duration_ms: VAD_SILENCE_DURATION_MS,
+          } as any;
     jsonSend(session.modelConn, {
       type: "session.update",
       session: {
         modalities: ["text", "audio"],
-        turn_detection: { type: "server_vad" },
+        turn_detection: turnDetection,
         voice: "ballad",
         speed: 1.3,
         input_audio_transcription: { model: "whisper-1" },
@@ -221,13 +252,23 @@ export function processRealtimeModelEvent(
         // Append user voice turn to unified conversation history
         try {
           if (!session.conversationHistory) session.conversationHistory = [];
+          const ts = Date.now();
           session.conversationHistory.push({
             type: 'user',
             content: transcript,
-            timestamp: Date.now(),
+            timestamp: ts,
             channel: 'voice',
             supervisor: false,
           });
+          try {
+            const { id: sessionId } = ensureSession();
+            addTranscriptItem({
+              session_id: sessionId,
+              kind: 'message_user',
+              payload: { text: transcript, channel: 'voice', supervisor: false },
+              created_at_ms: ts,
+            });
+          } catch {}
         } catch (e) {
           console.warn("⚠️ Failed to append user voice transcript to history", e);
         }
@@ -252,9 +293,21 @@ export function processRealtimeModelEvent(
       }
       break;
     }
-    case "input_audio_buffer.speech_started":
-      handleTruncation();
+    case "input_audio_buffer.speech_started": {
+      // Only allow truncation (barge-in) if the assistant has been speaking
+      // for at least BARGE_IN_GRACE_MS. This reduces overly eager cutoffs.
+      const startedAt = session.responseStartTimestamp;
+      if (startedAt !== undefined) {
+        const elapsedMs = (session.latestMediaTimestamp || 0) - (startedAt || 0);
+        if (elapsedMs >= BARGE_IN_GRACE_MS) {
+          handleTruncation();
+        } else {
+          // Ignore early speech_started signals to avoid abrupt interruption
+          try { console.debug(`[VAD] speech_started ignored due to grace period: ${elapsedMs}ms < ${BARGE_IN_GRACE_MS}ms`); } catch {}
+        }
+      }
       break;
+    }
     case "response.audio.delta":
       if (session.twilioConn && session.streamSid) {
         if (session.responseStartTimestamp === undefined) {
@@ -311,14 +364,24 @@ export function processRealtimeModelEvent(
           // Always add assistant message to shared history (voice channel)
           try {
             if (!session.conversationHistory) session.conversationHistory = [];
+            const ts = Date.now();
             const assistantMessage: ConversationItem = {
               type: 'assistant',
               content: textContent.text,
-              timestamp: Date.now(),
+              timestamp: ts,
               channel: 'voice',
               supervisor: false,
             };
             session.conversationHistory.push(assistantMessage);
+            try {
+              const { id: sessionId } = ensureSession();
+              addTranscriptItem({
+                session_id: sessionId,
+                kind: 'message_assistant',
+                payload: { text: textContent.text, channel: 'voice', supervisor: false },
+                created_at_ms: ts,
+              });
+            } catch {}
           } catch (e) {
             console.warn("⚠️ Failed to append assistant voice message to history", e);
           }
@@ -340,14 +403,24 @@ export function processRealtimeModelEvent(
             console.log("[VOICE][ASSISTANT][FINAL-VOICE]", assembled);
             try {
               if (!session.conversationHistory) session.conversationHistory = [];
+              const ts = Date.now();
               const assistantMessage: ConversationItem = {
                 type: 'assistant',
                 content: assembled,
-                timestamp: Date.now(),
+                timestamp: ts,
                 channel: 'voice',
                 supervisor: false,
               };
               session.conversationHistory.push(assistantMessage);
+              try {
+                const { id: sessionId } = ensureSession();
+                addTranscriptItem({
+                  session_id: sessionId,
+                  kind: 'message_assistant',
+                  payload: { text: assembled, channel: 'voice', supervisor: false },
+                  created_at_ms: ts,
+                });
+              } catch {}
             } catch (e) {
               console.warn("⚠️ Failed to append assembled assistant voice transcript to history", e);
             }
