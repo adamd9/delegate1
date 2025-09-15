@@ -3,7 +3,7 @@ import { WebSocket } from 'ws';
 import { storeCanvas } from '../../canvasStore';
 import { session, type ConversationItem } from '../../session/state';
 import { ensureSession } from '../../observability/thoughtflow';
-import { addCanvas, addTranscriptItem } from '../../db/sqlite';
+import { addCanvas, addConversationEvent } from '../../db/sqlite';
 
 const PUBLIC_URL = process.env.PUBLIC_URL || '';
 const DEFAULT_PORT = process.env.PORT || '8081';
@@ -68,7 +68,7 @@ export const sendCanvas: FunctionHandler = {
       const req = session.currentRequest;
       const runId = req ? `run_${req.id}` : undefined;
       if (runId) {
-        addTranscriptItem({
+        addConversationEvent({
           conversation_id: runId,
           kind: 'canvas',
           payload: { id, title: title ?? null, url },

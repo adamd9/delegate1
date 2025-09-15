@@ -1,7 +1,7 @@
 import { WebSocket } from "ws";
 import { getAgent, FunctionHandler } from "../../agentConfigs";
 import { ensureSession } from "../../observability/thoughtflow";
-import { addTranscriptItem } from "../../db/sqlite";
+import { addConversationEvent } from "../../db/sqlite";
 import { session } from "../../session/state";
 import { jsonSend, isOpen } from "../../session/state";
 
@@ -44,7 +44,7 @@ function emitDelta(logsClients: Set<WebSocket>, name: string, data?: any, call_i
     ensureSession();
     const runId = session.currentRequest ? `run_${session.currentRequest.id}` : undefined;
     if (runId) {
-      addTranscriptItem({
+      addConversationEvent({
         conversation_id: runId,
         kind: 'function_call_created',
         payload: { name, call_id, arguments: data || {} },
@@ -70,7 +70,7 @@ function emitDone(logsClients: Set<WebSocket>, name: string, originalArgs: any, 
     ensureSession();
     const runId = session.currentRequest ? `run_${session.currentRequest.id}` : undefined;
     if (runId) {
-      addTranscriptItem({
+      addConversationEvent({
         conversation_id: runId,
         kind: 'function_call_completed',
         payload: { name, call_id, arguments: originalArgs, result },

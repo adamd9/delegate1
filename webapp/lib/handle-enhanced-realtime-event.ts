@@ -535,19 +535,7 @@ export default function handleEnhancedRealtimeEvent(
         }
       } catch {}
 
-      // Add breadcrumb for chat response
-      const chatBreadcrumbTitle = chatSupervisor
-        ? "🧠 Supervisor chat response"
-        : "💬 Chat response";
-
-      addTranscriptBreadcrumb(
-        chatBreadcrumbTitle,
-        {
-          content: event.content,
-          timestamp: event.timestamp,
-          supervisor: chatSupervisor
-        }
-      );
+      // Do not add a breadcrumb for chat responses; the message bubble above is sufficient
       break;
 
     case "chat.canvas":

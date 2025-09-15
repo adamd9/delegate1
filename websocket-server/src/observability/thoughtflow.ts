@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync } fr
 import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { session } from '../session/state';
-import { upsertSession, finalizeSession, upsertConversation, completeConversation, stepStarted, stepCompleted, addTranscriptItem, getLastTranscriptTimestampForConversation } from '../db/sqlite';
+import { upsertSession, finalizeSession, upsertConversation, completeConversation, stepStarted, stepCompleted, addConversationEvent, getLastEventTimestampForConversation } from '../db/sqlite';
 
 // Explicit step types for ThoughtFlow events
 export enum ThoughtFlowStepType {
@@ -75,8 +75,8 @@ export function appendEvent(event: any) {
             const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.d2`;
             const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${baseName}.d2`;
             const url_d2_viewer = `/thoughtflow/viewer/${sid}`; // session-level viewer still useful
-            const lastTs = getLastTranscriptTimestampForConversation(convId) || Date.now();
-            addTranscriptItem({
+            const lastTs = getLastEventTimestampForConversation(convId) || Date.now();
+            addConversationEvent({
               id: `ti_tf_conv_${convId}`,
               conversation_id: convId,
               kind: 'thoughtflow_artifacts',

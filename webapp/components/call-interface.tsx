@@ -98,21 +98,21 @@ const CallInterface = () => {
       const globalActiveConversationId: string | undefined = mostRecentInProgress ? mostRecentInProgress.id : undefined;
       let displayedSessionCount = 0;
       for (const s of conversations) {
-        // Fetch items for this conversation
-        const ri = await fetch(`${backend}/api/conversations/${s.id}/items`);
+        // Fetch events for this conversation
+        const ri = await fetch(`${backend}/api/conversations/${s.id}/events`);
         if (!ri.ok) continue;
-        const items = await ri.json();
+        const events = await ri.json();
         const activeConversationId = globalActiveConversationId;
         if (DEBUG) {
           const counts: Record<string, number> = {};
-          for (const it of items) counts[it.kind] = (counts[it.kind] || 0) + 1;
-          console.debug(`[hydrateHistory] session=${s.id} items=${items.length} kinds=`, counts);
+          for (const it of events) counts[it.kind] = (counts[it.kind] || 0) + 1;
+          console.debug(`[hydrateHistory] conversation=${s.id} events=${events.length} kinds=`, counts);
         }
         // Establish a stable base so we can strictly order by seq
-        const base = (Array.isArray(items) && items.length > 0 && items[0].created_at_ms) || Date.now();
+        const base = (Array.isArray(events) && events.length > 0 && events[0].created_at_ms) || Date.now();
         const seenKinds = new Set<string>();
         let emittedForThisSession = false;
-        for (const it of items) {
+        for (const it of events) {
           const kind = it.kind as string;
           const payload = it.payload || {};
           // Use a synthetic timestamp strictly increasing by seq to avoid jitter
@@ -234,6 +234,14 @@ const CallInterface = () => {
         } else if (data?.type === 'chat.done' || data?.type === 'chat.canceled') {
           setInFlight(false);
           setCurrentRequestId(null);
+        }
+        // Forward renderable chat events to enhanced handler so they appear in transcript
+        if (data?.type === 'chat.response' || data?.type === 'chat.canvas' || data?.type === 'chat.error') {
+          try {
+            handleEnhancedRealtimeEvent(data, transcript);
+          } catch (e) {
+            console.warn('Failed to handle chat event in enhanced handler', e);
+          }
         }
       };
 

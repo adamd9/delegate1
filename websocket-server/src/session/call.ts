@@ -6,7 +6,7 @@ import { contextInstructions, Context } from "../agentConfigs/context";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 import { HOLD_MUSIC_ULAW_BASE64, HOLD_MUSIC_DURATION_MS } from "../assets/holdMusic";
 import { appendEvent, ThoughtFlowStepType, ensureSession, endSession } from "../observability/thoughtflow";
-import { addTranscriptItem } from "../db/sqlite";
+import { addConversationEvent } from "../db/sqlite";
 
 // Explicitly type globalThis for logsClients/chatClients to avoid TS7017
 declare global {
@@ -262,7 +262,7 @@ export function processRealtimeModelEvent(
           });
           try {
             const conversationId = `run_${requestId}`;
-            addTranscriptItem({
+            addConversationEvent({
               conversation_id: conversationId,
               kind: 'message_user',
               payload: { text: transcript, channel: 'voice', supervisor: false },
@@ -377,7 +377,7 @@ export function processRealtimeModelEvent(
               const req = session.currentRequest;
               const conversationId = req ? `run_${req.id}` : undefined;
               if (conversationId) {
-                addTranscriptItem({
+                addConversationEvent({
                   conversation_id: conversationId,
                   kind: 'message_assistant',
                   payload: { text: textContent.text, channel: 'voice', supervisor: false },
@@ -419,7 +419,7 @@ export function processRealtimeModelEvent(
                 const req = session.currentRequest;
                 const conversationId = req ? `run_${req.id}` : undefined;
                 if (conversationId) {
-                  addTranscriptItem({
+                  addConversationEvent({
                     conversation_id: conversationId,
                     kind: 'message_assistant',
                     payload: { text: assembled, channel: 'voice', supervisor: false },
