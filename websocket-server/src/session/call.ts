@@ -471,7 +471,7 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
   const conversationId = req ? `run_${req.id}` : undefined;
   const stepId = conversationId ? `step_tool_${item.call_id || Date.now()}` : undefined;
   if (conversationId && stepId) {
-    appendEvent({ type: 'step.started', run_id: conversationId, step_id: stepId, label: ThoughtFlowStepType.ToolCall, payload: { name: item.name, arguments: item.arguments }, timestamp: Date.now() });
+    appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: stepId, label: ThoughtFlowStepType.ToolCall, payload: { name: item.name, arguments: item.arguments }, timestamp: Date.now() });
   }
   try {
     const result = await executeFunctionCall(
@@ -479,13 +479,13 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
       { mode: 'voice', logsClients, confirm: false }
     );
     if (conversationId && stepId) {
-      appendEvent({ type: 'step.completed', run_id: conversationId, step_id: stepId, payload: { output: result }, timestamp: Date.now() });
+      appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: stepId, payload: { output: result }, timestamp: Date.now() });
     }
     return result;
   } catch (err: any) {
     console.error("Error running function:", err);
     if (conversationId && stepId) {
-      appendEvent({ type: 'step.completed', run_id: conversationId, step_id: stepId, payload: { error: err?.message || String(err) }, timestamp: Date.now() });
+      appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: stepId, payload: { error: err?.message || String(err) }, timestamp: Date.now() });
     }
     finalizeRun('error');
     return JSON.stringify({ error: `Error running function ${item.name}: ${err?.message || 'unknown'}` });
