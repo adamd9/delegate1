@@ -290,7 +290,7 @@ export function EnhancedTranscript({
                             parts.push(`ui.id=${itemId}`);
                             parts.push(`ts=${current.createdAtMs}`);
                             if (meta.session_id) parts.push(`session=${meta.session_id}`);
-                            if (meta.run_id) parts.push(`run=${meta.run_id}`);
+                            if (meta.conversation_id) parts.push(`run=${meta.conversation_id}`);
                             if (meta.step_id) parts.push(`step=${meta.step_id}`);
                             if (callId) parts.push(`call=${callId}`);
                             return parts.join(' • ');

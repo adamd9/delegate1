@@ -57,10 +57,10 @@ export function appendEvent(event: any) {
         const t = event?.type as string | undefined;
         // Normalize legacy run.* events to conversation.* where applicable
         if (t === 'run.started' || t === 'conversation.started') {
-          const convId = event.conversation_id || event.run_id;
+          const convId = event.conversation_id;
           upsertConversation({ id: convId, session_id: sid, channel: event.channel, started_at: event.started_at });
         } else if (t === 'run.completed' || t === 'run.aborted' || t === 'conversation.completed' || t === 'conversation.aborted') {
-          const convId = event.conversation_id || event.run_id;
+          const convId = event.conversation_id;
           const isAborted = (t === 'run.aborted' || t === 'conversation.aborted');
           const status = (event.status as any) || (isAborted ? 'aborted' : 'completed');
           completeConversation({ id: convId, status, ended_at: event.ended_at });
@@ -85,7 +85,7 @@ export function appendEvent(event: any) {
             });
           } catch {}
         } else if (t === 'step.started') {
-          const convId = event.conversation_id || event.run_id; // support legacy run_id
+          const convId = event.conversation_id; // support legacy conversation_id
           stepStarted({ id: event.step_id, conversation_id: convId, label: event.label, started_at: event.timestamp ? new Date(event.timestamp).toISOString() : undefined, payload_started_json: event.payload ? JSON.stringify(event.payload) : undefined });
         } else if (t === 'step.completed') {
           stepCompleted({ id: event.step_id, ended_at: event.timestamp ? new Date(event.timestamp).toISOString() : undefined, payload_completed_json: event.payload ? JSON.stringify(event.payload) : undefined });
@@ -115,7 +115,7 @@ function writeConversationArtifacts(sessionId: string, conversationId: string): 
   for (const line of lines) {
     let evt: any; try { evt = JSON.parse(line); } catch { continue; }
     const t = evt?.type as string | undefined; if (!t) continue;
-    const matchesConv = (evt.run_id && evt.run_id === conversationId) || (evt.conversation_id && evt.conversation_id === conversationId);
+    const matchesConv = evt.conversation_id && evt.conversation_id === conversationId;
     if ((t === 'run.started' || t === 'run.completed' || t === 'run.aborted' || t === 'conversation.started' || t === 'conversation.completed' || t === 'conversation.aborted') && matchesConv) {
       const isStart = (t === 'run.started' || t === 'conversation.started');
       if (isStart) {
@@ -127,7 +127,7 @@ function writeConversationArtifacts(sessionId: string, conversationId: string): 
       }
       continue;
     }
-    if ((t === 'step.started' || t === 'step.completed') && ((evt.run_id && evt.run_id === conversationId) || (evt.conversation_id && evt.conversation_id === conversationId))) {
+    if ((t === 'step.started' || t === 'step.completed') && (evt.conversation_id && evt.conversation_id === conversationId)) {
       if (t === 'step.started') {
         const s: Step = {
           step_id: evt.step_id,
@@ -214,7 +214,7 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
       const t = evt?.type as string | undefined;
       if (!t) continue;
       if (t === 'run.started' || t === 'conversation.started') {
-        const cid = evt.conversation_id || evt.run_id || `conv_${Date.now()}`;
+        const cid = evt.conversation_id || `conv_${Date.now()}`;
         let r = convMap.get(cid);
         if (!r) {
           const newConv: Conversation = {
@@ -241,7 +241,7 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
         continue;
       }
       if (t === 'run.completed' || t === 'run.aborted' || t === 'conversation.completed' || t === 'conversation.aborted') {
-        const cid = (evt.conversation_id as string) || (evt.run_id as string);
+        const cid = evt.conversation_id as string;
         if (!cid) continue;
         const r = convMap.get(cid) || { conversation_id: cid, steps: [], _stepIndex: {} } as Conversation;
         r.ended_at = evt.ended_at || new Date().toISOString();
@@ -250,7 +250,7 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
         continue;
       }
       if (t === 'step.started') {
-        const cid = (evt.conversation_id as string) || (evt.run_id as string);
+        const cid = evt.conversation_id as string;
         const step_id = evt.step_id as string;
         if (!cid || !step_id) continue;
         const r = convMap.get(cid) || { conversation_id: cid, steps: [], _stepIndex: {} } as Conversation;
@@ -267,7 +267,7 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
         continue;
       }
       if (t === 'step.completed') {
-        const cid = (evt.conversation_id as string) || (evt.run_id as string);
+        const cid = evt.conversation_id as string;
         const step_id = evt.step_id as string;
         if (!cid || !step_id) continue;
         const r = convMap.get(cid);

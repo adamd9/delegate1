@@ -93,7 +93,7 @@ All ThoughtFlow visualizations are generated from a consolidated JSON representa
   "ended_at": "2025-09-02T20:12:05.442Z",
   "runs": [
     {
-      "run_id": "run_1",
+      "conversation_id": "run_1",
       "channel": "text",
       "status": "completed",
       "started_at": "2025-09-02T20:11:35.500Z",

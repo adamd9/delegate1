@@ -93,11 +93,11 @@ export default function handleEnhancedRealtimeEvent(
             updateTranscriptItem(newId, { createdAtMs: event.timestamp });
           }
           // Attach debug metadata when available (both replay and live)
-          if ((event as any).session_id || (event as any).conversation_id || (event as any).run_id) {
+          if ((event as any).session_id || (event as any).conversation_id) {
             try {
               const meta = {
                 session_id: (event as any).session_id,
-                conversation_id: (event as any).conversation_id || (event as any).run_id,
+                conversation_id: (event as any).conversation_id,
                 step_id: (event as any).step_id,
                 kind: 'message',
               } as any;
@@ -141,9 +141,9 @@ export default function handleEnhancedRealtimeEvent(
             arguments: parsedArgs,
             status: event.item.status || 'created',
             _replay: breadcrumbHidden,
-            ...(((event as any).session_id || (event as any).conversation_id || (event as any).run_id) ? { _meta: {
+            ...(((event as any).session_id || (event as any).conversation_id) ? { _meta: {
               session_id: (event as any).session_id,
-              conversation_id: (event as any).conversation_id || (event as any).run_id,
+              conversation_id: (event as any).conversation_id,
               step_id: (event as any).step_id,
               call_id: event.item.call_id,
               kind: 'function_call',
@@ -157,7 +157,7 @@ export default function handleEnhancedRealtimeEvent(
           try {
             const meta = {
               session_id: (event as any).session_id,
-              conversation_id: (event as any).conversation_id || (event as any).run_id,
+              conversation_id: (event as any).conversation_id,
               step_id: (event as any).step_id,
               call_id: event.item.call_id,
               kind: 'function_call',
@@ -258,7 +258,7 @@ export default function handleEnhancedRealtimeEvent(
             _replay: isReplay,
             ...(isReplay ? { _meta: {
               session_id: (event as any).session_id,
-              conversation_id: (event as any).conversation_id || (event as any).run_id,
+              conversation_id: (event as any).conversation_id,
               step_id: (event as any).step_id,
               call_id: event.item.call_id,
               kind: 'function_call',
@@ -474,7 +474,7 @@ export default function handleEnhancedRealtimeEvent(
           _replay: shouldHide,
           ...(event.replay === true ? { _meta: {
             session_id: (event as any).session_id,
-            conversation_id: (event as any).conversation_id || (event as any).run_id,
+            conversation_id: (event as any).conversation_id,
             kind: 'thoughtflow_artifacts',
           } } : {}),
         },
@@ -485,7 +485,7 @@ export default function handleEnhancedRealtimeEvent(
         try {
           const meta = {
             session_id: (event as any).session_id,
-            conversation_id: (event as any).conversation_id || (event as any).run_id,
+            conversation_id: (event as any).conversation_id,
             kind: 'thoughtflow_artifacts',
           } as any;
           const items = transcript.transcriptItems;
@@ -561,7 +561,7 @@ export default function handleEnhancedRealtimeEvent(
           _replay: event.replay === true,
           ...(event.replay === true ? { _meta: {
             session_id: (event as any).session_id,
-            conversation_id: (event as any).conversation_id || (event as any).run_id,
+            conversation_id: (event as any).conversation_id,
             kind: 'canvas',
           } } : {}),
         },
@@ -572,7 +572,7 @@ export default function handleEnhancedRealtimeEvent(
         try {
           const meta = {
             session_id: (event as any).session_id,
-            conversation_id: (event as any).conversation_id || (event as any).run_id,
+            conversation_id: (event as any).conversation_id,
             kind: 'canvas',
           } as any;
           const items = transcript.transcriptItems;
