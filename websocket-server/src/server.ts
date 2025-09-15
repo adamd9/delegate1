@@ -20,7 +20,7 @@ import { initMCPDiscovery } from './tools/mcp/adapter';
 import { initToolsRegistry } from './tools/init';
 import { getAgentsDebug, getSchemasForAgent } from './tools/registry';
 import { startEmailPolling } from './emailPoller';
-import { listConversations as dbListConversations, getConversationById, listTranscriptItemsByConversation, getItemCountForSession } from './db/sqlite';
+import { listConversations as dbListConversations, getConversationById, listConversationEvents, getEventCountForSession } from './db/sqlite';
 import { endSession } from './observability/thoughtflow';
 import { listAllTools } from './tools/registry';
 import { createNote, listNotes, updateNote } from './noteStore';
@@ -71,7 +71,7 @@ function finalizeOpenSessionsOnStartup() {
         }
         // Only finalize if DB already has at least one real transcript message linked to this session's conversations
         try {
-          const count = getItemCountForSession(id);
+          const count = getEventCountForSession(id);
           if (!count || count <= 0) {
             // DB was likely wiped or there was no real conversation; do not finalize
             continue;
@@ -292,14 +292,14 @@ app.get('/api/conversations/:id', (req, res) => {
   }
 });
 
-// Conversation transcript items endpoint (ordered by seq) — fetch by conversation_id
-app.get('/api/conversations/:id/items', (req, res) => {
+// Conversation events endpoint (ordered by seq) — fetch by conversation_id
+app.get('/api/conversations/:id/events', (req, res) => {
   try {
     const conversationId = req.params.id;
     const detail = getConversationById(conversationId);
     if (!detail) return res.status(404).json({ error: 'Not found' });
-    const items = listTranscriptItemsByConversation(conversationId) as any[];
-    const out = items.map((row: any) => ({
+    const events = listConversationEvents(conversationId) as any[];
+    const out = events.map((row: any) => ({
       id: row.id,
       conversation_id: conversationId,
       seq: row.seq,
@@ -314,12 +314,12 @@ app.get('/api/conversations/:id/items', (req, res) => {
         const seqs = out.map((i: any) => i.seq);
         const minSeq = Math.min(...seqs);
         const maxSeq = Math.max(...seqs);
-        console.debug(`[items] conversation=${conversationId} total=${out.length} kinds=${JSON.stringify(counts)} seq=[${minSeq}..${maxSeq}]`);
+        console.debug(`[events] conversation=${conversationId} total=${out.length} kinds=${JSON.stringify(counts)} seq=[${minSeq}..${maxSeq}]`);
       } catch {}
     }
     res.json(out);
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to get conversation items' });
+    res.status(500).json({ error: e?.message || 'Failed to get conversation events' });
   }
 });
 

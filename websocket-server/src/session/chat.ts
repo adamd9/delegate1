@@ -11,7 +11,7 @@ import { getReplyTo } from "../emailState";
 import { sendEmail } from "../email";
 import { session, parseMessage, jsonSend, isOpen } from "./state";
 import { ensureSession, appendEvent, ThoughtFlowStepType } from "../observability/thoughtflow";
-import { addTranscriptItem } from "../db/sqlite";
+import { addConversationEvent } from "../db/sqlite";
 
 export function establishChatSocket(
   ws: WebSocket,
@@ -150,7 +150,7 @@ export async function handleTextChatMessage(
     }
     session.conversationHistory.push(userMessage);
     try {
-      addTranscriptItem({
+      addConversationEvent({
         conversation_id: conversationId,
         kind: 'message_user',
         payload: { text: content, channel, supervisor: false },
@@ -379,7 +379,7 @@ export async function handleTextChatMessage(
               };
               session.conversationHistory.push(assistantMessage);
               try {
-                addTranscriptItem({
+                addConversationEvent({
                   conversation_id: conversationId,
                   kind: 'message_assistant',
                   payload: { text, channel: 'text', supervisor: true },
@@ -415,7 +415,7 @@ export async function handleTextChatMessage(
           };
           session.conversationHistory.push(assistantMessage);
           try {
-            addTranscriptItem({
+            addConversationEvent({
               conversation_id: conversationId,
               kind: 'message_assistant',
               payload: { text: finalResponse, channel: 'text', supervisor: true },
@@ -468,7 +468,7 @@ export async function handleTextChatMessage(
         session.conversationHistory.push(assistantMessage);
         try {
           const { id: sessionId } = ensureSession();
-          addTranscriptItem({
+          addConversationEvent({
             conversation_id: conversationId,
             kind: 'message_assistant',
             payload: { text: errorText, channel: 'text', supervisor: true },
@@ -501,7 +501,7 @@ export async function handleTextChatMessage(
     };
     session.conversationHistory.push(assistantMessage);
     try {
-      addTranscriptItem({
+      addConversationEvent({
         conversation_id: conversationId,
         kind: 'message_assistant',
         payload: { text: assistantText, channel: 'text', supervisor: false },
