@@ -1,7 +1,6 @@
 import { RawData, WebSocket } from "ws";
 import { session, parseMessage, jsonSend, isOpen } from "./state";
 import { endSession, ensureSession, ThoughtFlowStepType } from "../observability/thoughtflow";
-import { addTranscriptItem, getLastTranscriptTimestamp } from "../db/sqlite";
 
 // Build a base URL consistent with server.ts EFFECTIVE_PUBLIC_URL
 const PORT = parseInt(process.env.PORT || "8081", 10);

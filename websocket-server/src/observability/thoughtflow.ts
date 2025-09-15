@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync } from 'fs';
+import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { session } from '../session/state';
-import { upsertSession, finalizeSession, upsertConversation, completeConversation, stepStarted, stepCompleted, addTranscriptItem, getLastTranscriptTimestamp } from '../db/sqlite';
+import { upsertSession, finalizeSession, upsertConversation, completeConversation, stepStarted, stepCompleted, addTranscriptItem, getLastTranscriptTimestampForConversation } from '../db/sqlite';
 
 // Explicit step types for ThoughtFlow events
 export enum ThoughtFlowStepType {
@@ -27,7 +28,7 @@ export function ensureSession(): { id: string; jsonlPath: string } {
   ensureDir();
   const tf = (session.thoughtflow ||= {} as any);
   if (!tf.sessionId) {
-    tf.sessionId = `sess_${Date.now()}`;
+    tf.sessionId = `sess_${randomUUID()}`;
     tf.startedAt = Date.now();
   }
   const jsonlPath = join(BASE_DIR, `${tf.sessionId}.jsonl`);
@@ -74,10 +75,10 @@ export function appendEvent(event: any) {
             const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.d2`;
             const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${baseName}.d2`;
             const url_d2_viewer = `/thoughtflow/viewer/${sid}`; // session-level viewer still useful
-            const lastTs = getLastTranscriptTimestamp(sid) || Date.now();
+            const lastTs = getLastTranscriptTimestampForConversation(convId) || Date.now();
             addTranscriptItem({
               id: `ti_tf_conv_${convId}`,
-              session_id: sid,
+              conversation_id: convId,
               kind: 'thoughtflow_artifacts',
               payload: { session_id: sid, conversation_id: convId, url_json, url_d2, url_d2_raw, url_d2_viewer },
               created_at_ms: lastTs + 1,
@@ -213,12 +214,30 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
       const t = evt?.type as string | undefined;
       if (!t) continue;
       if (t === 'run.started' || t === 'conversation.started') {
-        const cid = (evt.conversation_id as string) || (evt.run_id as string);
-        if (!cid) continue;
-        const r = convMap.get(cid) || { conversation_id: cid, steps: [], _stepIndex: {} } as Conversation;
-        r.started_at = evt.started_at || new Date().toISOString();
-        if (evt.channel) r.channel = evt.channel;
-        convMap.set(cid, r);
+        const cid = evt.conversation_id || evt.run_id || `conv_${Date.now()}`;
+        let r = convMap.get(cid);
+        if (!r) {
+          const newConv: Conversation = {
+            id: cid,
+            started_at: evt.started_at || (evt.timestamp ? new Date(evt.timestamp).toISOString() : new Date().toISOString()),
+            status: 'in_progress',
+            steps: [],
+            _stepIndex: {},
+          } as any;
+          convMap.set(cid, newConv);
+          r = newConv;
+        }
+        // Persist the conversation row immediately so hydration can find it after a refresh
+        try {
+          upsertConversation({
+            session_id: id,
+            id: cid,
+            started_at: r.started_at,
+            status: r.status,
+          } as any);
+        } catch (e) {
+          console.warn('[thoughtflow] upsertConversation on start failed:', (e as any)?.message || e);
+        }
         continue;
       }
       if (t === 'run.completed' || t === 'run.aborted' || t === 'conversation.completed' || t === 'conversation.aborted') {
@@ -390,10 +409,10 @@ function generateD2(consolidated: { session_id: string; conversations: Array<{ c
     lines.push('note: "No conversations recorded"');
     return lines.join('\n');
   }
-  const runIds: string[] = [];
+  const conversationIds: string[] = [];
   consolidated.conversations.forEach((run, idx) => {
     const runNode = `run_${idx + 1}`;
-    runIds.push(runNode);
+    conversationIds.push(runNode);
     const runLabel = `Conversation ${idx + 1} — ${run.status || 'unknown'}${run.duration_ms != null ? `, ${run.duration_ms}ms` : ''}`;
     lines.push(`${runNode}: {`);
     lines.push(`  label: "${sanitizeLabel(runLabel)}"`);
@@ -475,8 +494,8 @@ function generateD2(consolidated: { session_id: string; conversations: Array<{ c
     lines.push('');
   });
   // Chain runs at top level for simple left-to-right overview
-  for (let i = 1; i < runIds.length; i++) {
-    lines.push(`${runIds[i - 1]} -> ${runIds[i]}`);
+  for (let i = 1; i < conversationIds.length; i++) {
+    lines.push(`${conversationIds[i - 1]} -> ${conversationIds[i]}`);
   }
   return lines.join('\n');
 }

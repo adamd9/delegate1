@@ -2,6 +2,7 @@ import { WebSocket } from "ws";
 import { getAgent, FunctionHandler } from "../../agentConfigs";
 import { ensureSession } from "../../observability/thoughtflow";
 import { addTranscriptItem } from "../../db/sqlite";
+import { session } from "../../session/state";
 import { jsonSend, isOpen } from "../../session/state";
 
 export type OrchestratorMode = "chat" | "voice";
@@ -38,15 +39,18 @@ function emitDelta(logsClients: Set<WebSocket>, name: string, data?: any, call_i
       call_id: call_id || `supervisor_${Date.now()}`,
     });
   }
-  // Persist a created breadcrumb into the transcript ledger
+  // Persist a created breadcrumb into the transcript ledger (only if we have an active conversation)
   try {
-    const { id: sessionId } = ensureSession();
-    addTranscriptItem({
-      session_id: sessionId,
-      kind: 'function_call_created',
-      payload: { name, call_id, arguments: data || {} },
-      created_at_ms: Date.now(),
-    });
+    ensureSession();
+    const runId = session.currentRequest ? `run_${session.currentRequest.id}` : undefined;
+    if (runId) {
+      addTranscriptItem({
+        conversation_id: runId,
+        kind: 'function_call_created',
+        payload: { name, call_id, arguments: data || {} },
+        created_at_ms: Date.now(),
+      });
+    }
   } catch {}
 }
 
@@ -61,15 +65,18 @@ function emitDone(logsClients: Set<WebSocket>, name: string, originalArgs: any, 
       ...(result !== undefined ? { result: typeof result === 'string' ? result : JSON.stringify(result) } : {}),
     });
   }
-  // Persist a completed breadcrumb into the transcript ledger
+  // Persist a completed breadcrumb into the transcript ledger (only if we have an active conversation)
   try {
-    const { id: sessionId } = ensureSession();
-    addTranscriptItem({
-      session_id: sessionId,
-      kind: 'function_call_completed',
-      payload: { name, call_id, arguments: originalArgs, result },
-      created_at_ms: Date.now(),
-    });
+    ensureSession();
+    const runId = session.currentRequest ? `run_${session.currentRequest.id}` : undefined;
+    if (runId) {
+      addTranscriptItem({
+        conversation_id: runId,
+        kind: 'function_call_completed',
+        payload: { name, call_id, arguments: originalArgs, result },
+        created_at_ms: Date.now(),
+      });
+    }
   } catch {}
 }
 
