@@ -92,8 +92,8 @@ export default function handleEnhancedRealtimeEvent(
           if (isReplay && typeof event.timestamp === 'number') {
             updateTranscriptItem(newId, { createdAtMs: event.timestamp });
           }
-          // Attach debug metadata when available
-          if (isReplay && (event as any).session_id) {
+          // Attach debug metadata when available (both replay and live)
+          if ((event as any).session_id || (event as any).conversation_id || (event as any).run_id) {
             try {
               const meta = {
                 session_id: (event as any).session_id,
@@ -141,7 +141,7 @@ export default function handleEnhancedRealtimeEvent(
             arguments: parsedArgs,
             status: event.item.status || 'created',
             _replay: breadcrumbHidden,
-            ...(isReplay ? { _meta: {
+            ...(((event as any).session_id || (event as any).conversation_id || (event as any).run_id) ? { _meta: {
               session_id: (event as any).session_id,
               conversation_id: (event as any).conversation_id || (event as any).run_id,
               step_id: (event as any).step_id,
@@ -520,6 +520,20 @@ export default function handleEnhancedRealtimeEvent(
         chatSupervisor,
         false
       );
+      // Attach debug metadata when provided by server
+      try {
+        if (event.session_id || event.conversation_id) {
+          updateTranscriptItem(`chat_${event.timestamp}`, {
+            data: {
+              _meta: {
+                session_id: event.session_id,
+                conversation_id: event.conversation_id,
+                kind: 'message',
+              }
+            }
+          });
+        }
+      } catch {}
 
       // Add breadcrumb for chat response
       const chatBreadcrumbTitle = chatSupervisor
@@ -558,7 +572,7 @@ export default function handleEnhancedRealtimeEvent(
         try {
           const meta = {
             session_id: (event as any).session_id,
-            run_id: (event as any).run_id,
+            conversation_id: (event as any).conversation_id || (event as any).run_id,
             kind: 'canvas',
           } as any;
           const items = transcript.transcriptItems;
