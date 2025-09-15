@@ -107,7 +107,7 @@ export async function handleTextChatMessage(
     const requestId = `req_${Date.now()}`;
     session.currentRequest = { id: requestId, channel, canceled: false, startedAt: Date.now() };
     // ThoughtFlow: ensure session and start run
-    ensureSession();
+    const { id: sessionId } = ensureSession();
     const runId = `run_${requestId}`;
     appendEvent({ type: 'conversation.started', conversation_id: runId, request_id: requestId, channel, started_at: new Date().toISOString() });
     const userStepId = `step_user_${requestId}`;
@@ -150,7 +150,6 @@ export async function handleTextChatMessage(
     }
     session.conversationHistory.push(userMessage);
     try {
-      const { id: sessionId } = ensureSession();
       addTranscriptItem({
         session_id: sessionId,
         kind: 'message_user',
@@ -158,22 +157,28 @@ export async function handleTextChatMessage(
         created_at_ms: userMessage.timestamp,
       });
     } catch {}
-    // Forward user message to observability clients
-    for (const ws of logsClients) {
-      if (isOpen(ws))
-        jsonSend(ws, {
-          type: "conversation.item.created",
-          item: {
-            id: `msg_${Date.now()}`,
-            type: "message",
-            role: "user",
-            content: [{ type: "text", text: content }],
-            channel,
-          },
-        });
-    }
+    // (Removed) Early user emit without metadata to avoid duplication. We will emit once below with meta.
     // Mark user message step as completed for clean duration computation
     appendEvent({ type: 'step.completed', conversation_id: runId, step_id: userStepId, timestamp: Date.now() });
+    // Emit user message to logs websocket with metadata so UI can show conversation/session IDs live
+    try {
+      for (const ws of logsClients) {
+        if (isOpen(ws))
+          jsonSend(ws, {
+            type: 'conversation.item.created',
+            session_id: sessionId,
+            conversation_id: runId,
+            item: {
+              id: `msg_${Date.now()}`,
+              type: 'message',
+              role: 'user',
+              content: [{ type: 'text', text: content }],
+              channel,
+            },
+            timestamp: Date.now(),
+          });
+      }
+    } catch {}
     // Text channel: expose only base agent tools (supervisor MCP tools are used internally by supervisor flow)
     const baseFunctions = (getAgent('base').tools as FunctionHandler[])
       .filter(Boolean)
@@ -254,8 +259,8 @@ export async function handleTextChatMessage(
     if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
       console.log(`[${requestId}] Aborting post-response handling due to cancel`);
       // Still mark step as completed but with cancel status
-      appendEvent({ type: 'step.completed', run_id: runId, step_id: llmStepId, payload: { meta: { status: 'canceled' } }, timestamp: Date.now() });
-      appendEvent({ type: 'run.aborted', run_id: runId, request_id: requestId, timestamp: Date.now() });
+      appendEvent({ type: 'step.completed', conversation_id: runId, step_id: llmStepId, payload: { meta: { status: 'canceled' } }, timestamp: Date.now() });
+      appendEvent({ type: 'conversation.aborted', conversation_id: runId, request_id: requestId, timestamp: Date.now() });
       return;
     }
 
@@ -335,7 +340,7 @@ export async function handleTextChatMessage(
           const followUpResponse = await session.openaiClient.responses.create(followUpBody);
           if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
             console.log(`[${requestId}] Aborting after follow-up due to cancel`);
-            appendEvent({ type: 'run.aborted', run_id: runId, request_id: requestId, timestamp: Date.now() });
+            appendEvent({ type: 'conversation.aborted', conversation_id: runId, request_id: requestId, timestamp: Date.now() });
             return;
           }
           console.log(
@@ -374,7 +379,6 @@ export async function handleTextChatMessage(
               };
               session.conversationHistory.push(assistantMessage);
               try {
-                const { id: sessionId } = ensureSession();
                 addTranscriptItem({
                   session_id: sessionId,
                   kind: 'message_assistant',
@@ -387,27 +391,13 @@ export async function handleTextChatMessage(
                 sendSms(text, smsTwilioNumber, smsUserNumber).catch((e) => console.error('sendSms error', e));
               }
               for (const ws of chatClients) {
-                if (isOpen(ws)) jsonSend(ws, { type: 'chat.response', content: text, timestamp: Date.now(), supervisor: true });
+                if (isOpen(ws)) jsonSend(ws, { type: 'chat.response', content: text, timestamp: Date.now(), supervisor: true, session_id: sessionId, conversation_id: runId });
               }
               for (const ws of chatClients) {
                 if (isOpen(ws)) jsonSend(ws, { type: 'chat.done', request_id: requestId, timestamp: Date.now() });
               }
               session.currentRequest = undefined;
-              // Also forward to logs history for symmetry
-              for (const ws of logsClients) {
-                if (isOpen(ws))
-                  jsonSend(ws, {
-                    type: 'conversation.item.created',
-                    item: {
-                      id: `msg_${Date.now()}`,
-                      type: 'message',
-                      role: 'assistant',
-                      content: [{ type: 'text', text }],
-                      channel: 'text',
-                      supervisor: true,
-                    },
-                  });
-              }
+              // No additional logs emit to avoid duplicate assistant messages; chat.response carries meta now.
               appendEvent({ type: 'step.completed', conversation_id: runId, step_id: assistantStepId_handled, timestamp: Date.now() });
               appendEvent({ type: 'conversation.completed', conversation_id: runId, request_id: requestId, ended_at: new Date().toISOString() });
               return;
@@ -425,7 +415,6 @@ export async function handleTextChatMessage(
           };
           session.conversationHistory.push(assistantMessage);
           try {
-            const { id: sessionId } = ensureSession();
             addTranscriptItem({
               session_id: sessionId,
               kind: 'message_assistant',
@@ -458,21 +447,7 @@ export async function handleTextChatMessage(
             if (isOpen(ws)) jsonSend(ws, { type: "chat.done", request_id: requestId, timestamp: Date.now() });
           }
           session.currentRequest = undefined;
-          // Forward assistant response to observability clients (/logs)
-          for (const ws of logsClients) {
-            if (isOpen(ws))
-              jsonSend(ws, {
-                type: "conversation.item.created",
-                item: {
-                  id: `msg_${Date.now()}`,
-                  type: "message",
-                  role: "assistant",
-                  content: [{ type: "text", text: finalResponse }],
-                  channel: "text",
-                  supervisor: true,
-                },
-              });
-          }
+          // No logs emit; chat.response above includes meta to avoid duplication
           appendEvent({ type: 'step.completed', conversation_id: runId, step_id: assistantStepId_supervisor, timestamp: Date.now() });
           appendEvent({ type: 'conversation.completed', conversation_id: runId, request_id: requestId, ended_at: new Date().toISOString() });
           return;
@@ -501,27 +476,13 @@ export async function handleTextChatMessage(
           });
         } catch {}
         for (const ws of chatClients) {
-          if (isOpen(ws)) jsonSend(ws, { type: "chat.response", content: errorText, timestamp: Date.now(), supervisor: true });
+          if (isOpen(ws)) jsonSend(ws, { type: "chat.response", content: errorText, timestamp: Date.now(), supervisor: true, session_id: sessionId, conversation_id: runId });
         }
         for (const ws of chatClients) {
           if (isOpen(ws)) jsonSend(ws, { type: "chat.done", request_id: requestId, timestamp: Date.now() });
         }
         session.currentRequest = undefined;
-        // Also forward to logs for observability
-        for (const ws of logsClients) {
-          if (isOpen(ws))
-            jsonSend(ws, {
-              type: "conversation.item.created",
-              item: {
-                id: `msg_${Date.now()}`,
-                type: "message",
-                role: "assistant",
-                content: [{ type: "text", text: errorText }],
-                channel: "text",
-                supervisor: true,
-              },
-            });
-        }
+        // No logs emit; chat.response above includes meta
         appendEvent({ type: 'step.completed', conversation_id: runId, step_id: `step_error_${Date.now()}`, label: ThoughtFlowStepType.ToolError, payload: { error: err?.message || String(err) }, timestamp: Date.now() });
         appendEvent({ type: 'conversation.completed', conversation_id: runId, request_id: requestId, ended_at: new Date().toISOString(), status: 'error' });
         return;
@@ -540,7 +501,6 @@ export async function handleTextChatMessage(
     };
     session.conversationHistory.push(assistantMessage);
     try {
-      const { id: sessionId } = ensureSession();
       addTranscriptItem({
         session_id: sessionId,
         kind: 'message_assistant',
@@ -562,29 +522,15 @@ export async function handleTextChatMessage(
     }
     for (const ws of chatClients) {
       if (isOpen(ws))
-        jsonSend(ws, { type: "chat.response", content: assistantText, timestamp: Date.now() });
+        jsonSend(ws, { type: "chat.response", content: assistantText, timestamp: Date.now(), session_id: sessionId, conversation_id: runId });
     }
     for (const ws of chatClients) {
       if (isOpen(ws)) jsonSend(ws, { type: "chat.done", request_id: requestId, timestamp: Date.now() });
     }
     session.currentRequest = undefined;
+    // Do not emit a duplicate assistant message to logs; chat.response includes meta
     appendEvent({ type: 'step.completed', conversation_id: runId, step_id: assistantStepId_fallback, timestamp: Date.now() });
     appendEvent({ type: 'conversation.completed', conversation_id: runId, request_id: requestId, ended_at: new Date().toISOString() });
-    // Forward assistant response to observability clients (/logs)
-    for (const ws of logsClients) {
-      if (isOpen(ws))
-        jsonSend(ws, {
-          type: "conversation.item.created",
-          item: {
-            id: `msg_${Date.now()}`,
-            type: "message",
-            role: "assistant",
-            content: [{ type: "text", text: assistantText }],
-            channel: "text",
-            supervisor: false,
-          },
-        });
-    }
   } catch (err) {
     console.error("❌ Error handling text chat message:", err);
     // Ensure clients are unblocked on error
