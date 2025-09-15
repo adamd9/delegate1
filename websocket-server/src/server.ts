@@ -20,7 +20,7 @@ import { initMCPDiscovery } from './tools/mcp/adapter';
 import { initToolsRegistry } from './tools/init';
 import { getAgentsDebug, getSchemasForAgent } from './tools/registry';
 import { startEmailPolling } from './emailPoller';
-import { listSessions as dbListSessions, getSessionDetail, listTranscriptItems } from './db/sqlite';
+import { listConversations as dbListConversations, getConversationById, listTranscriptItemsByConversation, getItemCountForSession } from './db/sqlite';
 import { endSession } from './observability/thoughtflow';
 import { listAllTools } from './tools/registry';
 import { createNote, listNotes, updateNote } from './noteStore';
@@ -69,11 +69,10 @@ function finalizeOpenSessionsOnStartup() {
           // Skip auto-finalization for empty sessions (prevents phantom history rows after DB reset)
           continue;
         }
-        // Only finalize if DB already has at least one real transcript message for this session
+        // Only finalize if DB already has at least one real transcript message linked to this session's conversations
         try {
-          const items = listTranscriptItems(id);
-          const hasRealMsgs = Array.isArray(items) && items.some((r: any) => r.kind === 'message_user' || r.kind === 'message_assistant');
-          if (!hasRealMsgs) {
+          const count = getItemCountForSession(id);
+          if (!count || count <= 0) {
             // DB was likely wiped or there was no real conversation; do not finalize
             continue;
           }
@@ -269,40 +268,40 @@ app.get("/logs", (req, res) => {
   res.type("text/plain").send(getLogs().join("\n"));
 });
 
-// Conversations list endpoint
+// Conversations list endpoint (conversation-centric)
 app.get('/api/conversations', (req, res) => {
   try {
     const limit = Math.max(1, Math.min(50, Number(req.query.limit) || SESSION_HISTORY_LIMIT));
-    const list = dbListSessions(limit);
+    const list = dbListConversations(limit);
+    // Returns: [{ id: conversation_id, session_id, channel, started_at, ended_at, status, duration_ms }, ...]
     res.json(list);
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to list sessions' });
+    res.status(500).json({ error: e?.message || 'Failed to list conversations' });
   }
 });
 
-// Conversation detail endpoint
+// Conversation detail endpoint (single conversation + steps)
 app.get('/api/conversations/:id', (req, res) => {
   try {
     const id = req.params.id;
-    const detail = getSessionDetail(id);
+    const detail = getConversationById(id);
     if (!detail) return res.status(404).json({ error: 'Not found' });
-    // getSessionDetail already returns { session, conversations, steps, canvases, items }
     res.json(detail);
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to get session' });
+    res.status(500).json({ error: e?.message || 'Failed to get conversation' });
   }
 });
 
-// Conversation transcript items endpoint (canonical, ordered by seq)
+// Conversation transcript items endpoint (ordered by seq) — fetch by conversation_id
 app.get('/api/conversations/:id/items', (req, res) => {
   try {
-    const id = req.params.id;
-    const detail = getSessionDetail(id);
+    const conversationId = req.params.id;
+    const detail = getConversationById(conversationId);
     if (!detail) return res.status(404).json({ error: 'Not found' });
-    const items = listTranscriptItems(id);
+    const items = listTranscriptItemsByConversation(conversationId) as any[];
     const out = items.map((row: any) => ({
       id: row.id,
-      session_id: row.session_id,
+      conversation_id: conversationId,
       seq: row.seq,
       kind: row.kind,
       payload: (() => { try { return JSON.parse(row.payload_json || '{}'); } catch { return {}; } })(),
@@ -315,12 +314,12 @@ app.get('/api/conversations/:id/items', (req, res) => {
         const seqs = out.map((i: any) => i.seq);
         const minSeq = Math.min(...seqs);
         const maxSeq = Math.max(...seqs);
-        console.debug(`[items] session=${id} total=${out.length} kinds=${JSON.stringify(counts)} seq=[${minSeq}..${maxSeq}]`);
+        console.debug(`[items] conversation=${conversationId} total=${out.length} kinds=${JSON.stringify(counts)} seq=[${minSeq}..${maxSeq}]`);
       } catch {}
     }
     res.json(out);
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || 'Failed to get transcript items' });
+    res.status(500).json({ error: e?.message || 'Failed to get conversation items' });
   }
 });
 

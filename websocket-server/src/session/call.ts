@@ -81,10 +81,10 @@ function finalizeRun(status: 'error' | undefined = undefined) {
   if (!req) return;
   try {
     ensureSession();
-    const runId = `run_${req.id}`;
+    const conversationId = `run_${req.id}`;
     const event: any = {
       type: 'conversation.completed',
-      conversation_id: runId,
+      conversation_id: conversationId,
       request_id: req.id,
       ended_at: new Date().toISOString(),
     };
@@ -245,10 +245,10 @@ export function processRealtimeModelEvent(
         const requestId = `req_${Date.now()}`;
         session.currentRequest = { id: requestId, channel: 'voice', startedAt: Date.now() } as any;
         ensureSession();
-        const runId = `run_${requestId}`;
-        appendEvent({ type: 'conversation.started', conversation_id: runId, request_id: requestId, channel: 'voice', started_at: new Date().toISOString() });
+        const conversationId = `run_${requestId}`;
+        appendEvent({ type: 'conversation.started', conversation_id: conversationId, request_id: requestId, channel: 'voice', started_at: new Date().toISOString() });
         const stepId = `step_user_${requestId}`;
-        appendEvent({ type: 'step.started', conversation_id: runId, step_id: stepId, label: ThoughtFlowStepType.UserMessage, payload: { content: transcript }, timestamp: Date.now() });
+        appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: stepId, label: ThoughtFlowStepType.UserMessage, payload: { content: transcript }, timestamp: Date.now() });
         // Append user voice turn to unified conversation history
         try {
           if (!session.conversationHistory) session.conversationHistory = [];
@@ -261,9 +261,9 @@ export function processRealtimeModelEvent(
             supervisor: false,
           });
           try {
-            const { id: sessionId } = ensureSession();
+            const conversationId = `run_${requestId}`;
             addTranscriptItem({
-              session_id: sessionId,
+              conversation_id: conversationId,
               kind: 'message_user',
               payload: { text: transcript, channel: 'voice', supervisor: false },
               created_at_ms: ts,
@@ -272,7 +272,7 @@ export function processRealtimeModelEvent(
         } catch (e) {
           console.warn("⚠️ Failed to append user voice transcript to history", e);
         }
-        appendEvent({ type: 'step.completed', conversation_id: runId, step_id: stepId, timestamp: Date.now() });
+        appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: stepId, timestamp: Date.now() });
       }
       break;
     }
@@ -374,13 +374,16 @@ export function processRealtimeModelEvent(
             };
             session.conversationHistory.push(assistantMessage);
             try {
-              const { id: sessionId } = ensureSession();
-              addTranscriptItem({
-                session_id: sessionId,
-                kind: 'message_assistant',
-                payload: { text: textContent.text, channel: 'voice', supervisor: false },
-                created_at_ms: ts,
-              });
+              const req = session.currentRequest;
+              const conversationId = req ? `run_${req.id}` : undefined;
+              if (conversationId) {
+                addTranscriptItem({
+                  conversation_id: conversationId,
+                  kind: 'message_assistant',
+                  payload: { text: textContent.text, channel: 'voice', supervisor: false },
+                  created_at_ms: ts,
+                });
+              }
             } catch {}
           } catch (e) {
             console.warn("⚠️ Failed to append assistant voice message to history", e);
@@ -413,13 +416,16 @@ export function processRealtimeModelEvent(
               };
               session.conversationHistory.push(assistantMessage);
               try {
-                const { id: sessionId } = ensureSession();
-                addTranscriptItem({
-                  session_id: sessionId,
-                  kind: 'message_assistant',
-                  payload: { text: assembled, channel: 'voice', supervisor: false },
-                  created_at_ms: ts,
-                });
+                const req = session.currentRequest;
+                const conversationId = req ? `run_${req.id}` : undefined;
+                if (conversationId) {
+                  addTranscriptItem({
+                    conversation_id: conversationId,
+                    kind: 'message_assistant',
+                    payload: { text: assembled, channel: 'voice', supervisor: false },
+                    created_at_ms: ts,
+                  });
+                }
               } catch {}
             } catch (e) {
               console.warn("⚠️ Failed to append assembled assistant voice transcript to history", e);
@@ -438,10 +444,10 @@ export function processRealtimeModelEvent(
 
         const req = session.currentRequest;
         if (req) {
-          const runId = `run_${req.id}`;
+          const conversationId = `run_${req.id}`;
           const stepId = `step_assistant_${req.id}_${Date.now()}`;
-          appendEvent({ type: 'step.started', conversation_id: runId, step_id: stepId, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, timestamp: Date.now() });
-          appendEvent({ type: 'step.completed', conversation_id: runId, step_id: stepId, timestamp: Date.now() });
+          appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: stepId, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, timestamp: Date.now() });
+          appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: stepId, timestamp: Date.now() });
           finalizeRun();
         }
       }
@@ -462,24 +468,24 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
     startHoldMusicLoop();
   }
   const req = session.currentRequest;
-  const runId = req ? `run_${req.id}` : undefined;
-  const stepId = runId ? `step_tool_${item.call_id || Date.now()}` : undefined;
-  if (runId && stepId) {
-    appendEvent({ type: 'step.started', run_id: runId, step_id: stepId, label: ThoughtFlowStepType.ToolCall, payload: { name: item.name, arguments: item.arguments }, timestamp: Date.now() });
+  const conversationId = req ? `run_${req.id}` : undefined;
+  const stepId = conversationId ? `step_tool_${item.call_id || Date.now()}` : undefined;
+  if (conversationId && stepId) {
+    appendEvent({ type: 'step.started', run_id: conversationId, step_id: stepId, label: ThoughtFlowStepType.ToolCall, payload: { name: item.name, arguments: item.arguments }, timestamp: Date.now() });
   }
   try {
     const result = await executeFunctionCall(
       { name: item.name, arguments: item.arguments, call_id: item.call_id },
       { mode: 'voice', logsClients, confirm: false }
     );
-    if (runId && stepId) {
-      appendEvent({ type: 'step.completed', run_id: runId, step_id: stepId, payload: { output: result }, timestamp: Date.now() });
+    if (conversationId && stepId) {
+      appendEvent({ type: 'step.completed', run_id: conversationId, step_id: stepId, payload: { output: result }, timestamp: Date.now() });
     }
     return result;
   } catch (err: any) {
     console.error("Error running function:", err);
-    if (runId && stepId) {
-      appendEvent({ type: 'step.completed', run_id: runId, step_id: stepId, payload: { error: err?.message || String(err) }, timestamp: Date.now() });
+    if (conversationId && stepId) {
+      appendEvent({ type: 'step.completed', run_id: conversationId, step_id: stepId, payload: { error: err?.message || String(err) }, timestamp: Date.now() });
     }
     finalizeRun('error');
     return JSON.stringify({ error: `Error running function ${item.name}: ${err?.message || 'unknown'}` });

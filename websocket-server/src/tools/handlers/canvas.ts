@@ -65,12 +65,16 @@ export const sendCanvas: FunctionHandler = {
     try {
       const { id: sessionId } = ensureSession();
       addCanvas({ id, session_id: sessionId, path: url, type: 'canvas-link' });
-      addTranscriptItem({
-        session_id: sessionId,
-        kind: 'canvas',
-        payload: { id, title: title ?? null, url },
-        created_at_ms: Date.now(),
-      });
+      const req = session.currentRequest;
+      const runId = req ? `run_${req.id}` : undefined;
+      if (runId) {
+        addTranscriptItem({
+          conversation_id: runId,
+          kind: 'canvas',
+          payload: { id, title: title ?? null, url },
+          created_at_ms: Date.now(),
+        });
+      }
     } catch {}
 
     return { status: "sent", id, url, title: title ?? null };

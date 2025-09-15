@@ -53,12 +53,12 @@ export function getDb() {
     );
     CREATE TABLE IF NOT EXISTS transcript_items (
       id TEXT PRIMARY KEY,
-      session_id TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
       seq INTEGER NOT NULL,
       kind TEXT NOT NULL,
       payload_json TEXT,
       created_at_ms INTEGER NOT NULL,
-      FOREIGN KEY(session_id) REFERENCES sessions(id)
+      FOREIGN KEY(conversation_id) REFERENCES conversations(id)
     );
   `);
   return db;
@@ -120,47 +120,60 @@ export function getSessionDetail(id: string) {
   return { session, conversations, steps, canvases, items };
 }
 
+export function listConversations(limit: number) {
+  const db = getDb();
+  return db.prepare('SELECT id, session_id, channel, started_at, ended_at, status, duration_ms FROM conversations ORDER BY COALESCE(ended_at, started_at) DESC LIMIT ?').all(limit);
+}
+
+export function getConversationById(id: string) {
+  const db = getDb();
+  const conv = db.prepare('SELECT id, session_id, channel, started_at, ended_at, status, duration_ms FROM conversations WHERE id = ?').get(id);
+  if (!conv) return null;
+  const steps = db.prepare('SELECT id, conversation_id, step_index, label, started_at, ended_at, duration_ms, payload_started_json, payload_completed_json FROM steps WHERE conversation_id = ? ORDER BY started_at ASC').all(id);
+  return { conversation: conv, steps };
+}
+
 export function addCanvas(rec: { id: string; session_id: string; path: string; type?: string; created_at?: string; }) {
   const db = getDb();
   db.prepare('INSERT OR REPLACE INTO canvases (id, session_id, path, type, created_at) VALUES (?, ?, ?, ?, ?)')
     .run(rec.id, rec.session_id, rec.path, rec.type || null, rec.created_at || new Date().toISOString());
 }
 
-export function nextSeq(session_id: string): number {
+export function nextSeqByConversation(conversation_id: string): number {
   const db = getDb();
-  const row = db.prepare('SELECT COALESCE(MAX(seq), 0) AS max_seq FROM transcript_items WHERE session_id = ?').get(session_id);
+  const row = db.prepare('SELECT COALESCE(MAX(seq), 0) AS max_seq FROM transcript_items WHERE conversation_id = ?').get(conversation_id);
   return (row?.max_seq || 0) + 1;
 }
 
-export function addTranscriptItem(rec: { id?: string; session_id: string; kind: string; payload: any; created_at_ms?: number; }) {
+export function addTranscriptItem(rec: { id?: string; conversation_id: string; kind: string; payload: any; created_at_ms?: number; }) {
   const db = getDb();
   const id = rec.id || `ti_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const seq = nextSeq(rec.session_id);
+  const seq = nextSeqByConversation(rec.conversation_id);
   const created_at_ms = rec.created_at_ms || Date.now();
   const payload_json = JSON.stringify(rec.payload ?? {});
-  db.prepare('INSERT INTO transcript_items (id, session_id, seq, kind, payload_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(id, rec.session_id, seq, rec.kind, payload_json, created_at_ms);
+  db.prepare('INSERT INTO transcript_items (id, conversation_id, seq, kind, payload_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, rec.conversation_id, seq, rec.kind, payload_json, created_at_ms);
   if (LEDGER_DEBUG) {
     try {
-      console.debug(`[ledger] insert session=${rec.session_id} id=${id} seq=${seq} kind=${rec.kind} ts=${created_at_ms}`);
+      console.debug(`[ledger] insert conv=${rec.conversation_id} id=${id} seq=${seq} kind=${rec.kind} ts=${created_at_ms}`);
     } catch {}
   }
   return { id, seq };
 }
 
-export function listTranscriptItems(session_id: string) {
+export function listTranscriptItemsByConversation(conversation_id: string) {
   const db = getDb();
-  return db.prepare('SELECT id, session_id, seq, kind, payload_json, created_at_ms FROM transcript_items WHERE session_id = ? ORDER BY seq ASC').all(session_id);
+  return db.prepare('SELECT id, conversation_id, seq, kind, payload_json, created_at_ms FROM transcript_items WHERE conversation_id = ? ORDER BY seq ASC').all(conversation_id);
 }
 
-export function getLastTranscriptTimestamp(session_id: string): number | null {
+export function getLastTranscriptTimestampForConversation(conversation_id: string): number | null {
   const db = getDb();
-  const row = db.prepare('SELECT created_at_ms FROM transcript_items WHERE session_id = ? ORDER BY seq DESC LIMIT 1').get(session_id);
+  const row = db.prepare('SELECT created_at_ms FROM transcript_items WHERE conversation_id = ? ORDER BY seq DESC LIMIT 1').get(conversation_id);
   return row?.created_at_ms ?? null;
 }
 
-export function getMaxSeq(session_id: string): number {
+export function getItemCountForSession(session_id: string): number {
   const db = getDb();
-  const row = db.prepare('SELECT COALESCE(MAX(seq), 0) AS max_seq FROM transcript_items WHERE session_id = ?').get(session_id);
-  return row?.max_seq || 0;
+  const row = db.prepare('SELECT COUNT(1) AS cnt FROM transcript_items ti JOIN conversations c ON ti.conversation_id = c.id WHERE c.session_id = ?').get(session_id);
+  return row?.cnt || 0;
 }
