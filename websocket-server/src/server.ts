@@ -269,8 +269,8 @@ app.get("/logs", (req, res) => {
   res.type("text/plain").send(getLogs().join("\n"));
 });
 
-// Sessions list endpoint
-app.get('/api/sessions', (req, res) => {
+// Conversations list endpoint (formerly sessions)
+app.get('/api/vconversations', (req, res) => {
   try {
     const limit = Math.max(1, Math.min(50, Number(req.query.limit) || SESSION_HISTORY_LIMIT));
     const list = dbListSessions(limit);
@@ -280,20 +280,21 @@ app.get('/api/sessions', (req, res) => {
   }
 });
 
-// Session detail endpoint
-app.get('/api/sessions/:id', (req, res) => {
+// Conversation detail endpoint (formerly session detail)
+app.get('/api/vconversations/:id', (req, res) => {
   try {
     const id = req.params.id;
     const detail = getSessionDetail(id);
     if (!detail) return res.status(404).json({ error: 'Not found' });
+    // getSessionDetail already returns { session, conversations, steps, canvases, items }
     res.json(detail);
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to get session' });
   }
 });
 
-// Transcript items endpoint (canonical, ordered by seq)
-app.get('/api/sessions/:id/items', (req, res) => {
+// Conversation transcript items endpoint (canonical, ordered by seq)
+app.get('/api/vconversations/:id/items', (req, res) => {
   try {
     const id = req.params.id;
     const detail = getSessionDetail(id);

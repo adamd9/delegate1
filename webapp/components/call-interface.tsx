@@ -87,7 +87,7 @@ const CallInterface = () => {
       const backend = getBackendUrl();
       const limit = Number(process.env.NEXT_PUBLIC_SESSION_HISTORY_LIMIT || 3);
       const DEBUG = String(process.env.NEXT_PUBLIC_DEBUG_TRANSCRIPT || '').toLowerCase() === 'true';
-      const resp = await fetch(`${backend}/api/sessions?limit=${limit}`);
+      const resp = await fetch(`${backend}/api/vconversations?limit=${limit}`);
       if (!resp.ok) return;
       let sessions = await resp.json();
       if (DEBUG) console.debug('[hydrateHistory] sessions:', sessions);
@@ -97,14 +97,14 @@ const CallInterface = () => {
       for (const s of sessions) {
         // Fetch items and session detail (runs) to infer run_id per item
         const [ri, rd] = await Promise.all([
-          fetch(`${backend}/api/sessions/${s.id}/items`),
-          fetch(`${backend}/api/sessions/${s.id}`),
+          fetch(`${backend}/api/vconversations/${s.id}/items`),
+          fetch(`${backend}/api/vconversations/${s.id}`),
         ]);
         if (!ri.ok) continue;
         const items = await ri.json();
         let detail: any = null;
         try { detail = rd.ok ? await rd.json() : null; } catch {}
-        const runs: Array<{ id: string; started_at: string; ended_at?: string | null }> = (detail && Array.isArray(detail.runs)) ? detail.runs : [];
+        const runs: Array<{ id: string; started_at: string; ended_at?: string | null }> = (detail && Array.isArray(detail.conversations)) ? detail.conversations : [];
         const runWindows = runs.map(rn => ({ id: rn.id, startMs: Date.parse(rn.started_at), endMs: rn.ended_at ? Date.parse(rn.ended_at) : Number.POSITIVE_INFINITY }));
         if (DEBUG) {
           const counts: Record<string, number> = {};
