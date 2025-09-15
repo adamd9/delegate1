@@ -23,25 +23,7 @@ export function establishChatSocket(
   if (!session.conversationHistory) {
     session.conversationHistory = [];
   }
-  // Optional: send existing assistant messages to new chat client
-  for (const msg of session.conversationHistory) {
-    if (msg.type === "assistant") {
-      jsonSend(ws, {
-        type: "chat.response",
-        content: msg.content,
-        timestamp: msg.timestamp,
-        supervisor: msg.supervisor,
-      });
-    } else if (msg.type === 'canvas') {
-      jsonSend(ws, {
-        type: 'chat.canvas',
-        content: msg.content,
-        title: msg.title,
-        timestamp: msg.timestamp,
-        id: msg.id,
-      });
-    }
-  }
+  // Do not replay backlog on chat websocket connect; history is handled by REST hydration.
   ws.on("message", (data) => processChatSocketMessage(data, chatClients, logsClients));
   ws.on("error", ws.close);
   // No session cleanup here; handled by Set in server.ts
@@ -441,6 +423,8 @@ export async function handleTextChatMessage(
                 content: finalResponse,
                 timestamp: Date.now(),
                 supervisor: true,
+                session_id: sessionId,
+                conversation_id: conversationId,
               });
           }
           for (const ws of chatClients) {

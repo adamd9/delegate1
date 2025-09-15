@@ -291,6 +291,7 @@ export function EnhancedTranscript({
                             parts.push(`ts=${current.createdAtMs}`);
                             if (meta.session_id) parts.push(`session=${meta.session_id}`);
                             if (meta.conversation_id) parts.push(`run=${meta.conversation_id}`);
+                            if (meta.source) parts.push(`src=${meta.source}`);
                             if (meta.step_id) parts.push(`step=${meta.step_id}`);
                             if (callId) parts.push(`call=${callId}`);
                             return parts.join(' • ');
@@ -414,6 +415,7 @@ export function EnhancedTranscript({
                         parts.push(`ts=${current.createdAtMs}`);
                         if (meta.session_id) parts.push(`session=${meta.session_id}`);
                         if (meta.conversation_id) parts.push(`conversation=${meta.conversation_id}`);
+                        if (meta.source) parts.push(`src=${meta.source}`);
                         if (meta.step_id) parts.push(`step=${meta.step_id}`);
                         if (callId) parts.push(`call=${callId}`);
                         return parts.join(' • ');
