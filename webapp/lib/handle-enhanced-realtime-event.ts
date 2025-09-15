@@ -92,18 +92,17 @@ export default function handleEnhancedRealtimeEvent(
           if (isReplay && typeof event.timestamp === 'number') {
             updateTranscriptItem(newId, { createdAtMs: event.timestamp });
           }
-          // Attach debug metadata when available (both replay and live)
-          if ((event as any).session_id || (event as any).conversation_id) {
-            try {
-              const meta = {
-                session_id: (event as any).session_id,
-                conversation_id: (event as any).conversation_id,
-                step_id: (event as any).step_id,
-                kind: 'message',
-              } as any;
-              updateTranscriptItem(newId, { data: { ...(event.item as any), _meta: meta } });
-            } catch {}
-          }
+          // Attach debug metadata (both replay and live). Always include source hint even if no IDs.
+          try {
+            const meta: any = {
+              ...(event as any).session_id ? { session_id: (event as any).session_id } : {},
+              ...(event as any).conversation_id ? { conversation_id: (event as any).conversation_id } : {},
+              ...(event as any).step_id ? { step_id: (event as any).step_id } : {},
+              source: (event as any).__source,
+              kind: 'message',
+            };
+            updateTranscriptItem(newId, { data: { ...(event.item as any), _meta: meta } });
+          } catch {}
 
           // If this is a user voice message, remember its id for transcript updates
           if (isUser && channel === "voice") {
@@ -207,6 +206,17 @@ export default function handleEnhancedRealtimeEvent(
         false
       );
       updateTranscriptMessage(id, delta, true);
+      // Attach meta for debug tracing
+      try {
+        updateTranscriptItem(id, {
+          data: {
+            _meta: {
+              source: (event as any).__source,
+              kind: 'message',
+            }
+          }
+        });
+      } catch {}
       break;
     }
 
@@ -224,6 +234,17 @@ export default function handleEnhancedRealtimeEvent(
         false
       );
       updateTranscriptMessage(id, text, false);
+      // Attach meta for debug tracing
+      try {
+        updateTranscriptItem(id, {
+          data: {
+            _meta: {
+              source: (event as any).__source,
+              kind: 'message',
+            }
+          }
+        });
+      } catch {}
       break;
     }
 
@@ -285,6 +306,17 @@ export default function handleEnhancedRealtimeEvent(
           false
         );
         updateTranscriptMessage(id, text, false);
+        // Attach meta for debug tracing
+        try {
+          updateTranscriptItem(id, {
+            data: {
+              _meta: {
+                source: (event as any).__source,
+                kind: 'message',
+              }
+            }
+          });
+        } catch {}
       } else if (event.item?.type === 'function_call') {
         const safeName = event.item.name || (event.item.call_id ? `call ${event.item.call_id}` : 'function');
         let parsedArgs: any = event.item.arguments;
@@ -520,19 +552,18 @@ export default function handleEnhancedRealtimeEvent(
         chatSupervisor,
         false
       );
-      // Attach debug metadata when provided by server
+      // Attach debug metadata with source; include IDs when present
       try {
-        if (event.session_id || event.conversation_id) {
-          updateTranscriptItem(`chat_${event.timestamp}`, {
-            data: {
-              _meta: {
-                session_id: event.session_id,
-                conversation_id: event.conversation_id,
-                kind: 'message',
-              }
+        updateTranscriptItem(`chat_${event.timestamp}`, {
+          data: {
+            _meta: {
+              ...(event.session_id ? { session_id: event.session_id } : {}),
+              ...(event.conversation_id ? { conversation_id: event.conversation_id } : {}),
+              source: (event as any).__source,
+              kind: 'message',
             }
-          });
-        }
+          }
+        });
       } catch {}
 
       // Do not add a breadcrumb for chat responses; the message bubble above is sufficient

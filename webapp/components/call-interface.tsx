@@ -60,6 +60,8 @@ const CallInterface = () => {
 
       newWs.onmessage = (event) => {
         const data = JSON.parse(event.data);
+        // Tag logs websocket events with source for debug visibility
+        try { (data as any).__source = 'logs_ws'; } catch {}
         console.log("Received logs event:", data);
         // Handle both old and new transcript systems
         // handleRealtimeEvent(data, setItems); // setItems is not defined, removed
@@ -98,11 +100,16 @@ const CallInterface = () => {
       const globalActiveConversationId: string | undefined = mostRecentInProgress ? mostRecentInProgress.id : undefined;
       let displayedSessionCount = 0;
       for (const s of conversations) {
+        // Skip hydrating any conversation that has not ended; these render live via websockets
+        if (!s.ended_at) continue;
+        // Also skip the detected active conversation id as a secondary guard
+        const activeConversationId = globalActiveConversationId;
+        if (activeConversationId && s.id === activeConversationId) continue;
         // Fetch events for this conversation
         const ri = await fetch(`${backend}/api/conversations/${s.id}/events`);
         if (!ri.ok) continue;
         const events = await ri.json();
-        const activeConversationId = globalActiveConversationId;
+        // Note: all hydrated conversations are history-only now
         if (DEBUG) {
           const counts: Record<string, number> = {};
           for (const it of events) counts[it.kind] = (counts[it.kind] || 0) + 1;
@@ -129,6 +136,7 @@ const CallInterface = () => {
               replay: (s.id && activeConversationId && s.id === activeConversationId) ? false : true,
               session_id: s.session_id,
               conversation_id: s.id,
+              __source: 'history_rest',
               item: {
                 id: `ti_${it.seq}`,
                 type: 'message',
@@ -146,6 +154,7 @@ const CallInterface = () => {
               replay: (s.id && activeConversationId && s.id === activeConversationId) ? false : true,
               session_id: s.session_id,
               conversation_id: s.id,
+              __source: 'history_rest',
               item: {
                 id: String(payload.call_id || `call_${it.seq}`),
                 type: 'function_call',
@@ -163,6 +172,7 @@ const CallInterface = () => {
               replay: (s.id && activeConversationId && s.id === activeConversationId) ? false : true,
               session_id: s.session_id,
               conversation_id: s.id,
+              __source: 'history_rest',
               item: {
                 id: String(payload.call_id || `call_${it.seq}`),
                 type: 'function_call',
@@ -181,6 +191,7 @@ const CallInterface = () => {
               replay: (s.id && activeConversationId && s.id === activeConversationId) ? false : true,
               session_id: s.session_id,
               conversation_id: s.id,
+              __source: 'history_rest',
               content: payload.url,
               title: payload.title,
               timestamp: ts,
@@ -193,6 +204,7 @@ const CallInterface = () => {
               replay: (s.id && activeConversationId && s.id === activeConversationId) ? false : true,
               session_id: s.session_id,
               conversation_id: s.id,
+              __source: 'history_rest',
               json_path: payload.json_path,
               d2_path: payload.d2_path,
               url_json: payload.url_json,
@@ -238,6 +250,8 @@ const CallInterface = () => {
         // Forward renderable chat events to enhanced handler so they appear in transcript
         if (data?.type === 'chat.response' || data?.type === 'chat.canvas' || data?.type === 'chat.error') {
           try {
+            // Tag chat websocket events with source for debug visibility
+            (data as any).__source = 'chat_ws';
             handleEnhancedRealtimeEvent(data, transcript);
           } catch (e) {
             console.warn('Failed to handle chat event in enhanced handler', e);
