@@ -87,7 +87,7 @@ const CallInterface = () => {
       const backend = getBackendUrl();
       const limit = Number(process.env.NEXT_PUBLIC_SESSION_HISTORY_LIMIT || 3);
       const DEBUG = String(process.env.NEXT_PUBLIC_DEBUG_TRANSCRIPT || '').toLowerCase() === 'true';
-      const resp = await fetch(`${backend}/api/vconversations?limit=${limit}`);
+      const resp = await fetch(`${backend}/api/conversations?limit=${limit}`);
       if (!resp.ok) return;
       let sessions = await resp.json();
       if (DEBUG) console.debug('[hydrateHistory] sessions:', sessions);
@@ -97,8 +97,8 @@ const CallInterface = () => {
       for (const s of sessions) {
         // Fetch items and session detail (runs) to infer run_id per item
         const [ri, rd] = await Promise.all([
-          fetch(`${backend}/api/vconversations/${s.id}/items`),
-          fetch(`${backend}/api/vconversations/${s.id}`),
+          fetch(`${backend}/api/conversations/${s.id}/items`),
+          fetch(`${backend}/api/conversations/${s.id}`),
         ]);
         if (!ri.ok) continue;
         const items = await ri.json();

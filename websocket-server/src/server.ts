@@ -269,8 +269,8 @@ app.get("/logs", (req, res) => {
   res.type("text/plain").send(getLogs().join("\n"));
 });
 
-// Conversations list endpoint (formerly sessions)
-app.get('/api/vconversations', (req, res) => {
+// Conversations list endpoint
+app.get('/api/conversations', (req, res) => {
   try {
     const limit = Math.max(1, Math.min(50, Number(req.query.limit) || SESSION_HISTORY_LIMIT));
     const list = dbListSessions(limit);
@@ -280,8 +280,8 @@ app.get('/api/vconversations', (req, res) => {
   }
 });
 
-// Conversation detail endpoint (formerly session detail)
-app.get('/api/vconversations/:id', (req, res) => {
+// Conversation detail endpoint
+app.get('/api/conversations/:id', (req, res) => {
   try {
     const id = req.params.id;
     const detail = getSessionDetail(id);
@@ -294,7 +294,7 @@ app.get('/api/vconversations/:id', (req, res) => {
 });
 
 // Conversation transcript items endpoint (canonical, ordered by seq)
-app.get('/api/vconversations/:id/items', (req, res) => {
+app.get('/api/conversations/:id/items', (req, res) => {
   try {
     const id = req.params.id;
     const detail = getSessionDetail(id);
