@@ -142,25 +142,25 @@ export function EnhancedTranscript({
             }
             return false;
           };
-          const getRunId = (it: typeof transcriptItems[number]): string | undefined => {
+          const getConversationId = (it: typeof transcriptItems[number]): string | undefined => {
             const d: any = (it as any).data;
-            return d?._meta?.run_id as (string | undefined);
+            return d?._meta?.conversation_id as (string | undefined);
           };
           let lastHistoryIdx = -1;
           for (let i = 0; i < sorted.length; i++) {
             if (isHistoryItem(sorted[i])) lastHistoryIdx = i;
           }
           const renderList: Array<any> = [];
-          let prevRunId: string | undefined = undefined;
+          let prevConversationId: string | undefined = undefined;
           for (let i = 0; i < sorted.length; i++) {
             const it = sorted[i];
             const isHist = isHistoryItem(it);
             // Insert per-run separator before a history item when the run changes
             if (hasHeader && lastHistoryIdx >= 0 && isHist) {
-              const runId = getRunId(it);
-              if (runId && runId !== prevRunId) {
-                renderList.push({ __runsep__: true, runId, key: `runsep-${runId}-${i}` });
-                prevRunId = runId;
+              const conversationId = getConversationId(it);
+              if (conversationId && conversationId !== prevConversationId) {
+                renderList.push({ __convsep__: true, conversationId, key: `convsep-${conversationId}-${i}` });
+                prevConversationId = conversationId;
               }
             }
             renderList.push(it);
@@ -200,19 +200,19 @@ export function EnhancedTranscript({
                 </div>
               );
             }
-            if (item && item.__runsep__) {
+            if (item && item.__convsep__) {
               const short = (() => {
-                const runId = item.runId as string | undefined;
-                if (!runId) return '';
-                const parts = runId.split('_');
-                const tail = parts[parts.length - 1] || runId;
+                const conversationId = item.conversationId as string | undefined;
+                if (!conversationId) return '';
+                const parts = conversationId.split('_');
+                const tail = parts[parts.length - 1] || conversationId;
                 if (tail && tail.length >= 4) return tail.length > 8 ? tail.slice(-8) : tail;
-                return runId.length > 8 ? runId.slice(-8) : runId;
+                return conversationId.length > 8 ? conversationId.slice(-8) : conversationId;
               })();
               return (
                 <div key={item.key} className="flex items-center my-1">
                   <div className="w-20 h-px bg-gray-100 mr-2" />
-                  <span className="text-[11px] text-gray-500 font-mono">Run {short}</span>
+                  <span className="text-[11px] text-gray-500 font-mono">Conversation {short}</span>
                   <div className="flex-1 h-px bg-gray-100 ml-2" />
                 </div>
               );
@@ -263,21 +263,19 @@ export function EnhancedTranscript({
                         {isHistory && (
                           <span className="inline-block ml-2 px-2 py-0.5 text-[10px] rounded-full bg-gray-200 text-gray-700 align-middle">history</span>
                         )}
-                        {/* Run badge (history items) */}
+                        {/* Conversation badge (history items) */}
                         {(() => {
-                          const runId: string | undefined = (data as any)?._meta?.run_id;
-                          if (!runId) return null;
+                          const conversationId: string | undefined = (data as any)?._meta?.conversation_id;
+                          if (!conversationId) return null;
                           const short = (() => {
-                            // Prefer tail after the last underscore if numeric or long token
-                            const parts = runId.split('_');
-                            const tail = parts[parts.length - 1] || runId;
+                            const parts = conversationId.split('_');
+                            const tail = parts[parts.length - 1] || conversationId;
                             if (tail && tail.length >= 4) return tail.length > 8 ? tail.slice(-8) : tail;
-                            // Fallback: last 8 chars of full id
-                            return runId.length > 8 ? runId.slice(-8) : runId;
+                            return conversationId.length > 8 ? conversationId.slice(-8) : conversationId;
                           })();
                           return (
-                            <span className="inline-block ml-2 px-2 py-0.5 text-[10px] rounded-full bg-blue-100 text-blue-800 align-middle" title={`run: ${runId}`}>
-                              run:{short}
+                            <span className="inline-block ml-2 px-2 py-0.5 text-[10px] rounded-full bg-blue-100 text-blue-800 align-middle" title={`conversation: ${conversationId}`}>
+                              conv:{short}
                             </span>
                           );
                         })()}
@@ -311,19 +309,19 @@ export function EnhancedTranscript({
                 <div key={itemId} className="flex flex-col text-gray-600 text-sm">
                   <span className="text-xs font-mono text-gray-400 mb-1">
                     {timestamp}
-                    {/* Run badge for breadcrumb if present */}
+                    {/* Conversation badge for breadcrumb if present */}
                     {(() => {
-                      const runId: string | undefined = (data as any)?._meta?.run_id;
-                      if (!runId) return null;
+                      const conversationId: string | undefined = (data as any)?._meta?.conversation_id;
+                      if (!conversationId) return null;
                       const short = (() => {
-                        const parts = runId.split('_');
-                        const tail = parts[parts.length - 1] || runId;
+                        const parts = conversationId.split('_');
+                        const tail = parts[parts.length - 1] || conversationId;
                         if (tail && tail.length >= 4) return tail.length > 8 ? tail.slice(-8) : tail;
-                        return runId.length > 8 ? runId.slice(-8) : runId;
+                        return conversationId.length > 8 ? conversationId.slice(-8) : conversationId;
                       })();
                       return (
-                        <span className="inline-block ml-2 px-2 py-0.5 text-[10px] rounded-full bg-blue-100 text-blue-800 align-middle" title={`run: ${runId}`}>
-                          run:{short}
+                        <span className="inline-block ml-2 px-2 py-0.5 text-[10px] rounded-full bg-blue-100 text-blue-800 align-middle" title={`conversation: ${conversationId}`}>
+                          conv:{short}
                         </span>
                       );
                     })()}
@@ -415,7 +413,7 @@ export function EnhancedTranscript({
                         parts.push(`ui.id=${itemId}`);
                         parts.push(`ts=${current.createdAtMs}`);
                         if (meta.session_id) parts.push(`session=${meta.session_id}`);
-                        if (meta.run_id) parts.push(`run=${meta.run_id}`);
+                        if (meta.conversation_id) parts.push(`conversation=${meta.conversation_id}`);
                         if (meta.step_id) parts.push(`step=${meta.step_id}`);
                         if (callId) parts.push(`call=${callId}`);
                         return parts.join(' • ');

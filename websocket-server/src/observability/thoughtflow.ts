@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { session } from '../session/state';
-import { upsertSession, finalizeSession, upsertRun, completeRun, stepStarted, stepCompleted, addTranscriptItem, getLastTranscriptTimestamp } from '../db/sqlite';
+import { upsertSession, finalizeSession, upsertConversation, completeConversation, stepStarted, stepCompleted, addTranscriptItem, getLastTranscriptTimestamp } from '../db/sqlite';
 
 // Explicit step types for ThoughtFlow events
 export enum ThoughtFlowStepType {
@@ -54,34 +54,38 @@ export function appendEvent(event: any) {
       const sid = tf.sessionId as string | undefined;
       if (sid) {
         const t = event?.type as string | undefined;
-        if (t === 'run.started') {
-          upsertRun({ id: event.run_id, session_id: sid, channel: event.channel, started_at: event.started_at });
-        } else if (t === 'run.completed' || t === 'run.aborted') {
-          const status = (event.status as any) || (t === 'run.aborted' ? 'aborted' : 'completed');
-          completeRun({ id: event.run_id, status, ended_at: event.ended_at });
-          // Generate per-run ThoughtFlow artifacts at run completion
+        // Normalize legacy run.* events to conversation.* where applicable
+        if (t === 'run.started' || t === 'conversation.started') {
+          const convId = event.conversation_id || event.run_id;
+          upsertConversation({ id: convId, session_id: sid, channel: event.channel, started_at: event.started_at });
+        } else if (t === 'run.completed' || t === 'run.aborted' || t === 'conversation.completed' || t === 'conversation.aborted') {
+          const convId = event.conversation_id || event.run_id;
+          const isAborted = (t === 'run.aborted' || t === 'conversation.aborted');
+          const status = (event.status as any) || (isAborted ? 'aborted' : 'completed');
+          completeConversation({ id: convId, status, ended_at: event.ended_at });
+          // Generate per-conversation ThoughtFlow artifacts at completion
           try {
-            const { jsonPath: runJson, d2Path: runD2 } = writeRunArtifacts(sid, event.run_id);
+            const { jsonPath, d2Path } = writeConversationArtifacts(sid, convId);
             const PORT = parseInt(process.env.PORT || '8081', 10);
             const PUBLIC_URL = process.env.PUBLIC_URL || '';
             const EFFECTIVE_PUBLIC_URL = (PUBLIC_URL && PUBLIC_URL.trim()) || `http://localhost:${PORT}`;
-            const baseName = `${sid}.${event.run_id}`;
+            const baseName = `${sid}.${convId}`;
             const url_json = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.json`;
             const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.d2`;
             const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${baseName}.d2`;
-            // Viewer lives on the frontend, so use a relative link instead of server URL
             const url_d2_viewer = `/thoughtflow/viewer/${sid}`; // session-level viewer still useful
             const lastTs = getLastTranscriptTimestamp(sid) || Date.now();
             addTranscriptItem({
-              id: `ti_tf_run_${event.run_id}`,
+              id: `ti_tf_conv_${convId}`,
               session_id: sid,
               kind: 'thoughtflow_artifacts',
-              payload: { session_id: sid, run_id: event.run_id, url_json, url_d2, url_d2_raw, url_d2_viewer },
+              payload: { session_id: sid, conversation_id: convId, url_json, url_d2, url_d2_raw, url_d2_viewer },
               created_at_ms: lastTs + 1,
             });
           } catch {}
         } else if (t === 'step.started') {
-          stepStarted({ id: event.step_id, run_id: event.run_id, label: event.label, started_at: event.timestamp ? new Date(event.timestamp).toISOString() : undefined, payload_started_json: event.payload ? JSON.stringify(event.payload) : undefined });
+          const convId = event.conversation_id || event.run_id; // support legacy run_id
+          stepStarted({ id: event.step_id, conversation_id: convId, label: event.label, started_at: event.timestamp ? new Date(event.timestamp).toISOString() : undefined, payload_started_json: event.payload ? JSON.stringify(event.payload) : undefined });
         } else if (t === 'step.completed') {
           stepCompleted({ id: event.step_id, ended_at: event.timestamp ? new Date(event.timestamp).toISOString() : undefined, payload_completed_json: event.payload ? JSON.stringify(event.payload) : undefined });
         }
@@ -92,7 +96,7 @@ export function appendEvent(event: any) {
   }
 }
 
-function writeRunArtifacts(sessionId: string, runId: string): { jsonPath: string; d2Path: string } {
+function writeConversationArtifacts(sessionId: string, conversationId: string): { jsonPath: string; d2Path: string } {
   const tf = (session.thoughtflow ||= {} as any);
   const jsonlPath = join(BASE_DIR, `${sessionId}.jsonl`);
   const raw = readFileSync(jsonlPath, 'utf8');
@@ -106,21 +110,23 @@ function writeRunArtifacts(sessionId: string, runId: string): { jsonPath: string
     payload_started?: any;
     payload_completed?: any;
   };
-  const run: any = { run_id: runId, steps: [], _stepIndex: {} };
+  const conv: any = { conversation_id: conversationId, steps: [], _stepIndex: {} };
   for (const line of lines) {
     let evt: any; try { evt = JSON.parse(line); } catch { continue; }
     const t = evt?.type as string | undefined; if (!t) continue;
-    if ((t === 'run.started' || t === 'run.completed' || t === 'run.aborted') && evt.run_id === runId) {
-      if (t === 'run.started') {
-        run.started_at = evt.started_at || new Date().toISOString();
-        if (evt.channel) run.channel = evt.channel;
+    const matchesConv = (evt.run_id && evt.run_id === conversationId) || (evt.conversation_id && evt.conversation_id === conversationId);
+    if ((t === 'run.started' || t === 'run.completed' || t === 'run.aborted' || t === 'conversation.started' || t === 'conversation.completed' || t === 'conversation.aborted') && matchesConv) {
+      const isStart = (t === 'run.started' || t === 'conversation.started');
+      if (isStart) {
+        conv.started_at = evt.started_at || new Date().toISOString();
+        if (evt.channel) conv.channel = evt.channel;
       } else {
-        run.ended_at = evt.ended_at || new Date().toISOString();
-        run.status = (evt.status as any) || (t === 'run.aborted' ? 'aborted' : 'completed');
+        conv.ended_at = evt.ended_at || new Date().toISOString();
+        conv.status = (evt.status as any) || ((t === 'run.aborted' || t === 'conversation.aborted') ? 'aborted' : 'completed');
       }
       continue;
     }
-    if ((t === 'step.started' || t === 'step.completed') && evt.run_id === runId) {
+    if ((t === 'step.started' || t === 'step.completed') && ((evt.run_id && evt.run_id === conversationId) || (evt.conversation_id && evt.conversation_id === conversationId))) {
       if (t === 'step.started') {
         const s: Step = {
           step_id: evt.step_id,
@@ -129,10 +135,10 @@ function writeRunArtifacts(sessionId: string, runId: string): { jsonPath: string
           payload_started: evt.payload,
         };
         if (evt.depends_on) (s as any).depends_on = evt.depends_on;
-        run.steps.push(s);
-        run._stepIndex[evt.step_id] = s;
+        conv.steps.push(s);
+        conv._stepIndex[evt.step_id] = s;
       } else {
-        const s = run._stepIndex[evt.step_id];
+        const s = conv._stepIndex[evt.step_id];
         if (s) {
           s.ended_at = evt.timestamp ? new Date(evt.timestamp).toISOString() : new Date().toISOString();
           s.payload_completed = evt.payload;
@@ -141,28 +147,28 @@ function writeRunArtifacts(sessionId: string, runId: string): { jsonPath: string
     }
   }
   // Compute durations and sanitize
-  for (const s of run.steps) {
+  for (const s of conv.steps) {
     if (s.started_at && s.ended_at) s.duration_ms = new Date(s.ended_at).getTime() - new Date(s.started_at).getTime();
   }
-  if (run.started_at && run.ended_at) run.duration_ms = new Date(run.ended_at).getTime() - new Date(run.started_at).getTime();
-  if (!run.status) run.status = 'unknown';
+  if (conv.started_at && conv.ended_at) conv.duration_ms = new Date(conv.ended_at).getTime() - new Date(conv.started_at).getTime();
+  if (!conv.status) conv.status = 'unknown';
   const consolidated = {
     session_id: sessionId,
     started_at: new Date((tf.startedAt as any) || Date.now()).toISOString(),
     ended_at: new Date().toISOString(),
-    runs: [
+    conversations: [
       {
-        run_id: run.run_id,
-        channel: run.channel,
-        status: run.status,
-        started_at: run.started_at,
-        ended_at: run.ended_at,
-        duration_ms: run.duration_ms,
-        steps: run.steps.sort((a: any, b: any) => String(a.started_at).localeCompare(String(b.started_at))).map(({ _stepIndex, ...s }: any) => s),
+        conversation_id: conv.conversation_id,
+        channel: conv.channel,
+        status: conv.status,
+        started_at: conv.started_at,
+        ended_at: conv.ended_at,
+        duration_ms: conv.duration_ms,
+        steps: conv.steps.sort((a: any, b: any) => String(a.started_at).localeCompare(String(b.started_at))).map(({ _stepIndex, ...s }: any) => s),
       },
     ],
   } as const;
-  const baseName = `${sessionId}.${runId}`;
+  const baseName = `${sessionId}.${conversationId}`;
   const jsonPath = join(BASE_DIR, `${baseName}.json`);
   writeFileSync(jsonPath, JSON.stringify(consolidated, null, 2));
   const d2 = generateD2(consolidated as any);
@@ -190,8 +196,8 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
       payload_started?: any;
       payload_completed?: any;
     };
-    type Run = {
-      run_id: string;
+    type Conversation = {
+      conversation_id: string;
       channel?: string;
       status?: 'completed' | 'aborted' | 'error' | 'unknown';
       started_at?: string;
@@ -200,35 +206,35 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
       steps: Step[];
       _stepIndex: Record<string, Step>;
     };
-    const runsMap = new Map<string, Run>();
+    const convMap = new Map<string, Conversation>();
     for (const line of lines) {
       let evt: any;
       try { evt = JSON.parse(line); } catch { continue; }
       const t = evt?.type as string | undefined;
       if (!t) continue;
-      if (t === 'run.started') {
-        const run_id = evt.run_id as string;
-        if (!run_id) continue;
-        const r = runsMap.get(run_id) || { run_id, steps: [], _stepIndex: {} } as Run;
+      if (t === 'run.started' || t === 'conversation.started') {
+        const cid = (evt.conversation_id as string) || (evt.run_id as string);
+        if (!cid) continue;
+        const r = convMap.get(cid) || { conversation_id: cid, steps: [], _stepIndex: {} } as Conversation;
         r.started_at = evt.started_at || new Date().toISOString();
         if (evt.channel) r.channel = evt.channel;
-        runsMap.set(run_id, r);
+        convMap.set(cid, r);
         continue;
       }
-      if (t === 'run.completed' || t === 'run.aborted') {
-        const run_id = evt.run_id as string;
-        if (!run_id) continue;
-        const r = runsMap.get(run_id) || { run_id, steps: [], _stepIndex: {} } as Run;
+      if (t === 'run.completed' || t === 'run.aborted' || t === 'conversation.completed' || t === 'conversation.aborted') {
+        const cid = (evt.conversation_id as string) || (evt.run_id as string);
+        if (!cid) continue;
+        const r = convMap.get(cid) || { conversation_id: cid, steps: [], _stepIndex: {} } as Conversation;
         r.ended_at = evt.ended_at || new Date().toISOString();
-        r.status = (evt.status as any) || (t === 'run.aborted' ? 'aborted' : 'completed');
-        runsMap.set(run_id, r);
+        r.status = (evt.status as any) || ((t === 'run.aborted' || t === 'conversation.aborted') ? 'aborted' : 'completed');
+        convMap.set(cid, r);
         continue;
       }
       if (t === 'step.started') {
-        const run_id = evt.run_id as string;
+        const cid = (evt.conversation_id as string) || (evt.run_id as string);
         const step_id = evt.step_id as string;
-        if (!run_id || !step_id) continue;
-        const r = runsMap.get(run_id) || { run_id, steps: [], _stepIndex: {} } as Run;
+        if (!cid || !step_id) continue;
+        const r = convMap.get(cid) || { conversation_id: cid, steps: [], _stepIndex: {} } as Conversation;
         const s: Step = {
           step_id,
           label: evt.label,
@@ -238,14 +244,14 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
         if (evt.depends_on) (s as any).depends_on = evt.depends_on;
         r.steps.push(s);
         r._stepIndex[step_id] = s;
-        runsMap.set(run_id, r);
+        convMap.set(cid, r);
         continue;
       }
       if (t === 'step.completed') {
-        const run_id = evt.run_id as string;
+        const cid = (evt.conversation_id as string) || (evt.run_id as string);
         const step_id = evt.step_id as string;
-        if (!run_id || !step_id) continue;
-        const r = runsMap.get(run_id);
+        if (!cid || !step_id) continue;
+        const r = convMap.get(cid);
         if (!r) continue;
         const s = r._stepIndex[step_id];
         if (s) {
@@ -255,8 +261,8 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
         continue;
       }
       if (t === 'run.canceled') {
-        // Best-effort: mark the most recent run as aborted
-        const last = [...runsMap.values()].pop();
+        // Best-effort: mark the most recent conversation as aborted
+        const last = [...convMap.values()].pop();
         if (last) {
           last.status = 'aborted';
           last.ended_at = new Date().toISOString();
@@ -267,7 +273,7 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
       }
     }
     // Compute durations
-    for (const r of runsMap.values()) {
+    for (const r of convMap.values()) {
       for (const s of r.steps) {
         if (s.started_at && s.ended_at) {
           s.duration_ms = new Date(s.ended_at).getTime() - new Date(s.started_at).getTime();
@@ -279,9 +285,9 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
       // Default status
       if (!r.status) r.status = 'unknown';
     }
-    const runs = Array.from(runsMap.values()).sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''))
+    const conversations = Array.from(convMap.values()).sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''))
       .map(r => ({
-        run_id: r.run_id,
+        conversation_id: r.conversation_id,
         channel: r.channel,
         status: r.status,
         started_at: r.started_at,
@@ -296,7 +302,7 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
       session_id: id,
       started_at: new Date((tf.startedAt as any) || Date.now()).toISOString(),
       ended_at: new Date().toISOString(),
-      runs,
+      conversations,
     } as const;
     writeFileSync(jsonPath, JSON.stringify(consolidated, null, 2));
     // Generate a simple D2 diagram for the session
@@ -306,7 +312,7 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
     appendFileSync(jsonlPath, JSON.stringify({ type: 'session.ended', session_id: id, ended_at: consolidated.ended_at }) + '\n');
     // Finalize in DB with a derived session status
     try {
-      const sessionStatus = deriveSessionStatus(runs as any) || 'completed';
+      const sessionStatus = deriveSessionStatus(conversations as any) || 'completed';
       finalizeSession(id, opts?.statusOverride || sessionStatus, consolidated.ended_at);
     } catch {}
     return { id, jsonPath, d2Path };
@@ -321,7 +327,7 @@ function sanitizeLabel(s?: string) {
   return String(s).replace(/"/g, '\\"');
 }
 
-function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: string; status?: string; duration_ms?: number; steps: Array<{ step_id: string; label?: string; duration_ms?: number; started_at?: string; ended_at?: string; payload_started?: any; payload_completed?: any; }> }> }) {
+function generateD2(consolidated: { session_id: string; conversations: Array<{ conversation_id: string; status?: string; duration_ms?: number; steps: Array<{ step_id: string; label?: string; duration_ms?: number; started_at?: string; ended_at?: string; payload_started?: any; payload_completed?: any; }> }> }) {
   const lines: string[] = [];
   lines.push('# Auto-generated ThoughtFlow D2');
   lines.push(`// session: ${consolidated.session_id}`);
@@ -380,15 +386,15 @@ function generateD2(consolidated: { session_id: string; runs: Array<{ run_id: st
   lines.push('  }');
   lines.push('}');
   lines.push('');
-  if (!consolidated.runs.length) {
-    lines.push('note: "No runs recorded"');
+  if (!consolidated.conversations.length) {
+    lines.push('note: "No conversations recorded"');
     return lines.join('\n');
   }
   const runIds: string[] = [];
-  consolidated.runs.forEach((run, idx) => {
+  consolidated.conversations.forEach((run, idx) => {
     const runNode = `run_${idx + 1}`;
     runIds.push(runNode);
-    const runLabel = `Run ${idx + 1} — ${run.status || 'unknown'}${run.duration_ms != null ? `, ${run.duration_ms}ms` : ''}`;
+    const runLabel = `Conversation ${idx + 1} — ${run.status || 'unknown'}${run.duration_ms != null ? `, ${run.duration_ms}ms` : ''}`;
     lines.push(`${runNode}: {`);
     lines.push(`  label: "${sanitizeLabel(runLabel)}"`);
     lines.push('  direction: down');

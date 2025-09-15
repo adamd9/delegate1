@@ -83,8 +83,8 @@ function finalizeRun(status: 'error' | undefined = undefined) {
     ensureSession();
     const runId = `run_${req.id}`;
     const event: any = {
-      type: 'run.completed',
-      run_id: runId,
+      type: 'conversation.completed',
+      conversation_id: runId,
       request_id: req.id,
       ended_at: new Date().toISOString(),
     };
@@ -246,9 +246,9 @@ export function processRealtimeModelEvent(
         session.currentRequest = { id: requestId, channel: 'voice', startedAt: Date.now() } as any;
         ensureSession();
         const runId = `run_${requestId}`;
-        appendEvent({ type: 'run.started', run_id: runId, request_id: requestId, channel: 'voice', started_at: new Date().toISOString() });
+        appendEvent({ type: 'conversation.started', conversation_id: runId, request_id: requestId, channel: 'voice', started_at: new Date().toISOString() });
         const stepId = `step_user_${requestId}`;
-        appendEvent({ type: 'step.started', run_id: runId, step_id: stepId, label: ThoughtFlowStepType.UserMessage, payload: { content: transcript }, timestamp: Date.now() });
+        appendEvent({ type: 'step.started', conversation_id: runId, step_id: stepId, label: ThoughtFlowStepType.UserMessage, payload: { content: transcript }, timestamp: Date.now() });
         // Append user voice turn to unified conversation history
         try {
           if (!session.conversationHistory) session.conversationHistory = [];
@@ -272,7 +272,7 @@ export function processRealtimeModelEvent(
         } catch (e) {
           console.warn("⚠️ Failed to append user voice transcript to history", e);
         }
-        appendEvent({ type: 'step.completed', run_id: runId, step_id: stepId, timestamp: Date.now() });
+        appendEvent({ type: 'step.completed', conversation_id: runId, step_id: stepId, timestamp: Date.now() });
       }
       break;
     }
@@ -440,8 +440,8 @@ export function processRealtimeModelEvent(
         if (req) {
           const runId = `run_${req.id}`;
           const stepId = `step_assistant_${req.id}_${Date.now()}`;
-          appendEvent({ type: 'step.started', run_id: runId, step_id: stepId, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, timestamp: Date.now() });
-          appendEvent({ type: 'step.completed', run_id: runId, step_id: stepId, timestamp: Date.now() });
+          appendEvent({ type: 'step.started', conversation_id: runId, step_id: stepId, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, timestamp: Date.now() });
+          appendEvent({ type: 'step.completed', conversation_id: runId, step_id: stepId, timestamp: Date.now() });
           finalizeRun();
         }
       }

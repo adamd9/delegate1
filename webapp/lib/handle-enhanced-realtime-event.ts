@@ -97,7 +97,7 @@ export default function handleEnhancedRealtimeEvent(
             try {
               const meta = {
                 session_id: (event as any).session_id,
-                run_id: (event as any).run_id,
+                conversation_id: (event as any).conversation_id || (event as any).run_id,
                 step_id: (event as any).step_id,
                 kind: 'message',
               } as any;
@@ -143,7 +143,7 @@ export default function handleEnhancedRealtimeEvent(
             _replay: breadcrumbHidden,
             ...(isReplay ? { _meta: {
               session_id: (event as any).session_id,
-              run_id: (event as any).run_id,
+              conversation_id: (event as any).conversation_id || (event as any).run_id,
               step_id: (event as any).step_id,
               call_id: event.item.call_id,
               kind: 'function_call',
@@ -157,7 +157,7 @@ export default function handleEnhancedRealtimeEvent(
           try {
             const meta = {
               session_id: (event as any).session_id,
-              run_id: (event as any).run_id,
+              conversation_id: (event as any).conversation_id || (event as any).run_id,
               step_id: (event as any).step_id,
               call_id: event.item.call_id,
               kind: 'function_call',
@@ -258,7 +258,7 @@ export default function handleEnhancedRealtimeEvent(
             _replay: isReplay,
             ...(isReplay ? { _meta: {
               session_id: (event as any).session_id,
-              run_id: (event as any).run_id,
+              conversation_id: (event as any).conversation_id || (event as any).run_id,
               step_id: (event as any).step_id,
               call_id: event.item.call_id,
               kind: 'function_call',
@@ -474,7 +474,7 @@ export default function handleEnhancedRealtimeEvent(
           _replay: shouldHide,
           ...(event.replay === true ? { _meta: {
             session_id: (event as any).session_id,
-            run_id: (event as any).run_id,
+            conversation_id: (event as any).conversation_id || (event as any).run_id,
             kind: 'thoughtflow_artifacts',
           } } : {}),
         },
@@ -485,7 +485,7 @@ export default function handleEnhancedRealtimeEvent(
         try {
           const meta = {
             session_id: (event as any).session_id,
-            run_id: (event as any).run_id,
+            conversation_id: (event as any).conversation_id || (event as any).run_id,
             kind: 'thoughtflow_artifacts',
           } as any;
           const items = transcript.transcriptItems;
@@ -547,7 +547,7 @@ export default function handleEnhancedRealtimeEvent(
           _replay: event.replay === true,
           ...(event.replay === true ? { _meta: {
             session_id: (event as any).session_id,
-            run_id: (event as any).run_id,
+            conversation_id: (event as any).conversation_id || (event as any).run_id,
             kind: 'canvas',
           } } : {}),
         },
