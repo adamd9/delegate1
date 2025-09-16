@@ -7,7 +7,7 @@ import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import cors from "cors";
 import { establishCallSocket } from "./session/call";
-import { establishLogsSocket } from "./session/logs";
+// Logs websocket is decommissioned; route observability events over chat websocket
 import { establishChatSocket } from "./session/chat";
 import { processSmsWebhook } from "./session/sms";
 import functions from "./functionHandlers";
@@ -93,11 +93,12 @@ app.use(cors());
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-const logsClients = new Set<WebSocket>();
 const chatClients = new Set<WebSocket>();
+// Alias logsClients to chatClients so existing emitters continue to work
+const logsClients = chatClients;
 // Make available on globalThis for sessionManager event forwarding
-(globalThis as any).logsClients = logsClients;
 (globalThis as any).chatClients = chatClients;
+(globalThis as any).logsClients = logsClients;
 
 // Track readiness across async startup steps so we can persist a startup note
 let toolsReady = false;
@@ -495,11 +496,8 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
       }
     });
   } else if (type === "logs") {
-    // Observability stream for the web frontend. The handler replays
-    // existing conversation history and forwards realtime events.
-    logsClients.add(ws);
-    establishLogsSocket(ws, logsClients);
-    ws.on("close", () => logsClients.delete(ws));
+    // Logs websocket is decommissioned; close connection
+    try { ws.close(); } catch {}
   } else if (type === "chat") {
     chatClients.add(ws);
     establishChatSocket(ws, OPENAI_API_KEY, chatClients, logsClients);
