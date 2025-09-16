@@ -31,18 +31,6 @@ export function getDb() {
       duration_ms INTEGER,
       FOREIGN KEY(session_id) REFERENCES sessions(id)
     );
-    CREATE TABLE IF NOT EXISTS steps (
-      id TEXT PRIMARY KEY,
-      conversation_id TEXT,
-      step_index INTEGER,
-      label TEXT,
-      started_at TEXT,
-      ended_at TEXT,
-      duration_ms INTEGER,
-      payload_started_json TEXT,
-      payload_completed_json TEXT,
-      FOREIGN KEY(conversation_id) REFERENCES conversations(id)
-    );
     CREATE TABLE IF NOT EXISTS canvases (
       id TEXT PRIMARY KEY,
       session_id TEXT,
@@ -94,20 +82,6 @@ export function completeConversation(conv: { id: string; status?: string; ended_
     .run(conv.status || null, conv.ended_at || null, conv.duration_ms != null ? conv.duration_ms : null, conv.id);
 }
 
-export function stepStarted(step: { id: string; conversation_id: string; step_index?: number; label?: string; started_at?: string; payload_started_json?: string; }) {
-  const db = getDb();
-  const row = db.prepare('SELECT id FROM steps WHERE id = ?').get(step.id);
-  if (row) return;
-  db.prepare('INSERT INTO steps (id, conversation_id, step_index, label, started_at, payload_started_json) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(step.id, step.conversation_id, step.step_index || null, step.label || null, step.started_at || new Date().toISOString(), step.payload_started_json || null);
-}
-
-export function stepCompleted(step: { id: string; ended_at?: string; duration_ms?: number; payload_completed_json?: string; }) {
-  const db = getDb();
-  db.prepare('UPDATE steps SET ended_at = COALESCE(?, ended_at), duration_ms = COALESCE(?, duration_ms), payload_completed_json = COALESCE(?, payload_completed_json) WHERE id = ?')
-    .run(step.ended_at || null, step.duration_ms != null ? step.duration_ms : null, step.payload_completed_json || null, step.id);
-}
-
 export function listSessions(limit: number) {
   const db = getDb();
   return db.prepare('SELECT id, started_at, ended_at, status FROM sessions ORDER BY COALESCE(ended_at, started_at) DESC LIMIT ?').all(limit);
@@ -118,10 +92,9 @@ export function getSessionDetail(id: string) {
   const session = db.prepare('SELECT id, started_at, ended_at, status FROM sessions WHERE id = ?').get(id);
   if (!session) return null;
   const conversations = db.prepare('SELECT id, session_id, channel, started_at, ended_at, status, duration_ms FROM conversations WHERE session_id = ? ORDER BY started_at ASC').all(id);
-  const steps = db.prepare('SELECT id, conversation_id, step_index, label, started_at, ended_at, duration_ms, payload_started_json, payload_completed_json FROM steps WHERE conversation_id IN (SELECT id FROM conversations WHERE session_id = ?) ORDER BY started_at ASC').all(id);
   const canvases = db.prepare('SELECT id, session_id, path, type, created_at FROM canvases WHERE session_id = ? ORDER BY created_at ASC').all(id);
   const events = db.prepare('SELECT ti.id, ti.conversation_id, ti.seq, ti.kind, ti.payload_json, ti.created_at_ms FROM conversation_events ti JOIN conversations c ON ti.conversation_id = c.id WHERE c.session_id = ? ORDER BY ti.seq ASC').all(id);
-  return { session, conversations, steps, canvases, events };
+  return { session, conversations, canvases, events };
 }
 
 export function listConversations(limit: number) {
@@ -133,8 +106,7 @@ export function getConversationById(id: string) {
   const db = getDb();
   const conv = db.prepare('SELECT id, session_id, channel, started_at, ended_at, status, duration_ms FROM conversations WHERE id = ?').get(id);
   if (!conv) return null;
-  const steps = db.prepare('SELECT id, conversation_id, step_index, label, started_at, ended_at, duration_ms, payload_started_json, payload_completed_json FROM steps WHERE conversation_id = ? ORDER BY started_at ASC').all(id);
-  return { conversation: conv, steps };
+  return { conversation: conv };
 }
 
 export function addCanvas(rec: { id: string; session_id: string; path: string; type?: string; created_at?: string; }) {

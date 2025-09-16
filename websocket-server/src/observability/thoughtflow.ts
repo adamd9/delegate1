@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync } fr
 import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { session } from '../session/state';
-import { upsertSession, finalizeSession, upsertConversation, completeConversation, stepStarted, stepCompleted, addConversationEvent, getLastEventTimestampForConversation } from '../db/sqlite';
+import { upsertSession, finalizeSession, upsertConversation, completeConversation, addConversationEvent, getLastEventTimestampForConversation } from '../db/sqlite';
 
 // Explicit step types for ThoughtFlow events
 export enum ThoughtFlowStepType {
@@ -84,11 +84,6 @@ export function appendEvent(event: any) {
               created_at_ms: lastTs + 1,
             });
           } catch {}
-        } else if (t === 'step.started') {
-          const convId = event.conversation_id; // support legacy conversation_id
-          stepStarted({ id: event.step_id, conversation_id: convId, label: event.label, started_at: event.timestamp ? new Date(event.timestamp).toISOString() : undefined, payload_started_json: event.payload ? JSON.stringify(event.payload) : undefined });
-        } else if (t === 'step.completed') {
-          stepCompleted({ id: event.step_id, ended_at: event.timestamp ? new Date(event.timestamp).toISOString() : undefined, payload_completed_json: event.payload ? JSON.stringify(event.payload) : undefined });
         }
       }
     } catch {}

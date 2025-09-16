@@ -81,7 +81,7 @@ function finalizeRun(status: 'error' | undefined = undefined) {
   if (!req) return;
   try {
     ensureSession();
-    const conversationId = `run_${req.id}`;
+    const conversationId = `conv_${req.id}`;
     const event: any = {
       type: 'conversation.completed',
       conversation_id: conversationId,
@@ -245,7 +245,7 @@ export function processRealtimeModelEvent(
         const requestId = `req_${Date.now()}`;
         session.currentRequest = { id: requestId, channel: 'voice', startedAt: Date.now() } as any;
         ensureSession();
-        const conversationId = `run_${requestId}`;
+        const conversationId = `conv_${requestId}`;
         appendEvent({ type: 'conversation.started', conversation_id: conversationId, request_id: requestId, channel: 'voice', started_at: new Date().toISOString() });
         const stepId = `step_user_${requestId}`;
         appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: stepId, label: ThoughtFlowStepType.UserMessage, payload: { content: transcript }, timestamp: Date.now() });
@@ -261,7 +261,7 @@ export function processRealtimeModelEvent(
             supervisor: false,
           });
           try {
-            const conversationId = `run_${requestId}`;
+            const conversationId = `conv_${requestId}`;
             addConversationEvent({
               conversation_id: conversationId,
               kind: 'message_user',
@@ -375,7 +375,7 @@ export function processRealtimeModelEvent(
             session.conversationHistory.push(assistantMessage);
             try {
               const req = session.currentRequest;
-              const conversationId = req ? `run_${req.id}` : undefined;
+              const conversationId = req ? `conv_${req.id}` : undefined;
               if (conversationId) {
                 addConversationEvent({
                   conversation_id: conversationId,
@@ -444,7 +444,7 @@ export function processRealtimeModelEvent(
 
         const req = session.currentRequest;
         if (req) {
-          const conversationId = `run_${req.id}`;
+          const conversationId = `conv_${req.id}`;
           const stepId = `step_assistant_${req.id}_${Date.now()}`;
           appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: stepId, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, timestamp: Date.now() });
           appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: stepId, timestamp: Date.now() });

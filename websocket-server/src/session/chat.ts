@@ -382,7 +382,7 @@ export async function processChatSocketMessage(
         console.log(`✋ Cancel requested for ${session.currentRequest.id}`);
         try {
           ensureSession();
-          appendEvent({ type: 'conversation.aborted', conversation_id: `run_${session.currentRequest.id}`, request_id: session.currentRequest.id, timestamp: Date.now() });
+          appendEvent({ type: 'conversation.aborted', conversation_id: `conv_${session.currentRequest.id}`, request_id: session.currentRequest.id, timestamp: Date.now() });
         } catch {}
         // Notify chat clients and logs
         for (const ws of chatClients) {
@@ -423,7 +423,7 @@ export async function handleTextChatMessage(
     session.currentRequest = { id: requestId, channel, canceled: false, startedAt: Date.now() };
     // ThoughtFlow: ensure session and start run
     const { id: sessionId } = ensureSession();
-    const conversationId = `run_${requestId}`;
+    const conversationId = `conv_${requestId}`;
     appendEvent({ type: 'conversation.started', conversation_id: conversationId, request_id: requestId, channel, started_at: new Date().toISOString() });
     const userStepId = `step_user_${requestId}`;
     appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: userStepId , label: ThoughtFlowStepType.UserMessage, payload: { content }, timestamp: Date.now() });
