@@ -178,18 +178,31 @@ app.get('/thoughtflow/raw/:id.d2', (req: Request, res: Response) => {
     const id = req.params.id;
     const filePath = join(__dirname, '..', 'runtime-data', 'thoughtflow', `${id}.d2`);
     const content = readFileSync(filePath, 'utf8');
+    try { console.debug(`[thoughtflow] raw d2 read OK: ${filePath}`); } catch {}
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Content-Disposition', 'inline');
     res.send(content);
   } catch (e: any) {
+    try { console.warn(`[thoughtflow] raw d2 404: id=${req.params.id}`); } catch {}
     res.status(404).send('Not found');
   }
 });
 
 
 // Serve ThoughtFlow artifacts (JSON, D2) so the webapp can link to them
-// Dist layout: __dirname is dist/src; artifacts live at dist/runtime-data/thoughtflow
+// Serve artifacts from websocket-server/runtime-data/thoughtflow (matches writer in observability/thoughtflow.ts under ts-node)
 app.use('/thoughtflow', express.static(join(__dirname, '..', 'runtime-data', 'thoughtflow')));
+
+// Diagnostics: list available artifacts (json/d2/jsonl) to confirm server path resolution
+app.get('/thoughtflow/debug/list', (req: Request, res: Response) => {
+  try {
+    const dir = join(__dirname, '..', 'runtime-data', 'thoughtflow');
+    const files = readdirSync(dir);
+    res.json({ dir, files });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || String(e) });
+  }
+});
 
 // --- Twilio SMS webhook route ---
 app.post('/sms', async (req, res) => {
