@@ -291,6 +291,26 @@ From the root directory:
 - `npm run voice-client:dev` - Start only the voice client
 - `./start.sh` - Quick startup script with status messages
 
+### End-to-end tests (Playwright)
+
+These tests exercise the live WebSocket chat flow end-to-end, using real OpenAI endpoints (no mocks). They will be skipped automatically if the backend is not reachable.
+
+Prerequisites:
+
+- Backend running: `ws://localhost:8081` (see `npm run backend:dev`)
+- `websocket-server/.env` contains a valid `OPENAI_API_KEY`
+
+Run tests:
+
+```
+npm run test:e2e
+```
+
+Notes:
+
+- Tests connect to `ws://localhost:8081/chat` and assert behavior from assistant responses. The first test asks for the assistant's name and requires the response to include `HK-47` (the persona is defined in `websocket-server/src/agentConfigs/personality.ts`).
+- If you want headed UI for browser tests later, use `npm run test:e2e:headed` (not required for WS-only tests).
+
 ### 4. Generate Twilio Access Token
 
 For the voice client to work, you need a Twilio access token:

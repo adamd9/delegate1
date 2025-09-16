@@ -18,6 +18,8 @@
     "frontend:start": "cd webapp && npm start",
     "frontend:build": "cd webapp && npm run build",
     "install:all": "npm install && cd websocket-server && npm install && cd ../webapp && npm install",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
     "clean": "rm -rf node_modules websocket-server/node_modules webapp/node_modules websocket-server/dist",
     "script:token": "node scripts/twilio/generate-token.js",
     "script:list-apps": "node scripts/twilio/list-twiml-apps.js",
@@ -32,7 +34,9 @@
     "ask:complex": "npm run ask -- \"Please escalate this to the supervisor and tell me our company policy on data privacy.\""
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "@playwright/test": "^1.47.2",
+    "ws": "^8.18.0"
   },
   "keywords": [
     "ai",
