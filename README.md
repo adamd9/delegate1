@@ -258,11 +258,7 @@ For detailed documentation, see [`scripts/README.md`](scripts/README.md).
    ```bash
    npm run dev
    ```
-2. **Connect frontend to logs** (optional, for monitoring):
-
-   - Your webapp will automatically connect to `wss://your-ngrok-url.ngrok.io/logs`
-   - This provides real-time call monitoring and transcripts
-3. **Make a test call**:
+2. **Make a test call**:
 
    - Call your Twilio phone number
    - The call should connect to your Delegate 1 backend
@@ -278,8 +274,8 @@ For detailed documentation, see [`scripts/README.md`](scripts/README.md).
 ### Accessing the Application
 
 - **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8080
-- **WebSocket**: ws://localhost:8080
+- **Backend API**: http://localhost:8081
+- **WebSocket (chat + observability)**: ws://localhost:8081/chat
 - **Voice Client**: http://localhost:3001
 
 ### Available Scripts
@@ -364,7 +360,7 @@ jsonSend(session.modelConn, {
   - In `processRealtimeModelEvent()` we only truncate assistant speech on `input_audio_buffer.speech_started` after at least `BARGE_IN_GRACE_MS` of assistant audio has played. Increase this to reduce abrupt cutoffs; set to `0` for immediate barge-in.
 
 - Runtime overrides via UI (optional)
-  - The web UI “Session Settings” dialog sends a `session.update` via the `/logs` WebSocket. The server stores this in `session.saved_config` and merges it into the model session on connect. If you include a `turn_detection` object there, it overrides the constants at runtime.
+  - The web UI “Session Settings” dialog sends a `session.update` via the chat WebSocket (`/chat`). The server stores this in `session.saved_config` and merges it into the model session on connect. If you include a `turn_detection` object there, it overrides the constants at runtime.
 
 - Tuning tips
   - Make it less sensitive to background noise: increase `VAD_THRESHOLD` (e.g., 0.7–0.8) and/or `VAD_PREFIX_PADDING_MS` (e.g., 120–200ms).
