@@ -79,7 +79,9 @@ export default function handleEnhancedRealtimeEvent(
           }
           
           const sessionIdForReplay = (event as any)?.session_id || 'sess';
-          const newId = isReplay ? `replay_${sessionIdForReplay}_${itemId}` : itemId;
+          const conversationIdForReplay = (event as any)?.conversation_id || 'conv';
+          // Use conversation_id to avoid collisions across different conversations that reuse item ids like ti_1, ti_2
+          const newId = isReplay ? `replay_${conversationIdForReplay}_${itemId}` : itemId;
           addTranscriptMessage(
             newId,
             role,
