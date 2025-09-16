@@ -81,9 +81,9 @@ const CallInterface = () => {
         } catch (e) {
           console.warn('Failed to handle chat event in enhanced handler', e);
         }
-        // When a session is finalized, rely on future reconnects or manual refresh; no client history request
-        if (data?.type === 'session.finalized') {
-          // no-op
+        // When a conversation is finalized, reload so it moves under history immediately
+        if (data?.type === 'conversation.finalized') {
+          try { window.location.reload(); } catch {}
         }
       };
 
