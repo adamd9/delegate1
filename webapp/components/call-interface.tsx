@@ -30,7 +30,6 @@ const CallInterface = () => {
     });
   }, []);
   const [callStatus, setCallStatus] = useState("disconnected");
-  const [ws, setWs] = useState<WebSocket | null>(null);
   const [chatWs, setChatWs] = useState<WebSocket | null>(null);
   const [chatStatus, setChatStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [userText, setUserText] = useState("");
@@ -47,41 +46,7 @@ const CallInterface = () => {
     });
   }, []);
 
-  useEffect(() => {
-    if (allConfigsReady && !ws) {
-      const newWs = new WebSocket(getWebSocketUrl('/logs'));
-
-      newWs.onopen = () => {
-        console.log("Connected to logs websocket");
-        setCallStatus("connected");
-        // Hydrate history via REST (no /logs replay)
-        void hydrateHistory();
-      };
-
-      newWs.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        // Tag logs websocket events with source for debug visibility
-        try { (data as any).__source = 'logs_ws'; } catch {}
-        console.log("Received logs event:", data);
-        // Handle both old and new transcript systems
-        // handleRealtimeEvent(data, setItems); // setItems is not defined, removed
-        handleEnhancedRealtimeEvent(data, transcript);
-        // When a session is finalized, hydrate history again so the just-finished
-        // conversation is available under the history header.
-        if (data?.type === 'session.finalized') {
-          void hydrateHistory();
-        }
-      };
-
-      newWs.onclose = () => {
-        console.log("Logs websocket disconnected");
-        setWs(null);
-        setCallStatus("disconnected");
-      };
-
-      setWs(newWs);
-    }
-  }, [allConfigsReady, ws]);
+  // Logs websocket is decommissioned; chat websocket serves as the single channel
 
   // Hydrate last N sessions via REST and synthesize transcript events with replay:true
   async function hydrateHistory() {
@@ -234,6 +199,9 @@ const CallInterface = () => {
       newChatWs.onopen = () => {
         console.log("Connected to chat websocket");
         setChatStatus('connected');
+        setCallStatus('connected');
+        // Hydrate history via REST when chat websocket is ready
+        void hydrateHistory();
       };
 
       newChatWs.onmessage = (event) => {
@@ -247,15 +215,16 @@ const CallInterface = () => {
           setInFlight(false);
           setCurrentRequestId(null);
         }
-        // Forward renderable chat events to enhanced handler so they appear in transcript
-        if (data?.type === 'chat.response' || data?.type === 'chat.canvas' || data?.type === 'chat.error') {
-          try {
-            // Tag chat websocket events with source for debug visibility
-            (data as any).__source = 'chat_ws';
-            handleEnhancedRealtimeEvent(data, transcript);
-          } catch (e) {
-            console.warn('Failed to handle chat event in enhanced handler', e);
-          }
+        // Always forward events to enhanced handler; server now routes observability over chat
+        try {
+          (data as any).__source = 'chat_ws';
+          handleEnhancedRealtimeEvent(data, transcript);
+        } catch (e) {
+          console.warn('Failed to handle chat event in enhanced handler', e);
+        }
+        // When a session is finalized, hydrate history again so the just-finished conversation moves under history
+        if (data?.type === 'session.finalized') {
+          void hydrateHistory();
         }
       };
 
@@ -263,6 +232,7 @@ const CallInterface = () => {
         console.log("Chat websocket disconnected");
         setChatWs(null);
         setChatStatus('disconnected');
+        setCallStatus('disconnected');
       };
 
       newChatWs.onerror = (error) => {
@@ -338,15 +308,15 @@ const CallInterface = () => {
             <SessionConfigurationPanel
               callStatus={callStatus}
               onSave={(config) => {
-                if (ws && ws.readyState === WebSocket.OPEN) {
+                if (chatWs && chatWs.readyState === WebSocket.OPEN) {
                   const updateEvent = {
                     type: "session.update",
                     session: {
                       ...config,
                     },
                   };
-                  console.log("Sending update event:", updateEvent);
-                  ws.send(JSON.stringify(updateEvent));
+                  console.log("Sending update event over chat WS:", updateEvent);
+                  chatWs.send(JSON.stringify(updateEvent));
                 }
               }}
             />
