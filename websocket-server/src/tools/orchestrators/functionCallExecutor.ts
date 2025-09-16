@@ -1,6 +1,6 @@
 import { WebSocket } from "ws";
 import { getAgent, FunctionHandler } from "../../agentConfigs";
-import { ensureSession } from "../../observability/thoughtflow";
+import { ensureSession, appendEvent, ThoughtFlowStepType } from "../../observability/thoughtflow";
 import { addConversationEvent } from "../../db/sqlite";
 import { session } from "../../session/state";
 import { jsonSend, isOpen } from "../../session/state";
@@ -15,6 +15,8 @@ export interface OrchestratorContext {
   previousResponseId?: string;
   confirm?: boolean; // default true for chat, false for voice
   announce?: boolean; // when true (default), print standard console logs for detection/execution/result
+  // Optional: link this tool call to a previous step (e.g., prior tool or assistant_call)
+  dependsOnStepId?: string;
 }
 
 export interface FunctionCallItem {
@@ -89,6 +91,30 @@ export async function executeFunctionCall(call: FunctionCallItem, ctx: Orchestra
     console.log(`🔧 Function call detected: ${call.name}`);
     console.log(`🧠 Executing ${call.name} with args:`, JSON.stringify(parsed));
   }
+  // ThoughtFlow: In chat mode, record orchestrated tool calls as proper steps
+  let tfStepId: string | undefined;
+  let tfConversationId: string | undefined;
+  // Only instrument when an explicit dependency is provided to avoid
+  // duplicating the first tool call (which chat.ts already records).
+  if (ctx.mode === 'chat' && ctx.dependsOnStepId) {
+    try {
+      ensureSession();
+      const req = session.currentRequest;
+      if (req) {
+        tfConversationId = `conv_${req.id}`;
+        tfStepId = `step_tool_${call.call_id || Date.now()}`;
+        appendEvent({
+          type: 'step.started',
+          conversation_id: tfConversationId,
+          step_id: tfStepId,
+          label: ThoughtFlowStepType.ToolCall,
+          payload: { name: call.name, arguments: typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments || {}) },
+          ...(ctx.dependsOnStepId ? { depends_on: ctx.dependsOnStepId } : {}),
+          timestamp: Date.now(),
+        });
+      }
+    } catch {}
+  }
   // Emit delta using the model-provided call_id to avoid duplicate-looking entries
   emitDelta(ctx.logsClients, call.name, parsed, call.call_id);
   try {
@@ -98,6 +124,18 @@ export async function executeFunctionCall(call: FunctionCallItem, ctx: Orchestra
       emitDelta(ctx.logsClients, name, data);
     });
     emitDone(ctx.logsClients, call.name, call.arguments, call.call_id, result);
+    // ThoughtFlow: complete the tool call step in chat mode
+    if (ctx.mode === 'chat' && ctx.dependsOnStepId && tfConversationId && tfStepId) {
+      try {
+        appendEvent({
+          type: 'step.completed',
+          conversation_id: tfConversationId,
+          step_id: tfStepId,
+          payload: { output: result, meta: { status: 'ok' } },
+          timestamp: Date.now(),
+        });
+      } catch {}
+    }
     if (ctx.announce !== false) {
       const len = typeof result === 'string' ? (result as string).length : JSON.stringify(result || {}).length;
       console.log(`✅ Function result received (${len} chars)`);
@@ -106,6 +144,17 @@ export async function executeFunctionCall(call: FunctionCallItem, ctx: Orchestra
   } catch (e: any) {
     const errMsg = e?.message || "handler error";
     emitDone(ctx.logsClients, call.name, call.arguments, call.call_id, { error: errMsg });
+    if (ctx.mode === 'chat' && tfConversationId && tfStepId) {
+      try {
+        appendEvent({
+          type: 'step.completed',
+          conversation_id: tfConversationId,
+          step_id: tfStepId,
+          payload: { error: errMsg },
+          timestamp: Date.now(),
+        });
+      } catch {}
+    }
     // Do not throw; return structured error so upstream can continue gracefully
     return { error: errMsg };
   }

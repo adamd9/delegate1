@@ -601,7 +601,7 @@ export async function handleTextChatMessage(
 
     if (functionCalls && functionCalls.length > 0) {
       const functionCall = functionCalls[0];
-      const toolStepId = `step_tool_${functionCall.call_id}`;
+      let toolStepId = `step_tool_${functionCall.call_id}`;
       // Defer both console logging and breadcrumb emission to the orchestrator for consistency
       // --- SMS placeholder for tool call ---
       if (isSmsWindowOpen()) {
@@ -670,7 +670,7 @@ export async function handleTextChatMessage(
           const fuFunctionCalls = followUpResponse.output?.filter((o: any) => o.type === "function_call");
           if (fuFunctionCalls && fuFunctionCalls.length > 0) {
             // Delegate to orchestrator to execute one function_call (canvas preferred) and optionally confirm
-            const { handled, confirmText, confirmResponseId } = await executeFunctionCalls(
+            const { handled, confirmText, confirmResponseId, executedCall } = await executeFunctionCalls(
               fuFunctionCalls,
               {
                 mode: 'chat',
@@ -678,9 +678,15 @@ export async function handleTextChatMessage(
                 openaiClient: session.openaiClient,
                 previousResponseId: followUpResponse.id,
                 confirm: true,
+                // Chain subsequent tool calls after the first tool step for ThoughtFlow sequencing
+                dependsOnStepId: toolStepId,
               }
             );
             if (handled) {
+              // If a follow-up tool was executed, advance the chain anchor to that tool's step id
+              if (executedCall?.call_id) {
+                toolStepId = `step_tool_${executedCall.call_id}`;
+              }
               if (confirmResponseId) session.previousResponseId = confirmResponseId;
               const text = confirmText || followUpResponse.output_text || "(action completed)";
               const assistantStepId_handled = `step_assistant_${Date.now()}`;
