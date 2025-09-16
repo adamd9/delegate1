@@ -226,6 +226,10 @@ export async function processChatSocketMessage(
         // Mark conversation completed now
         const endedAt = new Date().toISOString();
         completeConversation({ id: targetConvId, status: 'completed', ended_at: endedAt });
+        // Emit a ThoughtFlow event so artifact generation and ledger entries are produced
+        try {
+          appendEvent({ type: 'conversation.completed', conversation_id: targetConvId, ended_at: endedAt, status: 'completed' });
+        } catch {}
         // Broadcast to all chat clients
         for (const ws of chatClients) {
           if (isOpen(ws)) jsonSend(ws, { type: 'conversation.finalized', conversation_id: targetConvId, ok: true, ended_at: endedAt, timestamp: Date.now() });
