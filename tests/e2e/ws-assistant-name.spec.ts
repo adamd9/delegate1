@@ -72,6 +72,8 @@ test('assistant states its name (includes HK-47) and we finalize the conversatio
   });
 
   const prompt = "Respond with exactly one sentence that clearly states your name and must include the exact substring 'HK-47'.";
+  // Small delay so a human observer can follow along in a second client
+  await new Promise((r) => setTimeout(r, 1000));
   ws.send(JSON.stringify({ type: 'chat.message', content: prompt }));
 
   const { content, conversation_id } = await responsePromise;
@@ -80,6 +82,8 @@ test('assistant states its name (includes HK-47) and we finalize the conversatio
   expect(content).toContain('HK-47');
 
   // Finalize this conversation and verify via REST
+  // Small delay before finalize to allow reading the response live
+  await new Promise((r) => setTimeout(r, 1000));
   ws.send(JSON.stringify({ type: 'conversation.end', conversation_id }));
   await new Promise((r) => setTimeout(r, 800));
   const res = await fetch(`${BASE_URL}/api/conversations?limit=5`);
