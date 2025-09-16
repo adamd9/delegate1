@@ -60,6 +60,10 @@ export function getDb() {
       created_at_ms INTEGER NOT NULL,
       FOREIGN KEY(conversation_id) REFERENCES conversations(id)
     );
+    CREATE INDEX IF NOT EXISTS idx_conversation_events_conversation_seq
+      ON conversation_events(conversation_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_conversation_events_conversation_created_at
+      ON conversation_events(conversation_id, created_at_ms);
   `);
   return db;
 }
