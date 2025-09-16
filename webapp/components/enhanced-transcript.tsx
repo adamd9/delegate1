@@ -392,12 +392,20 @@ export function EnhancedTranscript({
                   )}
                   {!isCanvasLink && hasTfLinks && expanded && (
                     <div className="mt-2 ml-6 flex gap-3 flex-wrap">
-                      {((data as any).session_id || (data as any).url_d2_viewer) && (
-                        <a href={((data as any).session_id ? `/thoughtflow/viewer/${(data as any).session_id}` : (data as any).url_d2_viewer) as string} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded border border-green-200 text-green-700 hover:bg-green-50" title="Open D2 in browser viewer">
-                          <span>Viewer</span>
-                          <ChevronRightIcon className="w-3 h-3" />
-                        </a>
-                      )}
+                      {(() => {
+                        const d: any = data as any;
+                        const direct = d?.url_d2_viewer as string | undefined;
+                        const sid = d?.session_id as string | undefined;
+                        const cid = d?.conversation_id as string | undefined;
+                        const derived = sid && cid ? `/thoughtflow/viewer/${sid}.${cid}` : undefined;
+                        const viewerHref = direct || derived;
+                        return viewerHref ? (
+                          <a href={viewerHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded border border-green-200 text-green-700 hover:bg-green-50" title="Open D2 in browser viewer">
+                            <span>Viewer</span>
+                            <ChevronRightIcon className="w-3 h-3" />
+                          </a>
+                        ) : null;
+                      })()}
                     </div>
                   )}
                   {!isCanvasLink && expanded && data && !hasTfLinks && (

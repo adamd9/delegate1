@@ -42,10 +42,10 @@ function emitDelta(logsClients: Set<WebSocket>, name: string, data?: any, call_i
   // Persist a created breadcrumb into the transcript ledger (only if we have an active conversation)
   try {
     ensureSession();
-    const runId = session.currentRequest ? `run_${session.currentRequest.id}` : undefined;
-    if (runId) {
+    const convId = session.currentRequest ? `conv_${session.currentRequest.id}` : undefined;
+    if (convId) {
       addConversationEvent({
-        conversation_id: runId,
+        conversation_id: convId,
         kind: 'function_call_created',
         payload: { name, call_id, arguments: data || {} },
         created_at_ms: Date.now(),
@@ -68,10 +68,10 @@ function emitDone(logsClients: Set<WebSocket>, name: string, originalArgs: any, 
   // Persist a completed breadcrumb into the transcript ledger (only if we have an active conversation)
   try {
     ensureSession();
-    const runId = session.currentRequest ? `run_${session.currentRequest.id}` : undefined;
-    if (runId) {
+    const convId = session.currentRequest ? `conv_${session.currentRequest.id}` : undefined;
+    if (convId) {
       addConversationEvent({
-        conversation_id: runId,
+        conversation_id: convId,
         kind: 'function_call_completed',
         payload: { name, call_id, arguments: originalArgs, result },
         created_at_ms: Date.now(),
