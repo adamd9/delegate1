@@ -328,6 +328,36 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
     const d2 = generateD2(consolidated);
     const d2Path = join(BASE_DIR, `${id}.d2`);
     writeFileSync(d2Path, d2);
+    // Persist per-conversation status into SQLite (in case no explicit conversation.completed events were emitted)
+    try {
+      for (const c of conversations as any[]) {
+        const convId = c.conversation_id;
+        if (!convId) continue;
+        try {
+          completeConversation({ id: convId, status: c.status, ended_at: c.ended_at, duration_ms: c.duration_ms });
+        } catch {}
+        // Best-effort: ensure per-conversation ThoughtFlow artifact links exist (if not already added during conversation.completed)
+        try {
+          const { jsonPath: jPath, d2Path: dPath } = writeConversationArtifacts(id, convId);
+          const PORT = parseInt(process.env.PORT || '8081', 10);
+          const PUBLIC_URL = process.env.PUBLIC_URL || '';
+          const EFFECTIVE_PUBLIC_URL = (PUBLIC_URL && PUBLIC_URL.trim()) || `http://localhost:${PORT}`;
+          const baseName = `${id}.${convId}`;
+          const url_json = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.json`;
+          const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.d2`;
+          const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${baseName}.d2`;
+          const url_d2_viewer = `/thoughtflow/viewer/${id}`;
+          const lastTs = getLastEventTimestampForConversation(convId) || Date.now();
+          addConversationEvent({
+            id: `ti_tf_conv_${convId}`,
+            conversation_id: convId,
+            kind: 'thoughtflow_artifacts',
+            payload: { session_id: id, conversation_id: convId, url_json, url_d2, url_d2_raw, url_d2_viewer },
+            created_at_ms: lastTs + 1,
+          });
+        } catch {}
+      }
+    } catch {}
     appendFileSync(jsonlPath, JSON.stringify({ type: 'session.ended', session_id: id, ended_at: consolidated.ended_at }) + '\n');
     // Finalize in DB with a derived session status
     try {

@@ -4,11 +4,25 @@ import React from "react";
 import VoiceMiniApp from "@/components/voice-mini-app";
 import { getWebSocketUrl } from "@/lib/get-backend-url";
 import { CircleStop } from "lucide-react";
+import { useTranscript } from "@/contexts/TranscriptContext";
 
 export default function AdditionalTools() {
   const [ending, setEnding] = React.useState(false);
   const [status, setStatus] = React.useState<null | 'ok' | 'err'>(null);
   const wsRef = React.useRef<WebSocket | null>(null);
+  const transcript = useTranscript();
+
+  const currentConversationId: string | null = React.useMemo(() => {
+    try {
+      const items = transcript.transcriptItems.slice().reverse();
+      for (const it of items) {
+        const meta = (it.data as any)?._meta;
+        const convId = meta?.conversation_id as string | undefined;
+        if (convId && typeof convId === 'string' && convId.trim()) return convId;
+      }
+    } catch {}
+    return null;
+  }, [transcript.transcriptItems]);
 
   React.useEffect(() => {
     return () => { try { wsRef.current?.close(); } catch {} };
@@ -18,17 +32,18 @@ export default function AdditionalTools() {
     try {
       setEnding(true);
       setStatus(null);
-      const url = getWebSocketUrl('/logs');
+      const url = getWebSocketUrl('/chat');
       const ws = new WebSocket(url);
       wsRef.current = ws;
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'session.end' }));
+        // Require a conversation_id; do not guess on the server
+        ws.send(JSON.stringify({ type: 'conversation.end', conversation_id: currentConversationId }));
         setTimeout(() => { try { ws.close(); } catch {} }, 300);
       };
       ws.onmessage = (evt) => {
         try {
           const msg = JSON.parse(evt.data);
-          if (msg?.type === 'session.finalized') setStatus(msg.ok ? 'ok' : 'err');
+          if (msg?.type === 'conversation.finalized') setStatus(msg.ok ? 'ok' : 'err');
         } catch {}
       };
       ws.onerror = () => setStatus('err');
@@ -44,7 +59,7 @@ export default function AdditionalTools() {
       <button
           type="button"
           onClick={endConversation}
-          disabled={ending}
+          disabled={ending || !currentConversationId}
           className={`text-sm px-2 py-1 rounded-md transition-colors border border-transparent
             ${ending 
               ? 'text-gray-500 cursor-not-allowed' 
@@ -58,6 +73,9 @@ export default function AdditionalTools() {
             {ending ? 'Ending…' : 'End conversation'}
           </span>
         </button>
+        {!ending && !currentConversationId && (
+          <span className="text-xs text-gray-500">No active conversation</span>
+        )}
         {status === 'ok' && (
           <span className="text-xs text-green-600">Conversation finalized</span>
         )}
