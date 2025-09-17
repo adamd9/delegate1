@@ -1,7 +1,7 @@
 import { RawData, WebSocket } from "ws";
 import { getDefaultAgent } from "../agentConfigs";
 import { getAgent, FunctionHandler } from "../agentConfigs";
-import { executeFunctionCall } from "../tools/orchestrators/functionCallExecutor";
+import { runSingleToolCall } from "../tools/orchestrators/runToolCalls";
 import { contextInstructions, Context, getTimeContext } from "../agentConfigs/context";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 import { HOLD_MUSIC_ULAW_BASE64, HOLD_MUSIC_DURATION_MS } from "../assets/holdMusic";
@@ -470,7 +470,7 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
     appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: stepId, label: ThoughtFlowStepType.ToolCall, payload: { name: item.name, arguments: item.arguments }, timestamp: Date.now() });
   }
   try {
-    const result = await executeFunctionCall(
+    const result = await runSingleToolCall(
       { name: item.name, arguments: item.arguments, call_id: item.call_id },
       { mode: 'voice', logsClients, confirm: false }
     );
