@@ -2,7 +2,7 @@ import { RawData, WebSocket } from "ws";
 import { getDefaultAgent } from "../agentConfigs";
 import { getAgent, FunctionHandler } from "../agentConfigs";
 import { executeFunctionCall } from "../tools/orchestrators/functionCallExecutor";
-import { contextInstructions, Context } from "../agentConfigs/context";
+import { contextInstructions, Context, getTimeContext } from "../agentConfigs/context";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 import { HOLD_MUSIC_ULAW_BASE64, HOLD_MUSIC_DURATION_MS } from "../assets/holdMusic";
 import { appendEvent, ThoughtFlowStepType, ensureSession, endSession } from "../observability/thoughtflow";
@@ -165,9 +165,11 @@ export function establishRealtimeModelConnection() {
     const baseFunctions = getAgent('base').tools as FunctionHandler[];
     const functionSchemas = baseFunctions.map((f: FunctionHandler) => f.schema);
     const baseInstructions = getDefaultAgent().instructions;
+    const { currentTime, timeZone } = getTimeContext();
     const context: Context = {
       channel: 'voice',
-      currentTime: new Date().toLocaleString(),
+      currentTime,
+      timeZone,
     };
     const agentInstructions = [contextInstructions(context), baseInstructions].join('\n');
 
