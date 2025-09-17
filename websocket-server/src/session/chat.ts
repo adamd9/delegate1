@@ -4,7 +4,7 @@ import { ProxyAgent } from "undici";
 import { ResponsesTextInput } from "../types";
 import { getAgent, getDefaultAgent, FunctionHandler } from "../agentConfigs";
 import { executeFunctionCalls, executeFunctionCall } from "../tools/orchestrators/functionCallExecutor";
-import { contextInstructions, Context, Channel } from "../agentConfigs/context";
+import { contextInstructions, Context, Channel, getTimeContext } from "../agentConfigs/context";
 import { isSmsWindowOpen, getNumbers } from "../smsState";
 import { sendSms } from "../sms";
 import { getReplyTo } from "../emailState";
@@ -412,9 +412,11 @@ export async function handleTextChatMessage(
   channel: Channel = 'text',
   metadata: { subject?: string } = {}
 ) {
+  const { currentTime, timeZone } = getTimeContext();
   const context: Context = {
     channel,
-    currentTime: new Date().toLocaleString(),
+    currentTime,
+    timeZone,
   };
   try {
     console.log("🔤 Processing text message:", content);
