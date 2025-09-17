@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync } from 'fs';
 import { randomUUID } from 'crypto';
-import { join } from 'path';
+import { join, sep } from 'path';
 import { session } from '../session/state';
 import { upsertSession, finalizeSession, upsertConversation, completeConversation, addConversationEvent, getLastEventTimestampForConversation } from '../db/sqlite';
 
@@ -15,8 +15,10 @@ export enum ThoughtFlowStepType {
 }
 
 // Store artifacts under websocket-server/runtime-data/thoughtflow (project root relative)
-// At runtime __dirname is dist/observability, so go up two levels.
-const BASE_DIR = join(__dirname, '..', '..', 'runtime-data', 'thoughtflow');
+// Make this work consistently in both ts-node (src) and compiled (dist) runs.
+const isDist = __dirname.includes(`${sep}dist${sep}`);
+const baseRoot = isDist ? join(__dirname, '..', '..', '..') : join(__dirname, '..', '..');
+const BASE_DIR = join(baseRoot, 'runtime-data', 'thoughtflow');
 
 function ensureDir() {
   if (!existsSync(BASE_DIR)) {

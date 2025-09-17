@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from 'fs';
-import { join } from 'path';
+import { join, sep } from 'path';
 import { endSession } from '../../observability/thoughtflow';
 import { getEventCountForSession } from '../../db/sqlite';
 
@@ -9,7 +9,9 @@ import { getEventCountForSession } from '../../db/sqlite';
  */
 export function finalizeOpenSessionsOnStartup() {
   try {
-    const dir = join(__dirname, '..', '..', 'runtime-data', 'thoughtflow');
+    const isDist = __dirname.includes(`${sep}dist${sep}`);
+    const baseRoot = isDist ? join(__dirname, '..', '..', '..') : join(__dirname, '..', '..');
+    const dir = join(baseRoot, 'runtime-data', 'thoughtflow');
     let files: string[] = [];
     try { files = readdirSync(dir); } catch { files = []; }
     const jsonl = files.filter(f => f.endsWith('.jsonl'));
