@@ -7,14 +7,8 @@ import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeMode
 import { HOLD_MUSIC_ULAW_BASE64, HOLD_MUSIC_DURATION_MS } from "../assets/holdMusic";
 import { appendEvent, ThoughtFlowStepType, ensureSession, endSession } from "../observability/thoughtflow";
 import { addConversationEvent } from "../db/sqlite";
+import { chatClients, logsClients } from "../ws/clients";
 
-// Explicitly type globalThis for logsClients/chatClients to avoid TS7017
-declare global {
-  // eslint-disable-next-line no-var
-  var logsClients: Set<WebSocket> | undefined;
-  // eslint-disable-next-line no-var
-  var chatClients: Set<WebSocket> | undefined;
-}
 
 // Accumulator for assistant voice transcript text by item id (server logs only)
 const assistantVoiceByItem = new Map<string, string>();
@@ -210,7 +204,7 @@ export function establishRealtimeModelConnection() {
     }
   });
 
-  session.modelConn.on("message", (data: RawData) => processRealtimeModelEvent(data, global.logsClients ?? new Set(), global.chatClients ?? new Set()));
+  session.modelConn.on("message", (data: RawData) => processRealtimeModelEvent(data, logsClients, chatClients));
   session.modelConn.on("error", () => { finalizeRun('error'); closeModel(); });
   session.modelConn.on("close", () => { finalizeRun(); closeModel(); });
 }
