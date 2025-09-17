@@ -4,6 +4,7 @@ import { storeCanvas } from '../../canvasStore';
 import { session, type ConversationItem } from '../../session/state';
 import { ensureSession } from '../../observability/thoughtflow';
 import { addCanvas, addConversationEvent } from '../../db/sqlite';
+import { chatClients, logsClients } from '../../ws/clients';
 
 const PUBLIC_URL = process.env.PUBLIC_URL || '';
 const DEFAULT_PORT = process.env.PORT || '8081';
@@ -49,10 +50,6 @@ export const sendCanvas: FunctionHandler = {
       session.conversationHistory = [];
     }
     session.conversationHistory.push(entry);
-
-    const globals = globalThis as any;
-    const chatClients: Set<WebSocket> = globals.chatClients ?? new Set();
-    const logsClients: Set<WebSocket> = globals.logsClients ?? new Set();
 
     for (const client of chatClients) {
       jsonSend(client, message);
