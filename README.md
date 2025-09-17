@@ -299,6 +299,11 @@ Prerequisites:
 
 - Backend running: `ws://localhost:8081` (see `npm run backend:dev`)
 - `websocket-server/.env` contains a valid `OPENAI_API_KEY`
+- Install Playwright browsers (one-time):
+
+  ```bash
+  npx playwright install chromium
+  ```
 
 Run tests:
 
@@ -310,6 +315,45 @@ Notes:
 
 - Tests connect to `ws://localhost:8081/chat` and assert behavior from assistant responses. The first test asks for the assistant's name and requires the response to include `HK-47` (the persona is defined in `websocket-server/src/agentConfigs/personality.ts`).
 - If you want headed UI for browser tests later, use `npm run test:e2e:headed` (not required for WS-only tests).
+
+#### UI E2E test (browser)
+
+- Start both servers:
+
+  ```bash
+  npm run backend:dev
+  npm run frontend:dev
+  ```
+
+- Install browsers once (if not already):
+
+  ```bash
+  npx playwright install chromium
+  ```
+
+- Run only the UI test (headless):
+
+  ```bash
+  npm run test:e2e -- tests/e2e/ui-notes.spec.ts
+  ```
+
+- Run headed (watch the browser):
+
+  ```bash
+  npm run test:e2e:headed -- tests/e2e/ui-notes.spec.ts
+  ```
+
+Environment overrides (optional):
+
+```bash
+FRONTEND_PORT=3001 PORT=8082 npm run test:e2e -- tests/e2e/ui-notes.spec.ts
+```
+
+Note: If TypeScript complains about Node globals in tests, install Node types in the root dev deps:
+
+```bash
+npm i -D @types/node
+```
 
 ### 4. Generate Twilio Access Token
 
