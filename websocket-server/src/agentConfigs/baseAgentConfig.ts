@@ -7,6 +7,7 @@ import { memAddFunction, memSearchFunction } from '../tools/handlers/mem0';
 import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction, getNoteFunction } from '../tools/handlers/notes';
 import { hangupCallTool } from '../tools/handlers/hangup';
 import { agentPersonality } from "./personality";
+import { listAdaptationsFunction, getAdaptationFunction, updateAdaptationFunction, reloadAdaptationsFunction } from '../tools/handlers/adaptations';
 
 // Base Agent Configuration
 export const baseAgentConfig: AgentConfig = {
@@ -57,6 +58,11 @@ Persistent memory:
     updateNoteFunction,
     deleteNoteFunction,
     getNoteFunction,
+    // Prompt Adaptations management tools
+    listAdaptationsFunction,
+    getAdaptationFunction,
+    updateAdaptationFunction,
+    reloadAdaptationsFunction,
     hangupCallTool,
   ],
   // Text (Responses API) model for chat interactions

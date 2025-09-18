@@ -1,5 +1,6 @@
 import { WebSocket } from "ws";
 import { getAgent, FunctionHandler } from "../../agentConfigs";
+import { getAdaptationTextById } from "../../adaptations";
 import { ensureSession, appendEvent, ThoughtFlowStepType } from "../../observability/thoughtflow";
 import { addConversationEvent } from "../../db/sqlite";
 import { session } from "../../session/state";
@@ -174,6 +175,38 @@ export async function executeFunctionCalls(
   // Optional chat confirmation step
   const shouldConfirm = ctx.confirm ?? (ctx.mode === 'chat');
   if (shouldConfirm && ctx.openaiClient && ctx.previousResponseId && next.call_id) {
+    // Inject prompt adaptations for confirmation stage via a dedicated identifier
+    const confirmAdaptId = 'adn.prompt.core.toolConfirm';
+    const confirmAdapt = await getAdaptationTextById(confirmAdaptId);
+    const confirmAdaptText = (confirmAdapt?.text || '').trim();
+    // ThoughtFlow: emit a prompt.adaptations step for confirmation stage in chat mode
+    if (ctx.mode === 'chat') {
+      try {
+        ensureSession();
+        const req = session.currentRequest;
+        if (req) {
+          const convId = `conv_${req.id}`;
+          const adaptStepId = `snp_adapt_confirm_${next.call_id || Date.now()}`;
+          appendEvent({
+            type: 'step.started',
+            conversation_id: convId,
+            step_id: adaptStepId,
+            label: 'prompt.adaptations',
+            ...(ctx.dependsOnStepId ? { depends_on: ctx.dependsOnStepId } : {}),
+            payload: {
+              adaptation_id: confirmAdaptId,
+              content_preview: confirmAdaptText.slice(0, 200),
+              content_length: confirmAdaptText.length,
+              scope: { agent: 'base', channel: req.channel },
+              modifiable: true,
+              version: confirmAdapt?.version || 0,
+            },
+            timestamp: Date.now(),
+          });
+          appendEvent({ type: 'step.completed', conversation_id: convId, step_id: adaptStepId, timestamp: Date.now() });
+        }
+      } catch {}
+    }
     const confirmBody: any = {
       model: getAgent('base').textModel || getAgent('base').model || 'gpt-5-mini',
       reasoning: { effort: 'minimal' as const },
@@ -182,9 +215,12 @@ export async function executeFunctionCalls(
         { type: 'function_call', call_id: next.call_id, name: next.name, arguments: typeof next.arguments === 'string' ? next.arguments : JSON.stringify(next.arguments || {}) },
         { type: 'function_call_output', call_id: next.call_id, output: typeof result === 'string' ? result : JSON.stringify(result) },
       ],
-      instructions: next.name === 'send_canvas'
-        ? 'Provide a concise plain-text confirmation (1-2 sentences) that the canvas has been sent, optionally summarizing what was included.'
-        : 'Provide a concise plain-text confirmation (1-2 sentences) that the requested action has been performed successfully.',
+      instructions: (() => {
+        const baseInstr = next.name === 'send_canvas'
+          ? 'Provide a concise plain-text confirmation (1-2 sentences) that the canvas has been sent, optionally summarizing what was included.'
+          : 'Provide a concise plain-text confirmation (1-2 sentences) that the requested action has been performed successfully.';
+        return [confirmAdaptText, baseInstr].filter(Boolean).join('\n');
+      })(),
     };
     const confirmResponse = await ctx.openaiClient.responses.create(confirmBody);
     const confirmText = confirmResponse.output_text || 'Done.';

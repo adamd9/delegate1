@@ -172,9 +172,9 @@ All ThoughtFlow visualizations are generated from a consolidated JSON representa
           "label": "prompt.adaptations",
           "payload_started": { },
           "payload_completed": {
-            "included_ids": ["adn.safety.general"],
-            "content_preview": "Safety: Never disclose secrets...",
-            "content_length": 34,
+            "adaptation_id": "adn.prompt.core.handleText",
+            "content_preview": "...",
+            "content_length": 0,
             "scope": { "agent": "base", "channel": "text" },
             "modifiable": true
           }
