@@ -50,7 +50,7 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
         throw new Error('getNextResponseFromSupervisor: missing dependsOnStepId from orchestrator');
       }
 
-      const { text: finalResponse } = await handleSupervisorToolCalls(
+      const { text: finalResponse, supInitStepId, supLastStepId } = await handleSupervisorToolCalls(
         supervisorAgentInstructions,
         [input],
         tools,
@@ -59,7 +59,8 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
         addBreadcrumb,
       );
 
-      return finalResponse;
+      // Return structured object so upstream can wire ThoughtFlow dependencies correctly
+      return { text: finalResponse, supInitStepId, supLastStepId };
     } catch (error) {
       console.error('Supervisor escalation error:', error);
       addBreadcrumb?.("Supervisor Error", { error: (error as Error).message });
