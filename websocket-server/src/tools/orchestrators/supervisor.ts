@@ -30,7 +30,7 @@ export async function handleSupervisorToolCalls(
   dependsOnStepId: string,
   previousResponseId?: string,
   addBreadcrumb?: (title: string, data?: any) => void,
-): Promise<{ text: string, responseId: string }> {
+): Promise<{ text: string, responseId: string, supInitStepId?: string, supLastStepId?: string }> {
   let currentResponseId = previousResponseId;
   let iterations = 0;
   const maxIterations = 5;
@@ -342,7 +342,13 @@ export async function handleSupervisorToolCalls(
     
     currentResponse = followUpResponse;
     currentResponseId = currentResponse.id;
+    // Track last supervisor LLM step id for downstream dependencies
+    if (supFollowLlmStepId) {
+      // keep most recent
+      try { (globalThis as any).__lastSupStepId = supFollowLlmStepId; } catch {}
+    }
   }
   
-  return { text: finalText, responseId: currentResponseId! };
+  const supLastStepId = (globalThis as any).__lastSupStepId || supInitLlmStepId;
+  return { text: finalText, responseId: currentResponseId!, supInitStepId: supInitLlmStepId, supLastStepId };
 }

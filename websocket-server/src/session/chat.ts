@@ -545,7 +545,10 @@ export async function handleTextChatMessage(
               if (confirmResponseId) session.previousResponseId = confirmResponseId;
               const text = confirmText || followUpResponse.output_text || "(action completed)";
               const assistantStepId_handled = `step_assistant_${Date.now()}`;
-              appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: assistantStepId_handled, label: ThoughtFlowStepType.AssistantMessage, payload: { text }, depends_on: toolStepId, timestamp: Date.now() });
+              // Prefer to depend on the supervisor assistant_call step if provided by the tool result
+              const supAnchor = (functionResult && typeof functionResult === 'object' && (functionResult as any).supLastStepId) ? (functionResult as any).supLastStepId : undefined;
+              const anchorDepends = supAnchor || toolStepId;
+              appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: assistantStepId_handled, label: ThoughtFlowStepType.AssistantMessage, payload: { text }, depends_on: anchorDepends, timestamp: Date.now() });
               const assistantMessage = {
                 type: 'assistant' as const,
                 content: text,
@@ -580,7 +583,9 @@ export async function handleTextChatMessage(
           }
           const finalResponse = followUpResponse.output_text || "Supervisor agent completed.";
           const assistantStepId_supervisor = `step_assistant_${Date.now()}`;
-          appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: assistantStepId_supervisor, label: ThoughtFlowStepType.AssistantMessage, payload: { text: finalResponse }, depends_on: toolStepId, timestamp: Date.now() });
+          const supAnchor2 = (functionResult && typeof functionResult === 'object' && (functionResult as any).supLastStepId) ? (functionResult as any).supLastStepId : undefined;
+          const anchorDepends2 = supAnchor2 || toolStepId;
+          appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: assistantStepId_supervisor, label: ThoughtFlowStepType.AssistantMessage, payload: { text: finalResponse }, depends_on: anchorDepends2, timestamp: Date.now() });
           const assistantMessage = {
             type: "assistant" as const,
             content: finalResponse,
