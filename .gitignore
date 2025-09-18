@@ -11,3 +11,4 @@ scripts/localtunnel/*.log
 # runtime artifacts (ThoughtFlow, etc.)
 websocket-server/runtime-data/
 .ngrok
+websocket-server/adaptations.edits.json

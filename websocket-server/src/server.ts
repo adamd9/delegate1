@@ -11,6 +11,7 @@ import { registerCatalogRoutes } from './server/routes/catalog';
 import { registerConversationRoutes } from './server/routes/conversations';
 import { registerLogsRoutes } from './server/routes/logs';
 import { registerSessionRoutes } from './server/routes/session';
+import { registerAdaptationsRoutes } from './server/routes/adaptations';
 import { registerCanvasRoutes } from './server/routes/canvas';
 import { getConfig } from './server/config/env';
 import { registerHealthRoutes, setReady } from './server/routes/health';
@@ -18,6 +19,7 @@ import { chatClients, logsClients } from './ws/clients';
 import { finalizeOpenSessionsOnStartup } from './server/startup/finalize';
 import { initToolsAndRegistry } from './server/startup/init';
 import { writeLatestStartupResults } from './server/startup/note';
+import { reloadAdaptations } from './adaptations';
 
 // Ensure we load the env file from this package even if process is started from repo root
 dotenv.config({ path: join(__dirname, '../.env') });
@@ -54,6 +56,13 @@ async function writeLatestStartupResultsIfReady() {
   try {
     await initToolsAndRegistry();
     console.log('[startup] Tools registry initialized');
+    // Ensure adaptations edits file exists and skeleton is merged
+    try {
+      const r = await reloadAdaptations();
+      console.log('[startup] Adaptations initialized (version:', r.version, ')');
+    } catch (e: any) {
+      console.warn('[startup] reloadAdaptations failed:', e?.message || e);
+    }
     toolsReady = true;
     await writeLatestStartupResultsIfReady();
   } catch (e: any) {
@@ -93,6 +102,9 @@ registerCanvasRoutes(app);
 
 // Session control route
 registerSessionRoutes(app, { chatClients, logsClients });
+
+// Adaptations management API
+registerAdaptationsRoutes(app);
 
 // Access token handled in Twilio routes
 

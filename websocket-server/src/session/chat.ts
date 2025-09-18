@@ -14,6 +14,7 @@ import { listConversations as dbListConversations, listConversationEvents, compl
 import { ensureSession, appendEvent, ThoughtFlowStepType, endSession } from "../observability/thoughtflow";
 import { addConversationEvent } from "../db/sqlite";
 import { replayHistoryOnConnect } from './history';
+import { getAdaptationTextById } from '../adaptations';
 
 export function establishChatSocket(
   ws: WebSocket,
@@ -330,16 +331,21 @@ export async function handleTextChatMessage(
       .filter((f: any) => f && f.schema);
     const functionSchemas = baseFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
     console.log("🤖 Calling OpenAI Responses API for text response...");
-    // Define system instructions
+    // Define system instructions (context, prompt adaptations, base policy)
     const baseInstructions = getDefaultAgent().instructions;
     const contextInstructionString = contextInstructions(context);
-    const instructions = [contextInstructionString, baseInstructions].join('\n');
+    // Build prompt.adaptations text for this insertion point by ID
+    const adaptationIdentifier = 'adn.prompt.core.handleText';
+    const singleAdapt = await getAdaptationTextById(adaptationIdentifier);
+    const adaptationsText = singleAdapt?.text || '';
+    const instructions = [contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
     // ThoughtFlow snapshots for long-lived prompt inputs (Approach B)
     const policyHash = Buffer.from(baseInstructions, 'utf8').toString('base64').slice(0, 12);
     const toolsHash = Buffer.from(JSON.stringify(functionSchemas), 'utf8').toString('base64').slice(0, 12);
     const policyStepId = `snp_policy_${policyHash}`;
     const toolsStepId = `snp_tools_${toolsHash}`;
     const contextStepId = `snp_context_${requestId}`;
+    const adaptationsStepId = `snp_adapt_${requestId}`;
     appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: policyStepId, label: 'policy.snapshot', payload: { version: policyHash, produced_at: (session.thoughtflow as any)?.startedAt || Date.now(), content_preview: baseInstructions.slice(0, 240) }, timestamp: Date.now() });
     appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: policyStepId, timestamp: Date.now() });
     const toolNames = functionSchemas.map((s: any) => s?.name).filter(Boolean);
@@ -348,6 +354,23 @@ export async function handleTextChatMessage(
     appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: toolsStepId, timestamp: Date.now() });
     appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: contextStepId, label: 'context.preamble', payload: { context }, timestamp: Date.now() });
     appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: contextStepId, timestamp: Date.now() });
+    // Emit prompt.adaptations step with a clear identifier for reflection/editing
+    appendEvent({
+      type: 'step.started',
+      conversation_id: conversationId,
+      step_id: adaptationsStepId,
+      label: 'prompt.adaptations',
+      payload: {
+        adaptation_id: adaptationIdentifier,
+        content_preview: (adaptationsText || '').slice(0, 200),
+        content_length: (adaptationsText || '').length,
+        scope: { agent: 'base', channel },
+        modifiable: true,
+        version: singleAdapt?.version || 0,
+      },
+      timestamp: Date.now(),
+    });
+    appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: adaptationsStepId, timestamp: Date.now() });
     // Prepare request body for Responses API
     const requestBody: any = {
       model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
@@ -372,6 +395,7 @@ export async function handleTextChatMessage(
     const llmStepId = `step_llm_${requestId}`;
     const provenanceParts = [
       { type: 'context_preamble', value: contextInstructionString },
+      { type: 'prompt_adaptations', value: adaptationsText },
       { type: 'personality', value: baseInstructions },
       ...(session.previousResponseId ? [{ type: 'previous_response_id', value: String(session.previousResponseId) }] : []),
       { type: 'user_instruction', value: content },
@@ -382,7 +406,8 @@ export async function handleTextChatMessage(
       final_prompt: instructions,
       assembly: [
         { part: 0, start: 0, end: contextInstructionString.length },
-        { part: 1, start: contextInstructionString.length + 1, end: instructions.length }
+        { part: 1, start: contextInstructionString.length + 1, end: contextInstructionString.length + 1 + (adaptationsText ? (adaptationsText.length) : 0) },
+        { part: 2, start: contextInstructionString.length + 1 + (adaptationsText ? (adaptationsText.length + 1) : 0), end: instructions.length }
       ]
     };
     appendEvent({
@@ -390,7 +415,7 @@ export async function handleTextChatMessage(
       conversation_id: conversationId,
       step_id: llmStepId,
       label: ThoughtFlowStepType.AssistantCall,
-      depends_on: [userStepId, policyStepId, toolsStepId, contextStepId],
+      depends_on: [userStepId, policyStepId, toolsStepId, contextStepId, adaptationsStepId],
       payload: {
         name: 'openai.responses.create',
         model: requestBody.model,
