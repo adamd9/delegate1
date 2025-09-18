@@ -78,6 +78,11 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
   };
 
   const addTranscriptBreadcrumb: TranscriptContextValue["addTranscriptBreadcrumb"] = (title, data, isHidden = false) => {
+    // Prefer an explicit numeric timestamp in data for consistent ordering (e.g., WS replay)
+    const createdAt = (() => {
+      const ts = (data as any)?.timestamp;
+      return typeof ts === 'number' ? ts : Date.now();
+    })();
     setTranscriptItems((prev) => [
       ...prev,
       {
@@ -87,7 +92,7 @@ export const TranscriptProvider: FC<PropsWithChildren> = ({ children }) => {
         data,
         expanded: false,
         timestamp: newTimestampPretty(),
-        createdAtMs: Date.now(),
+        createdAtMs: createdAt,
         status: "DONE",
         isHidden,
       },

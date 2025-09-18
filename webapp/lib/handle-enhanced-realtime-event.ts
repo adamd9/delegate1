@@ -130,6 +130,8 @@ export default function handleEnhancedRealtimeEvent(
               itemId: lastFinalizedVoiceUserItemId,
               query: parsedArgs.query,
               source: safeName,
+              // Use WS event timestamp when replaying for correct ordering
+              ...(isReplay && typeof (event as any).timestamp === 'number' ? { timestamp: (event as any).timestamp } : {}),
             },
             breadcrumbHidden
           );
@@ -149,10 +151,11 @@ export default function handleEnhancedRealtimeEvent(
               call_id: event.item.call_id,
               kind: 'function_call',
             } } : {}),
+            ...(isReplay && typeof event.timestamp === 'number' ? { timestamp: event.timestamp } : {}),
           },
           breadcrumbHidden
         );
-        if (isReplay && typeof event.timestamp === 'number') setLastBreadcrumbTimestamp(transcript, event.timestamp);
+        // createdAtMs for replayed breadcrumbs is derived from data.timestamp in context
         // Attach debug metadata
         if (isReplay) {
           try {
@@ -267,6 +270,7 @@ export default function handleEnhancedRealtimeEvent(
               itemId: lastFinalizedVoiceUserItemId,
               query: parsedArgs.query,
               source: safeName,
+              ...(isReplay && typeof (event as any).timestamp === 'number' ? { timestamp: (event as any).timestamp } : {}),
             },
             isReplay
           );
@@ -286,10 +290,11 @@ export default function handleEnhancedRealtimeEvent(
               call_id: event.item.call_id,
               kind: 'function_call',
             } } : {}),
+            ...(isReplay && typeof event.timestamp === 'number' ? { timestamp: event.timestamp } : {}),
           },
           isReplay
         );
-        if (isReplay && typeof event.timestamp === 'number') setLastBreadcrumbTimestamp(transcript, event.timestamp);
+        // createdAtMs for replayed breadcrumbs is derived from data.timestamp in context
       }
       break;
 
@@ -514,7 +519,7 @@ export default function handleEnhancedRealtimeEvent(
         },
         shouldHide
       );
-      if ((event.replay === true) && typeof event.timestamp === 'number') setLastBreadcrumbTimestamp(transcript, event.timestamp);
+      // createdAtMs for replayed breadcrumbs is derived from data.timestamp in context
       if ((event.replay === true)) {
         try {
           const meta = {
@@ -588,7 +593,7 @@ export default function handleEnhancedRealtimeEvent(
         },
         event.replay === true && !isHistoryExpanded()
       );
-      if ((event.replay === true) && typeof event.timestamp === 'number') setLastBreadcrumbTimestamp(transcript, event.timestamp);
+      // createdAtMs for replayed breadcrumbs is derived from data.timestamp in context
       if ((event.replay === true)) {
         try {
           const meta = {
