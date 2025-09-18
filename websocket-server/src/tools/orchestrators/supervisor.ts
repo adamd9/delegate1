@@ -27,8 +27,9 @@ export async function handleSupervisorToolCalls(
   instructions: string,
   input: string | ResponsesInputItem[],
   tools: any[],
+  dependsOnStepId: string,
   previousResponseId?: string,
-  addBreadcrumb?: (title: string, data?: any) => void
+  addBreadcrumb?: (title: string, data?: any) => void,
 ): Promise<{ text: string, responseId: string }> {
   let currentResponseId = previousResponseId;
   let iterations = 0;
@@ -47,6 +48,11 @@ export async function handleSupervisorToolCalls(
     }
   }
   const openai = new OpenAI(options);
+
+  // Hard requirement: supervisor orchestration must link to the originating tool_call step
+  if (!dependsOnStepId) {
+    throw new Error('handleSupervisorToolCalls requires dependsOnStepId to link assistant_call to the triggering tool_call step');
+  }
   
   // Initial request
   // If the toolset includes the builtin web_search tool, minimal effort is not allowed.
@@ -70,6 +76,7 @@ export async function handleSupervisorToolCalls(
           conversation_id: convId,
           step_id: supInitAdaptStepId,
           label: 'prompt.adaptations',
+          ...(dependsOnStepId ? { depends_on: dependsOnStepId } : {}),
           payload: {
             adaptation_id: 'adn.prompt.supervisor.initial',
             content_preview: supInitText.slice(0, 200),
@@ -116,12 +123,15 @@ export async function handleSupervisorToolCalls(
         ],
         final_prompt: [supInitText, instructions].filter(Boolean).join('\n'),
       } as any;
+      const initDepends: string[] = [];
+      if (dependsOnStepId) initDepends.push(dependsOnStepId);
+      if (supInitAdaptStepId) initDepends.push(supInitAdaptStepId);
       appendEvent({
         type: 'step.started',
         conversation_id: convId,
         step_id: supInitLlmStepId,
         label: 'assistant_call',
-        ...(supInitAdaptStepId ? { depends_on: [supInitAdaptStepId] } : {}),
+        ...(initDepends.length ? { depends_on: initDepends } : {}),
         payload: {
           name: 'openai.responses.create',
           model: supervisorAgentConfig.model,
@@ -236,6 +246,7 @@ export async function handleSupervisorToolCalls(
             conversation_id: convId,
             step_id: supFollowAdaptStepId,
             label: 'prompt.adaptations',
+            ...(dependsOnStepId ? { depends_on: dependsOnStepId } : {}),
             payload: {
               adaptation_id: 'adn.prompt.supervisor.followup',
               content_preview: supFollowText.slice(0, 200),
@@ -278,15 +289,16 @@ export async function handleSupervisorToolCalls(
           ],
           ...(supFollowText ? { final_prompt: supFollowText } : {}),
         } as any;
+        const followDepends: string[] = [];
+        if (dependsOnStepId) followDepends.push(dependsOnStepId);
+        if (supInitLlmStepId) followDepends.push(supInitLlmStepId);
+        if (supFollowAdaptStepId) followDepends.push(supFollowAdaptStepId);
         appendEvent({
           type: 'step.started',
           conversation_id: convId,
           step_id: supFollowLlmStepId,
           label: 'assistant_call',
-          depends_on: [
-            ...(supInitLlmStepId ? [supInitLlmStepId] : []),
-            ...(supFollowAdaptStepId ? [supFollowAdaptStepId] : []),
-          ],
+          ...(followDepends.length ? { depends_on: followDepends } : {}),
           payload: {
             name: 'openai.responses.create',
             model: supervisorAgentConfig.model,

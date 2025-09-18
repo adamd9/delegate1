@@ -87,7 +87,7 @@ export async function executeFunctionCall(call: FunctionCallItem, ctx: Orchestra
   const allFns = getAgent('base').tools as FunctionHandler[];
   const handler = allFns.find((f: FunctionHandler) => f.schema.name === call.name);
   if (!handler) throw new Error(`No handler found for function: ${call.name}`);
-  const parsed = safeParseArgs(call.arguments);
+  let parsed = safeParseArgs(call.arguments);
   if (ctx.announce !== false) {
     console.log(`🔧 Function call detected: ${call.name}`);
     console.log(`🧠 Executing ${call.name} with args:`, JSON.stringify(parsed));
@@ -115,6 +115,13 @@ export async function executeFunctionCall(call: FunctionCallItem, ctx: Orchestra
         });
       }
     } catch {}
+  }
+  // Provide a tool_call step id to downstream handlers so they can declare proper
+  // dependencies (e.g., supervisor assistant_call depends_on tool_call). If we
+  // didn't create a step here (because chat.ts already did), derive it from call_id.
+  const effectiveToolStepId = tfStepId || (call.call_id ? `step_tool_${call.call_id}` : undefined);
+  if (effectiveToolStepId) {
+    parsed = { ...parsed, __dependsOnStepId: effectiveToolStepId };
   }
   // Emit delta using the model-provided call_id to avoid duplicate-looking entries
   emitDelta(ctx.logsClients, call.name, parsed, call.call_id);

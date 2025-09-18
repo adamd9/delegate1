@@ -44,12 +44,19 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
         role: "user"
       };
 
+      // Hidden plumbing: orchestrator passes the originating tool_call ThoughtFlow step id
+      const dependsOnStepId = (args as any).__dependsOnStepId as string | undefined;
+      if (!dependsOnStepId) {
+        throw new Error('getNextResponseFromSupervisor: missing dependsOnStepId from orchestrator');
+      }
+
       const { text: finalResponse } = await handleSupervisorToolCalls(
         supervisorAgentInstructions,
         [input],
         tools,
+        dependsOnStepId,
         undefined,
-        addBreadcrumb
+        addBreadcrumb,
       );
 
       return finalResponse;
