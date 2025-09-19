@@ -96,12 +96,11 @@ export async function handleSupervisorToolCalls(
   const hasWebSearch = Array.isArray(tools) && tools.some((t: any) => t && t.type === 'web_search');
   const reasoning: { effort: 'minimal' | 'low' } = { effort: hasWebSearch ? 'low' : 'minimal' };
 
-  // Inject supervisor initial adaptation
+  // Inject supervisor initial adaptation (emit TF even if empty to reflect component presence)
   const supInitAdapt = await getAdaptationTextById('adn.prompt.supervisor.initial');
   const supInitText = (supInitAdapt?.text || '').trim();
   let supInitAdaptStepId: string | undefined;
-  if (supInitText) {
-    // Instrument prompt.adaptations step when possible
+  if (supInitAdapt) {
     try {
       ensureSession();
       const req = session.currentRequest;
@@ -154,7 +153,7 @@ export async function handleSupervisorToolCalls(
       const toolNames = Array.isArray(tools) ? tools.map((t: any) => t?.name).filter(Boolean) : [];
       const provenance = {
         parts: [
-          ...(supInitText ? [{ type: 'prompt_adaptations', value: supInitText }] as any[] : []),
+          ...(supInitAdapt ? [{ type: 'prompt_adaptations', value: supInitText }] as any[] : []),
           { type: 'supervisor_instruction', value: instructions },
           { type: 'tool_schemas_snapshot', value: `tools:${Array.isArray(tools) ? tools.length : 0}` },
         ],
@@ -273,7 +272,7 @@ export async function handleSupervisorToolCalls(
     const supFollowAdapt = await getAdaptationTextById('adn.prompt.supervisor.followup');
     const supFollowText = (supFollowAdapt?.text || '').trim();
     let supFollowAdaptStepId: string | undefined;
-    if (supFollowText) {
+    if (supFollowAdapt) {
       try {
         ensureSession();
         const req = session.currentRequest;
@@ -322,7 +321,7 @@ export async function handleSupervisorToolCalls(
         supFollowLlmStepId = `step_sup_llm_follow_${Date.now()}`;
         const provenance = {
           parts: [
-            ...(supFollowText ? [{ type: 'prompt_adaptations', value: supFollowText }] as any[] : []),
+            ...(supFollowAdapt ? [{ type: 'prompt_adaptations', value: supFollowText }] as any[] : []),
             { type: 'previous_response_id', value: String(currentResponseId) },
             { type: 'tool_schemas_snapshot', value: `tools:${Array.isArray(tools) ? tools.length : 0}` },
           ],
