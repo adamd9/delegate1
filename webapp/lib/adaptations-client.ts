@@ -4,6 +4,7 @@ export type AdaptationItem = {
   id: string;
   title: string;
   content: string;
+  description?: string;
   enabled?: boolean;
   scope: {
     agents?: Array<'base' | 'supervisor'>;
