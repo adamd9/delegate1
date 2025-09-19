@@ -53,6 +53,43 @@ export async function handleSupervisorToolCalls(
   if (!dependsOnStepId) {
     throw new Error('handleSupervisorToolCalls requires dependsOnStepId to link assistant_call to the triggering tool_call step');
   }
+  // Supervisor prompt component snapshots (policy + tool schemas)
+  let supPolicyStepId: string | undefined;
+  let supToolsStepId: string | undefined;
+  try {
+    ensureSession();
+    const req = session.currentRequest;
+    if (req) {
+      const convId = `conv_${req.id}`;
+      // Policy snapshot (hash and preview)
+      const supPolicyHash = Buffer.from(instructions, 'utf8').toString('base64').slice(0, 12);
+      supPolicyStepId = `snp_sup_policy_${supPolicyHash}`;
+      appendEvent({
+        type: 'step.started',
+        conversation_id: convId,
+        step_id: supPolicyStepId,
+        label: 'policy.snapshot',
+        depends_on: dependsOnStepId,
+        payload: { version: supPolicyHash, produced_at: Date.now(), content_preview: instructions.slice(0, 240) },
+        timestamp: Date.now(),
+      });
+      appendEvent({ type: 'step.completed', conversation_id: convId, step_id: supPolicyStepId, timestamp: Date.now() });
+      // Tool schemas snapshot (names + count)
+      const toolNames = Array.isArray(tools) ? tools.map((t: any) => t?.name).filter(Boolean) : [];
+      const toolsHash = Buffer.from(JSON.stringify(toolNames), 'utf8').toString('base64').slice(0, 12);
+      supToolsStepId = `snp_sup_tools_${toolsHash}`;
+      appendEvent({
+        type: 'step.started',
+        conversation_id: convId,
+        step_id: supToolsStepId,
+        label: 'tool.schemas.snapshot',
+        depends_on: dependsOnStepId,
+        payload: { version: toolsHash, count: toolNames.length, names: toolNames, schemas_preview: JSON.stringify((tools || []).slice(0, 3), null, 2) },
+        timestamp: Date.now(),
+      });
+      appendEvent({ type: 'step.completed', conversation_id: convId, step_id: supToolsStepId, timestamp: Date.now() });
+    }
+  } catch {}
   
   // Initial request
   // If the toolset includes the builtin web_search tool, minimal effort is not allowed.
@@ -125,6 +162,8 @@ export async function handleSupervisorToolCalls(
       } as any;
       const initDepends: string[] = [];
       if (dependsOnStepId) initDepends.push(dependsOnStepId);
+      if (supPolicyStepId) initDepends.push(supPolicyStepId);
+      if (supToolsStepId) initDepends.push(supToolsStepId);
       if (supInitAdaptStepId) initDepends.push(supInitAdaptStepId);
       appendEvent({
         type: 'step.started',
@@ -291,6 +330,8 @@ export async function handleSupervisorToolCalls(
         } as any;
         const followDepends: string[] = [];
         if (dependsOnStepId) followDepends.push(dependsOnStepId);
+        if (supPolicyStepId) followDepends.push(supPolicyStepId);
+        if (supToolsStepId) followDepends.push(supToolsStepId);
         if (supInitLlmStepId) followDepends.push(supInitLlmStepId);
         if (supFollowAdaptStepId) followDepends.push(supFollowAdaptStepId);
         appendEvent({
