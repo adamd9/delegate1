@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc && npm run copy-assets",
-    "copy-assets": "cp src/twiml.xml dist/ && mkdir -p dist/config && cp -R src/config/* dist/config/ || true",
+    "copy-assets": "cp src/twiml.xml dist/ && mkdir -p dist/config && if [ -d src/config ]; then cp -R src/config/* dist/config/; fi",
     "start": "node dist/server.js",
     "dev": "nodemon --watch 'src/**/*' --watch '.env' --ext 'ts,js,xml,env' --exec 'ts-node' src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1"

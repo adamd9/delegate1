@@ -16,5 +16,5 @@ export function registerMcpTools() {
       try { return JSON.stringify(out); } catch { return String(out); }
     }
   }));
-  if (tools.length) registerTools(providerId, tools);
+  registerTools(providerId, tools);
 }

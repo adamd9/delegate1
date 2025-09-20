@@ -43,6 +43,22 @@ export class MCPClient {
     this.initialized = true;
   }
 
+  async reset() {
+    for (const server of this.servers.values()) {
+      try {
+        const sdkClient: any = server.sdkClient;
+        if (sdkClient && typeof sdkClient.close === 'function') {
+          await sdkClient.close();
+        }
+      } catch (err: any) {
+        log.error('Error closing MCP client connection', err?.message || err);
+      }
+    }
+    this.servers.clear();
+    this.toolToServer.clear();
+    this.initialized = false;
+  }
+
   getServer(serverId: string) {
     return this.servers.get(serverId);
   }
