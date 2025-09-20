@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs';
 import { randomUUID } from 'crypto';
 import { join, sep } from 'path';
 import { session } from '../session/state';
-import { upsertSession, finalizeSession, upsertConversation, completeConversation, addConversationEvent, getLastEventTimestampForConversation } from '../db/sqlite';
+import { upsertSession, finalizeSession, upsertConversation, completeConversation, addConversationEvent, getLastEventTimestampForConversation, upsertThoughtflowArtifact } from '../db/sqlite';
 
 // Explicit step types for ThoughtFlow events
 export enum ThoughtFlowStepType {
@@ -14,7 +14,7 @@ export enum ThoughtFlowStepType {
   Generic = 'generic',
 }
 
-// Store artifacts under websocket-server/runtime-data/thoughtflow (project root relative)
+// Store JSONL event logs under websocket-server/runtime-data/thoughtflow (project root relative)
 // Make this work consistently in both ts-node (src) and compiled (dist) runs.
 const isDist = __dirname.includes(`${sep}dist${sep}`);
 const baseRoot = isDist ? join(__dirname, '..', '..', '..') : join(__dirname, '..', '..');
@@ -68,11 +68,11 @@ export function appendEvent(event: any) {
           completeConversation({ id: convId, status, ended_at: event.ended_at });
           // Generate per-conversation ThoughtFlow artifacts at completion
           try {
-            const { jsonPath, d2Path } = writeConversationArtifacts(sid, convId);
+            const { artifactId } = writeConversationArtifacts(sid, convId);
             const PORT = parseInt(process.env.PORT || '8081', 10);
             const PUBLIC_URL = process.env.PUBLIC_URL || '';
             const EFFECTIVE_PUBLIC_URL = (PUBLIC_URL && PUBLIC_URL.trim()) || `http://localhost:${PORT}`;
-            const baseName = `${sid}.${convId}`;
+            const baseName = artifactId;
             const url_json = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.json`;
             const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.d2`;
             const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${baseName}.d2`;
@@ -82,7 +82,7 @@ export function appendEvent(event: any) {
               id: `ti_tf_conv_${convId}`,
               conversation_id: convId,
               kind: 'thoughtflow_artifacts',
-              payload: { session_id: sid, conversation_id: convId, url_json, url_d2, url_d2_raw, url_d2_viewer },
+              payload: { session_id: sid, conversation_id: convId, artifact_id: baseName, url_json, url_d2, url_d2_raw, url_d2_viewer },
               created_at_ms: lastTs + 1,
             });
           } catch {}
@@ -94,7 +94,29 @@ export function appendEvent(event: any) {
   }
 }
 
-function writeConversationArtifacts(sessionId: string, conversationId: string): { jsonPath: string; d2Path: string } {
+function persistThoughtflowArtifacts(opts: { artifactId: string; sessionId: string; conversationId?: string | null; json: string; d2: string }) {
+  const timestamp = new Date().toISOString();
+  upsertThoughtflowArtifact({
+    artifact_id: opts.artifactId,
+    session_id: opts.sessionId,
+    conversation_id: opts.conversationId || null,
+    format: 'json',
+    content: opts.json,
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+  upsertThoughtflowArtifact({
+    artifact_id: opts.artifactId,
+    session_id: opts.sessionId,
+    conversation_id: opts.conversationId || null,
+    format: 'd2',
+    content: opts.d2,
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+}
+
+function writeConversationArtifacts(sessionId: string, conversationId: string): { artifactId: string } {
   const tf = (session.thoughtflow ||= {} as any);
   const jsonlPath = join(BASE_DIR, `${sessionId}.jsonl`);
   const raw = readFileSync(jsonlPath, 'utf8');
@@ -167,21 +189,24 @@ function writeConversationArtifacts(sessionId: string, conversationId: string): 
     ],
   } as const;
   const baseName = `${sessionId}.${conversationId}`;
-  const jsonPath = join(BASE_DIR, `${baseName}.json`);
-  writeFileSync(jsonPath, JSON.stringify(consolidated, null, 2));
+  const jsonContent = JSON.stringify(consolidated, null, 2);
   const d2 = generateD2(consolidated as any);
-  const d2Path = join(BASE_DIR, `${baseName}.d2`);
-  writeFileSync(d2Path, d2);
-  return { jsonPath, d2Path };
+  persistThoughtflowArtifacts({
+    artifactId: baseName,
+    sessionId,
+    conversationId,
+    json: jsonContent,
+    d2,
+  });
+  return { artifactId: baseName };
 }
 
-export function endSession(opts?: { statusOverride?: string; sessionId?: string }): { id: string; jsonPath: string; d2Path: string } | null {
+export function endSession(opts?: { statusOverride?: string; sessionId?: string }): { id: string; artifactId: string } | null {
   try {
     const tf = (session.thoughtflow ||= {} as any);
     const active = ensureSession();
     const id = opts?.sessionId || active.id;
     const jsonlPath = opts?.sessionId ? join(BASE_DIR, `${opts.sessionId}.jsonl`) : active.jsonlPath;
-    const jsonPath = join(BASE_DIR, `${id}.json`);
     // Read JSONL events and aggregate into runs/steps
     const raw = readFileSync(jsonlPath, 'utf8');
     const lines = raw.split(/\n+/).filter(Boolean);
@@ -320,11 +345,15 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
       ended_at: new Date().toISOString(),
       conversations,
     } as const;
-    writeFileSync(jsonPath, JSON.stringify(consolidated, null, 2));
+    const jsonContent = JSON.stringify(consolidated, null, 2);
     // Generate a simple D2 diagram for the session
     const d2 = generateD2(consolidated);
-    const d2Path = join(BASE_DIR, `${id}.d2`);
-    writeFileSync(d2Path, d2);
+    persistThoughtflowArtifacts({
+      artifactId: id,
+      sessionId: id,
+      json: jsonContent,
+      d2,
+    });
     // Persist per-conversation status into SQLite (in case no explicit conversation.completed events were emitted)
     try {
       for (const c of conversations as any[]) {
@@ -335,11 +364,11 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
         } catch {}
         // Best-effort: ensure per-conversation ThoughtFlow artifact links exist (if not already added during conversation.completed)
         try {
-          const { jsonPath: jPath, d2Path: dPath } = writeConversationArtifacts(id, convId);
+          const { artifactId } = writeConversationArtifacts(id, convId);
           const PORT = parseInt(process.env.PORT || '8081', 10);
           const PUBLIC_URL = process.env.PUBLIC_URL || '';
           const EFFECTIVE_PUBLIC_URL = (PUBLIC_URL && PUBLIC_URL.trim()) || `http://localhost:${PORT}`;
-          const baseName = `${id}.${convId}`;
+          const baseName = artifactId;
           const url_json = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.json`;
           const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.d2`;
           const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${baseName}.d2`;
@@ -349,7 +378,7 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
             id: `ti_tf_conv_${convId}`,
             conversation_id: convId,
             kind: 'thoughtflow_artifacts',
-            payload: { session_id: id, conversation_id: convId, url_json, url_d2, url_d2_raw, url_d2_viewer },
+            payload: { session_id: id, conversation_id: convId, artifact_id: baseName, url_json, url_d2, url_d2_raw, url_d2_viewer },
             created_at_ms: lastTs + 1,
           });
         } catch {}
@@ -361,7 +390,7 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
       const sessionStatus = deriveSessionStatus(conversations as any) || 'completed';
       finalizeSession(id, opts?.statusOverride || sessionStatus, consolidated.ended_at);
     } catch {}
-    return { id, jsonPath, d2Path };
+    return { id, artifactId: id };
   } catch (e) {
     console.warn('[thoughtflow] endSession failed:', (e as any)?.message || e);
     return null;

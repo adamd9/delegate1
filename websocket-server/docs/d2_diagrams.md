@@ -78,11 +78,11 @@ Rendering styles:
 - Top-level run container uses `class: runbox`.
 
 Artifact locations and UI link:
-- On session finalization, artifacts are written under `websocket-server/runtime-data/thoughtflow/`:
+- On session finalization, artifacts are stored in SQLite (`thoughtflow_artifacts` table) using `<session_id>` as the artifact identifier.
   - `<session_id>.json` (consolidated ThoughtFlow runs/steps)
   - `<session_id>.d2` (auto-generated diagram)
-- The server emits a `thoughtflow.artifacts` event via `/logs` with `json_path` and `d2_path`.
-- The web app surfaces a breadcrumb titled "🧩 ThoughtFlow artifacts" linking to these paths.
+- The server emits a `thoughtflow.artifacts` event via `/logs` with direct URLs backed by the database.
+- The web app surfaces a breadcrumb titled "🧩 ThoughtFlow artifacts" linking to these endpoints.
 
 Best practices:
 - Keep labels short; move verbose details into tooltips.
