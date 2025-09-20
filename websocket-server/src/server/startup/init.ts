@@ -6,7 +6,10 @@ import { initToolsRegistry } from '../../tools/init';
  * This encapsulates startup initialization without leaking details into server.ts.
  */
 export async function initToolsAndRegistry(): Promise<void> {
-  await initMCPDiscovery();
-  console.log('[startup] MCP discovery initialized');
+  const summary = await initMCPDiscovery();
+  console.log(
+    '[startup] MCP discovery initialized',
+    `(servers: ${summary.serverCount}, tools: ${summary.toolCount}, attempted: ${summary.attempted}, failed: ${summary.failed})`
+  );
   await initToolsRegistry();
 }
