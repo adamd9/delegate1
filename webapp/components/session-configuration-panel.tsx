@@ -201,6 +201,9 @@ const SessionConfigurationPanel: React.FC<SessionConfigurationPanelProps> = ({
             <Button variant="outline" size="sm" asChild>
               <a href="/adaptations" target="_blank" rel="noreferrer">Adaptations</a>
             </Button>
+            <Button variant="outline" size="sm" asChild>
+              <a href="/mcp-servers" target="_blank" rel="noreferrer">MCP Servers</a>
+            </Button>
             {saveStatus === "error" ? (
               <span className="text-xs text-red-500 flex items-center gap-1">
                 <AlertCircle className="h-3 w-3" />

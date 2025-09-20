@@ -1,7 +1,6 @@
 
-import { AgentConfig } from './types';
+import { AgentConfig, FunctionHandler } from './types';
 import { agentPersonality } from "./personality";
-import { getDiscoveredMcpHandlers } from '../tools/mcp/adapter';
 
 // Supervisor Agent Configuration
 // NOTE:
@@ -15,7 +14,7 @@ import { getDiscoveredMcpHandlers } from '../tools/mcp/adapter';
 //   by intersecting registered providers (builtin/local/MCP) with the supervisor agent policy.
 //   This also allows inclusion by tags (e.g., tools tagged `supervisor-allowed` like builtin web_search).
 export const supervisorAgentConfig: AgentConfig = {
-  name: "delegate_supervisor", 
+  name: "delegate_supervisor",
   instructions: `You are an expert supervisor agent providing guidance to a junior AI assistant. 
 
 The junior agent has escalated this query to you: "{{query}}"
@@ -30,11 +29,10 @@ Guidelines:
 - Provide actionable guidance
 - Format your response for receipt and presentation by the junior agent.`,
   voice: agentPersonality.voice,
-  tools: [
-    // Tools listed here inform the registry policy (allowNames) for the supervisor agent.
-    // They must also be registered by a provider (builtin/local/MCP) to be available at runtime.
-    // Dynamically discovered MCP tools (supervisor-only)
-    ...getDiscoveredMcpHandlers()
-  ],
+  tools: [],
   model: "gpt-5-mini",
 };
+
+export function updateSupervisorMcpTools(handlers: FunctionHandler[]) {
+  supervisorAgentConfig.tools = handlers;
+}

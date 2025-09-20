@@ -1,9 +1,10 @@
-import { registerTools } from "../registry";
+import { clearToolsByOrigin, registerTools } from "../registry";
 import { getDiscoveredMcpHandlers } from "../mcp/adapter";
 
 export function registerMcpTools() {
   const providerId = 'mcp';
   const handlers = getDiscoveredMcpHandlers();
+  clearToolsByOrigin('mcp');
   const tools = handlers.map((h) => ({
     name: h.schema.name,
     description: h.schema.description || '',
