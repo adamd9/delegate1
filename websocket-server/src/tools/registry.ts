@@ -51,6 +51,21 @@ export function registerTools(providerId: string, canonical: (Omit<CanonicalTool
   }
 }
 
+export function clearToolsByOrigin(origin: ToolOrigin) {
+  for (const [id, tool] of Array.from(toolsById.entries())) {
+    if (tool.origin === origin) {
+      toolsById.delete(id);
+      idBySanitized.delete(tool.sanitizedName);
+    }
+  }
+}
+
+export function resetToolsRegistry() {
+  toolsById.clear();
+  idBySanitized.clear();
+  agents.clear();
+}
+
 export function listAllTools(): CanonicalTool[] {
   return Array.from(toolsById.values());
 }
