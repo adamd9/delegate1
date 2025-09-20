@@ -12,6 +12,7 @@ import { registerConversationRoutes } from './server/routes/conversations';
 import { registerLogsRoutes } from './server/routes/logs';
 import { registerSessionRoutes } from './server/routes/session';
 import { registerAdaptationsRoutes } from './server/routes/adaptations';
+import { registerMcpServersRoutes } from './server/routes/mcpServers';
 import { registerCanvasRoutes } from './server/routes/canvas';
 import { getConfig } from './server/config/env';
 import { registerHealthRoutes, setReady } from './server/routes/health';
@@ -105,6 +106,9 @@ registerSessionRoutes(app, { chatClients, logsClients });
 
 // Adaptations management API
 registerAdaptationsRoutes(app);
+
+// MCP server configuration API
+registerMcpServersRoutes(app);
 
 // Access token handled in Twilio routes
 

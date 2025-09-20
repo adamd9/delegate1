@@ -23,6 +23,20 @@ export interface AgentPolicy {
 const toolsById = new Map<string, CanonicalTool>();
 const idBySanitized = new Map<string, string>();
 const agents = new Map<string, AgentPolicy>();
+const providerToIds = new Map<string, string[]>();
+
+function removeProviderTools(providerId: string) {
+  const ids = providerToIds.get(providerId);
+  if (!ids) return;
+  for (const id of ids) {
+    const record = toolsById.get(id);
+    if (record) {
+      idBySanitized.delete(record.sanitizedName);
+    }
+    toolsById.delete(id);
+  }
+  providerToIds.delete(providerId);
+}
 
 export function sanitizeToolName(name: string) {
   return name.replace(/[^a-zA-Z0-9_-]/g, '-');
@@ -33,6 +47,8 @@ export function registerAgent(id: string, policy: AgentPolicy) {
 }
 
 export function registerTools(providerId: string, canonical: (Omit<CanonicalTool, 'id' | 'sanitizedName'> & { name: string })[]) {
+  removeProviderTools(providerId);
+  const registeredIds: string[] = [];
   for (const t of canonical) {
     const id = `${providerId}:${t.name}`;
     const sanitizedName = sanitizeToolName(t.name);
@@ -48,7 +64,9 @@ export function registerTools(providerId: string, canonical: (Omit<CanonicalTool
     };
     toolsById.set(id, record);
     idBySanitized.set(sanitizedName, id);
+    registeredIds.push(id);
   }
+  providerToIds.set(providerId, registeredIds);
 }
 
 export function listAllTools(): CanonicalTool[] {
