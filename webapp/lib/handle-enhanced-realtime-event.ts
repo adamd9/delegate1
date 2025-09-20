@@ -502,6 +502,7 @@ export default function handleEnhancedRealtimeEvent(
       addTranscriptBreadcrumb(
         `🔧 ThoughtFlow artifacts written`,
         {
+          artifact_id: (event as any).artifact_id,
           json_path: event.json_path,
           d2_path: event.d2_path,
           url_json: event.url_json,
@@ -509,7 +510,7 @@ export default function handleEnhancedRealtimeEvent(
           url_d2_raw: event.url_d2_raw,
           url_d2_viewer: event.url_d2_viewer,
           timestamp: event.timestamp,
-          note: "Artifacts written on server under websocket-server/runtime-data/thoughtflow",
+          note: "Artifacts stored in SQLite (thoughtflow_artifacts table) for consistent access",
           _replay: shouldHide,
           ...(event.replay === true ? { _meta: {
             session_id: (event as any).session_id,
@@ -526,6 +527,7 @@ export default function handleEnhancedRealtimeEvent(
             session_id: (event as any).session_id,
             conversation_id: (event as any).conversation_id,
             kind: 'thoughtflow_artifacts',
+            artifact_id: (event as any).artifact_id,
           } as any;
           const items = transcript.transcriptItems;
           const last = items[items.length - 1];
