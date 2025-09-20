@@ -52,6 +52,22 @@ export function getDb() {
       ON conversation_events(conversation_id, seq);
     CREATE INDEX IF NOT EXISTS idx_conversation_events_conversation_created_at
       ON conversation_events(conversation_id, created_at_ms);
+    CREATE TABLE IF NOT EXISTS thoughtflow_artifacts (
+      artifact_id TEXT NOT NULL,
+      format TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      conversation_id TEXT,
+      content TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      PRIMARY KEY (artifact_id, format),
+      FOREIGN KEY(session_id) REFERENCES sessions(id),
+      FOREIGN KEY(conversation_id) REFERENCES conversations(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_thoughtflow_artifacts_session
+      ON thoughtflow_artifacts(session_id);
+    CREATE INDEX IF NOT EXISTS idx_thoughtflow_artifacts_conversation
+      ON thoughtflow_artifacts(conversation_id);
   `);
   return db;
 }
@@ -152,4 +168,54 @@ export function getEventCountForSession(session_id: string): number {
   const db = getDb();
   const row = db.prepare('SELECT COUNT(1) AS cnt FROM conversation_events ti JOIN conversations c ON ti.conversation_id = c.id WHERE c.session_id = ?').get(session_id);
   return row?.cnt || 0;
+}
+
+export type ThoughtflowArtifactFormat = 'json' | 'd2' | 'jsonl';
+
+export function upsertThoughtflowArtifact(rec: {
+  artifact_id: string;
+  session_id: string;
+  conversation_id?: string | null;
+  format: ThoughtflowArtifactFormat;
+  content: string;
+  created_at?: string;
+  updated_at?: string;
+}) {
+  const db = getDb();
+  const createdAt = rec.created_at || new Date().toISOString();
+  const updatedAt = rec.updated_at || createdAt;
+  db.prepare(`
+    INSERT INTO thoughtflow_artifacts (artifact_id, format, session_id, conversation_id, content, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(artifact_id, format) DO UPDATE SET
+      session_id = excluded.session_id,
+      conversation_id = excluded.conversation_id,
+      content = excluded.content,
+      updated_at = excluded.updated_at
+  `).run(
+    rec.artifact_id,
+    rec.format,
+    rec.session_id,
+    rec.conversation_id || null,
+    rec.content,
+    createdAt,
+    updatedAt
+  );
+}
+
+export function getThoughtflowArtifact(artifact_id: string, format: ThoughtflowArtifactFormat) {
+  const db = getDb();
+  return db.prepare('SELECT artifact_id, format, session_id, conversation_id, content, created_at, updated_at FROM thoughtflow_artifacts WHERE artifact_id = ? AND format = ?')
+    .get(artifact_id, format);
+}
+
+export function listThoughtflowArtifacts() {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT artifact_id, format, session_id, conversation_id, created_at, updated_at
+       FROM thoughtflow_artifacts
+       ORDER BY COALESCE(updated_at, created_at) DESC`
+    )
+    .all();
 }
