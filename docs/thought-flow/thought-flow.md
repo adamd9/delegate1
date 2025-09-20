@@ -236,10 +236,10 @@ From this JSON:
 
 Artifact generation and access:
 
-- On session finalization, the server writes two artifacts under `websocket-server/runtime-data/thoughtflow/`:
+- On conversation or session finalization, the server persists artifacts into the SQLite table `thoughtflow_artifacts`:
   - `<session_id>.json`: consolidated ThoughtFlow JSON
   - `<session_id>.d2`: auto-generated D2 diagram source
-- These are served over HTTP at `/thoughtflow/<session_id>.json` and `/thoughtflow/<session_id>.d2`.
+- These are served over HTTP at `/thoughtflow/<session_id>.json` and `/thoughtflow/<session_id>.d2`, which read directly from the database.
 - A `thoughtflow.artifacts` event is emitted to the web app with absolute URLs so they can be opened directly.
 
 ---

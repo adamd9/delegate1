@@ -183,6 +183,7 @@ export async function processChatSocketMessage(
                 replay: true,
                 session_id: conv.session_id,
                 conversation_id: convId,
+                artifact_id: payload.artifact_id,
                 json_path: payload.json_path,
                 d2_path: payload.d2_path,
                 url_json: payload.url_json,
