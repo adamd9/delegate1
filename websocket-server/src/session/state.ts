@@ -37,7 +37,6 @@ export interface Session {
   textModelConn?: WebSocket; // OpenAI SDK WebSocket for text
   openaiClient?: any; // typed in channel modules
   streamSid?: string;
-  saved_config?: any;
   lastAssistantItem?: string;
   responseStartTimestamp?: number;
   latestMediaTimestamp?: number;
@@ -111,5 +110,4 @@ export function closeAllConnections() {
   session.lastAssistantItem = undefined;
   session.responseStartTimestamp = undefined;
   session.latestMediaTimestamp = undefined;
-  session.saved_config = undefined;
 }

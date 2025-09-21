@@ -234,10 +234,7 @@ export async function processChatSocketMessage(
       }
       break;
     }
-    case "session.update":
-      session.saved_config = msg.session;
-      console.log("📝 Chat session config updated:", msg.session);
-      break;
+    // Removed: UI-driven session.update and saved_config plumbing
     default:
       console.log("❓ Unknown chat message type:", msg.type);
   }

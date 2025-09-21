@@ -12,16 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Edit, Plus, Trash, Wrench, Phone, Info, BookOpen, Server, ChevronsLeft } from "lucide-react";
-import { ToolConfigurationDialog } from "@/components/tool-configuration-dialog";
-import { toolTemplates } from "@/lib/tool-templates";
-import { useBackendTools } from "@/lib/use-backend-tools";
+import { Wrench, Info, BookOpen, Server, ChevronsLeft } from "lucide-react";
 import { getBackendUrl } from "@/lib/get-backend-url";
 
 // Simple vertical nav structure
 const SECTIONS = [
-  { id: "tools", label: "Tools", icon: Wrench },
-  { id: "voice", label: "Voice & Telephony", icon: Phone },
   { id: "logs", label: "Logs", icon: BookOpen },
   { id: "adaptations", label: "Adaptations", icon: BookOpen },
   { id: "mcp", label: "MCP Servers", icon: Server },
@@ -30,7 +25,7 @@ const SECTIONS = [
 ] as const;
 
 export default function SettingsPage() {
-  const [active, setActive] = useState<string>("tools");
+  const [active, setActive] = useState<string>("logs");
 
   // Sync with URL query (?tab=tools)
   useEffect(() => {
@@ -38,7 +33,7 @@ export default function SettingsPage() {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
     if (tab && SECTIONS.some(s => s.id === tab)) setActive(tab);
-    else setActive("tools");
+    else setActive("logs");
   }, []);
 
   useEffect(() => {
@@ -49,20 +44,10 @@ export default function SettingsPage() {
     window.history.replaceState(null, "", url);
   }, [active]);
 
-  // Shared state (adapted from session-configuration-panel)
-  const [tools, setTools] = useState<string[]>([]);
-
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingSchemaStr, setEditingSchemaStr] = useState("");
-  const [selectedTemplate, setSelectedTemplate] = useState("");
-  const [isJsonValid, setIsJsonValid] = useState(true);
-  const [openDialog, setOpenDialog] = useState(false);
+  // No tools configuration; tab removed.
 
   const [resetStatus, setResetStatus] = useState<"idle" | "resetting" | "done" | "error">("idle");
   const [buildInfo, setBuildInfo] = useState<{ commitId: string; commitMessage: string } | null>(null);
-
-  // Fetch backend tools
-  const backendTools = useBackendTools(`${getBackendUrl()}/tools`, 0);
 
   useEffect(() => {
     fetch("/build-info.json")
@@ -96,75 +81,6 @@ export default function SettingsPage() {
     }
   };
 
-  // Tools helpers
-  const getToolNameFromSchema = (schema: string): string => {
-    try {
-      const parsed = JSON.parse(schema);
-      return parsed?.name || "Untitled Tool";
-    } catch {
-      return "Invalid JSON";
-    }
-  };
-
-  const isBackendTool = (name: string): boolean => {
-    return backendTools.some((t: any) => t.name === name);
-  };
-
-  const handleAddTool = () => {
-    setEditingIndex(null);
-    setEditingSchemaStr("");
-    setSelectedTemplate("");
-    setIsJsonValid(true);
-    setOpenDialog(true);
-  };
-
-  const handleEditTool = (index: number) => {
-    setEditingIndex(index);
-    setEditingSchemaStr(tools[index] || "");
-    setSelectedTemplate("");
-    setIsJsonValid(true);
-    setOpenDialog(true);
-  };
-
-  const handleDeleteTool = (index: number) => {
-    const next = [...tools];
-    next.splice(index, 1);
-    setTools(next);
-  };
-
-  const handleDialogSave = () => {
-    try {
-      JSON.parse(editingSchemaStr);
-    } catch {
-      return;
-    }
-    const next = [...tools];
-    if (editingIndex === null) next.push(editingSchemaStr);
-    else next[editingIndex] = editingSchemaStr;
-    setTools(next);
-    setOpenDialog(false);
-  };
-
-  const onTemplateChange = (val: string) => {
-    setSelectedTemplate(val);
-    const templateObj =
-      toolTemplates.find((t) => t.name === val) ||
-      backendTools.find((t: any) => t.name === val);
-    if (templateObj) {
-      setEditingSchemaStr(JSON.stringify(templateObj, null, 2));
-      setIsJsonValid(true);
-    }
-  };
-
-  const onSchemaChange = (value: string) => {
-    setEditingSchemaStr(value);
-    try {
-      JSON.parse(value);
-      setIsJsonValid(true);
-    } catch {
-      setIsJsonValid(false);
-    }
-  };
 
   return (
     <div className="flex flex-col md:flex-row h-[calc(100dvh-64px)]">{/* reserve space for top bar height approx */}
@@ -247,59 +163,7 @@ export default function SettingsPage() {
             </Card>
           )}
 
-          {active === "tools" && (
-            <Card className="w-full">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Tools</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {tools.map((tool, index) => {
-                  const name = getToolNameFromSchema(tool);
-                  const backend = isBackendTool(name);
-                  return (
-                    <div key={index} className="flex items-center justify-between rounded-md border p-2 sm:p-3 gap-2">
-                      <span className="text-sm truncate flex-1 min-w-0 flex items-center">
-                        {name}
-                        {backend && <span className="ml-2 text-[10px] px-2 py-0.5 rounded bg-muted text-muted-foreground">Backend</span>}
-                      </span>
-                      <div className="flex gap-1 flex-shrink-0">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditTool(index)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteTool(index)}>
-                          <Trash className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-                <Button variant="outline" className="w-full" onClick={handleAddTool}>
-                  <Plus className="h-4 w-4 mr-2" /> Add Tool
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {active === "voice" && (
-            <Card className="w-full">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Voice & Telephony</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Manage voice setup and verify readiness.
-                </p>
-                <div className="flex items-center justify-between rounded-md border p-3">
-                  <div className="text-sm">
-                    <div className="font-medium">Voice Client</div>
-                    <div className="text-muted-foreground">Open the embedded voice client to test calls.</div>
-                  </div>
-                  <Button asChild variant="outline"><Link href="/voice" target="_blank" rel="noopener noreferrer">Open Voice</Link></Button>
-                </div>
-                {/* Placeholder for a future detailed checklist integration */}
-              </CardContent>
-            </Card>
-          )}
+          {/* Tools and Voice tabs removed */}
 
           {active === "maintenance" && (
             <Card className="w-full">
@@ -342,19 +206,7 @@ export default function SettingsPage() {
         </ScrollArea>
       </main>
 
-      {/* Tool dialog lives at page level to avoid unmount issues */}
-      <ToolConfigurationDialog
-        open={openDialog}
-        onOpenChange={setOpenDialog}
-        editingIndex={editingIndex}
-        selectedTemplate={selectedTemplate}
-        editingSchemaStr={editingSchemaStr}
-        isJsonValid={isJsonValid}
-        onTemplateChange={onTemplateChange}
-        onSchemaChange={onSchemaChange}
-        onSave={handleDialogSave}
-        backendTools={backendTools}
-      />
+      {/* Tools dialog removed */}
     </div>
   );
 }
