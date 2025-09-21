@@ -71,21 +71,23 @@ function startHoldMusicLoop() {
 }
 
 function finalizeRun(status: 'error' | undefined = undefined) {
-  const req = session.currentRequest;
-  if (!req) return;
+  // For voice calls, finalize the sticky conversation when the call ends
   try {
     ensureSession();
-    const conversationId = `conv_${req.id}`;
-    const event: any = {
-      type: 'conversation.completed',
-      conversation_id: conversationId,
-      request_id: req.id,
-      ended_at: new Date().toISOString(),
-    };
-    if (status) event.status = status;
-    appendEvent(event);
+    const conversationId = (session as any).currentConversationId as string | undefined;
+    if (conversationId) {
+      const event: any = {
+        type: 'conversation.completed',
+        conversation_id: conversationId,
+        ended_at: new Date().toISOString(),
+      };
+      if (status) event.status = status;
+      appendEvent(event);
+    }
   } catch {}
+  // Clear in-flight turn and sticky conversation id at end of call
   session.currentRequest = undefined;
+  try { (session as any).currentConversationId = undefined; } catch {}
 }
 
 export function establishCallSocket(ws: WebSocket, openAIApiKey: string) {
@@ -113,6 +115,16 @@ export function processRealtimeCallEvent(data: RawData) {
       session.latestMediaTimestamp = 0;
       session.lastAssistantItem = undefined;
       session.responseStartTimestamp = undefined;
+      // Establish a sticky conversation for the lifetime of the call
+      try {
+        ensureSession();
+        const existingConv = (session as any).currentConversationId as string | undefined;
+        if (!existingConv) {
+          const convId = `conv_call_${Date.now()}`;
+          (session as any).currentConversationId = convId;
+          appendEvent({ type: 'conversation.started', conversation_id: convId, channel: 'voice', started_at: new Date().toISOString() });
+        }
+      } catch {}
       establishRealtimeModelConnection();
       break;
     case "media":
@@ -153,7 +165,7 @@ export function establishRealtimeModelConnection() {
   );
 
   session.modelConn.on("open", () => {
-    const config = session.saved_config || {};
+    const config = {} as any;
 
     // Voice channel: expose base agent tools only (supervisor/MCP excluded)
     const baseFunctions = getAgent('base').tools as FunctionHandler[];
@@ -241,8 +253,13 @@ export function processRealtimeModelEvent(
         const requestId = `req_${Date.now()}`;
         session.currentRequest = { id: requestId, channel: 'voice', startedAt: Date.now() } as any;
         ensureSession();
-        const conversationId = `conv_${requestId}`;
-        appendEvent({ type: 'conversation.started', conversation_id: conversationId, request_id: requestId, channel: 'voice', started_at: new Date().toISOString() });
+        // Reuse sticky conversation id for the entire call
+        let conversationId = (session as any).currentConversationId as string | undefined;
+        if (!conversationId) {
+          conversationId = `conv_call_${Date.now()}`;
+          (session as any).currentConversationId = conversationId;
+          appendEvent({ type: 'conversation.started', conversation_id: conversationId, channel: 'voice', started_at: new Date().toISOString() });
+        }
         const stepId = `step_user_${requestId}`;
         appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: stepId, label: ThoughtFlowStepType.UserMessage, payload: { content: transcript }, timestamp: Date.now() });
         // Append user voice turn to unified conversation history
@@ -257,9 +274,9 @@ export function processRealtimeModelEvent(
             supervisor: false,
           });
           try {
-            const conversationId = `conv_${requestId}`;
+            const conversationId2 = (session as any).currentConversationId as string | undefined;
             addConversationEvent({
-              conversation_id: conversationId,
+              conversation_id: conversationId2 || '',
               kind: 'message_user',
               payload: { text: transcript, channel: 'voice', supervisor: false },
               created_at_ms: ts,
@@ -370,11 +387,10 @@ export function processRealtimeModelEvent(
             };
             session.conversationHistory.push(assistantMessage);
             try {
-              const req = session.currentRequest;
-              const conversationId = req ? `conv_${req.id}` : undefined;
-              if (conversationId) {
+              const convId = (session as any).currentConversationId as string | undefined;
+              if (convId) {
                 addConversationEvent({
-                  conversation_id: conversationId,
+                  conversation_id: convId,
                   kind: 'message_assistant',
                   payload: { text: textContent.text, channel: 'voice', supervisor: false },
                   created_at_ms: ts,
@@ -412,11 +428,10 @@ export function processRealtimeModelEvent(
               };
               session.conversationHistory.push(assistantMessage);
               try {
-                const req = session.currentRequest;
-                const conversationId = req ? `run_${req.id}` : undefined;
-                if (conversationId) {
+                const convId = (session as any).currentConversationId as string | undefined;
+                if (convId) {
                   addConversationEvent({
-                    conversation_id: conversationId,
+                    conversation_id: convId,
                     kind: 'message_assistant',
                     payload: { text: assembled, channel: 'voice', supervisor: false },
                     created_at_ms: ts,
@@ -438,13 +453,12 @@ export function processRealtimeModelEvent(
           }
         }
 
-        const req = session.currentRequest;
-        if (req) {
-          const conversationId = `conv_${req.id}`;
-          const stepId = `step_assistant_${req.id}_${Date.now()}`;
-          appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: stepId, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, timestamp: Date.now() });
-          appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: stepId, timestamp: Date.now() });
-          finalizeRun();
+        const convId = (session as any).currentConversationId as string | undefined;
+        if (convId && session.currentRequest) {
+          const stepId = `step_assistant_${session.currentRequest.id}_${Date.now()}`;
+          appendEvent({ type: 'step.started', conversation_id: convId, step_id: stepId, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, timestamp: Date.now() });
+          appendEvent({ type: 'step.completed', conversation_id: convId, step_id: stepId, timestamp: Date.now() });
+          // Do NOT finalize the conversation per turn; keep conversation open until call ends
         }
       }
       break;
@@ -463,25 +477,24 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
     session.waitingForTool = true;
     startHoldMusicLoop();
   }
-  const req = session.currentRequest;
-  const conversationId = req ? `run_${req.id}` : undefined;
-  const stepId = conversationId ? `step_tool_${item.call_id || Date.now()}` : undefined;
-  if (conversationId && stepId) {
-    appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: stepId, label: ThoughtFlowStepType.ToolCall, payload: { name: item.name, arguments: item.arguments }, timestamp: Date.now() });
+  const convId = (session as any).currentConversationId as string | undefined;
+  const stepId = convId ? `step_tool_${item.call_id || Date.now()}` : undefined;
+  if (convId && stepId) {
+    appendEvent({ type: 'step.started', conversation_id: convId, step_id: stepId, label: ThoughtFlowStepType.ToolCall, payload: { name: item.name, arguments: item.arguments }, timestamp: Date.now() });
   }
   try {
     const result = await runSingleToolCall(
       { name: item.name, arguments: item.arguments, call_id: item.call_id },
       { mode: 'voice', logsClients, confirm: false }
     );
-    if (conversationId && stepId) {
-      appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: stepId, payload: { output: result }, timestamp: Date.now() });
+    if (convId && stepId) {
+      appendEvent({ type: 'step.completed', conversation_id: convId, step_id: stepId, payload: { output: result }, timestamp: Date.now() });
     }
     return result;
   } catch (err: any) {
     console.error("Error running function:", err);
-    if (conversationId && stepId) {
-      appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: stepId, payload: { error: err?.message || String(err) }, timestamp: Date.now() });
+    if (convId && stepId) {
+      appendEvent({ type: 'step.completed', conversation_id: convId, step_id: stepId, payload: { error: err?.message || String(err) }, timestamp: Date.now() });
     }
     finalizeRun('error');
     return JSON.stringify({ error: `Error running function ${item.name}: ${err?.message || 'unknown'}` });
