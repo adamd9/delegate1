@@ -432,6 +432,165 @@ jsonSend(session.modelConn, {
   - Avoid instant barge-in: increase `BARGE_IN_GRACE_MS` (e.g., 500–800ms).
   - If your model version ignores a field, it will be safely ignored by the API.
 
+## Remote MCP servers (Model Context Protocol)
+
+Delegate 1 can discover and use tools exposed by remote MCP servers via the MCP Streamable HTTP transport. Discovered MCP tools are made available to the supervisor agent automatically and can be called like any other function tool.
+
+### Where configuration lives
+
+- File path (created on first use): `websocket-server/runtime-data/mcp-servers.json`
+- Shape: a JSON array of MCP server descriptors
+- Supported `type` values: only `"streamable-http"` is supported at the moment
+
+The backend will create `runtime-data/mcp-servers.json` if it does not exist and default it to `[]`.
+
+### JSON schema
+
+Each entry must follow this shape (validated by `websocket-server/src/config/mcpConfig.ts`):
+
+```jsonc
+[
+  {
+    "type": "streamable-http",        // required; only this type is supported currently
+    "url": "https://host.example/mcp", // required; full URL of MCP Streamable HTTP endpoint
+    "name": "my-mcp",                  // required; unique server name used for namespacing
+    "headers": {                        // optional; custom headers sent to the MCP server
+      "Authorization": "Bearer <token>",
+      "X-Custom": "value"
+    }
+  }
+]
+```
+
+If the JSON is invalid or any required field is missing, the server will reject the update with a helpful error message.
+
+### How discovery and registration work
+
+- On startup and whenever the config changes, the backend runs MCP discovery:
+  - Code: `websocket-server/src/tools/mcp/adapter.ts` → `initMCPDiscovery()` → `performDiscovery()`
+  - It loads servers via `getMcpConfig()` from `websocket-server/src/config/mcpConfig.ts`.
+  - For each server, it connects using `@modelcontextprotocol/sdk`’s Streamable HTTP client (`client.ts`).
+  - It lists tools and converts them to OpenAI function-style schemas.
+  - Tool names are namespaced as `mcp.{serverName}.{toolName}`.
+  - All discovered tools are injected into the supervisor agent via `updateSupervisorMcpTools()`.
+- After discovery, the central tools registry is rebuilt so the supervisor is allowed to call these tools.
+
+Relevant files:
+
+- `websocket-server/src/config/mcpConfig.ts` (JSON read/validate/write)
+- `websocket-server/src/server/routes/mcpConfig.ts` (REST API to view/update config; triggers reload)
+- `websocket-server/src/tools/mcp/client.ts` (connect/list/call remote tools)
+- `websocket-server/src/tools/mcp/adapter.ts` (discovery, namespacing, and registration)
+- `websocket-server/src/server/startup/init.ts` (startup + reload sequence)
+- `websocket-server/src/agentConfigs/supervisorAgentConfig.ts` (wires discovered tools to the supervisor)
+
+### Managing MCP servers at runtime (no restart required)
+
+The backend exposes a small REST API to manage the JSON config. After a successful update, discovery is forced and the registry is rebuilt automatically.
+
+- GET `http://localhost:8081/api/mcp/config`
+  - Response: `{ text: string, servers: RemoteServerConfig[] }`
+- POST `http://localhost:8081/api/mcp/config`
+  - Body: `{ "text": "<raw JSON string>" }`
+  - Validates JSON, writes to `runtime-data/mcp-servers.json`, forces rediscovery, and returns `{ status: 'updated', servers }`.
+
+Example using curl:
+
+```bash
+# Read current config
+curl -s http://localhost:8081/api/mcp/config | jq .
+
+# Update config (inline JSON)
+curl -s -X POST http://localhost:8081/api/mcp/config \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "text": "[{\n  \"type\": \"streamable-http\",\n  \"url\": \"https://host.example/mcp\",\n  \"name\": \"my-mcp\",\n  \"headers\": {\n    \"Authorization\": \"Bearer sk-example\"\n  }\n}]"
+  }' | jq .
+```
+
+Notes:
+
+- The route is unauthenticated in development; if you expose the backend publicly, put it behind auth or a network boundary.
+- Only `streamable-http` servers are supported at this time.
+- Headers are forwarded as provided to the MCP server on connect/calls. Avoid committing secrets to source control; prefer injecting tokens via your deployment’s secret management and updating the JSON through the POST endpoint at runtime.
+- Server metadata such as name/description/version is obtained from the MCP server during initialization (`initialize` result’s `serverInfo`). Any description/note fields in the JSON config are ignored.
+
+### Example configuration
+
+Save the following to `websocket-server/runtime-data/mcp-servers.json` or POST it via the REST API.
+
+```json
+[
+  {
+    "type": "streamable-http",
+    "url": "https://mcp.tools.yourcompany.com/api/mcp",
+    "name": "corp-tools",
+    "headers": {
+      "Authorization": "Bearer ${MCP_CORP_TOOLS_TOKEN}"
+    }
+  },
+  {
+    "type": "streamable-http",
+    "url": "https://public.example/mcp",
+    "name": "public-demo",
+    "headers": {
+      "X-Env": "demo"
+    }
+  }
+]
+```
+
+After saving, watch the backend logs for lines like:
+
+```
+[startup] MCP discovery initialized
+[mcpAdapter] MCP discovery complete. 7 tool(s) registered.
+```
+
+### Calling MCP tools
+
+When the supervisor decides to use a tool, it will see names like `mcp.corp-tools.search` or `mcp.public-demo.fetch`. You can also trigger them via the function-calling path programmatically by referring to their namespaced schema names.
+
+## Catalog and Agent Tooling Endpoints
+
+These debug/inspection endpoints expose the canonical tools catalog and the agent-specific tool visibility as assembled by the centralized registry in `websocket-server/src/tools/registry.ts` and mounted in `websocket-server/src/server/routes/catalog.ts`.
+
+- **GET `/tools`**
+  - Back-compat list of raw function schemas from `websocket-server/src/functionHandlers.ts` (which delegates to `agentConfigs`).
+  - Example:
+    ```bash
+    curl -s http://localhost:8081/tools | jq .
+    ```
+
+- **GET `/catalog/tools`**
+  - Canonical tools catalog with metadata from the centralized registry (local, MCP, and built-ins).
+  - Fields: `id`, `name`, `sanitizedName`, `origin`, `tags`, `description`.
+  - Example:
+    ```bash
+    curl -s http://localhost:8081/catalog/tools | jq .
+    ```
+
+- **GET `/agents`**
+  - Agents debug view with exposure policies and resolved tool names.
+  - Example:
+    ```bash
+    curl -s http://localhost:8081/agents | jq .
+    ```
+
+- **GET `/agents/:id/tools`**
+  - Tools available to a specific agent in OpenAI Responses API "tools" format.
+  - For built-ins (e.g., web search), entries look like `{ "type": "web_search" }`.
+  - For functions, entries look like `{ "type": "function", "name": "<sanitizedName>", "description": "...", "parameters": { ... }, "strict": false }`.
+  - Example (replace `supervisor` with your agent id):
+    ```bash
+    curl -s http://localhost:8081/agents/supervisor/tools | jq .
+    ```
+
+Notes:
+
+- These endpoints are intended for development/observability. If you expose the backend publicly, secure them appropriately.
+- MCP tools are discovered at startup and after successful updates via `POST /api/mcp/config` (see section above). The catalog reflects the current registry state without needing a server restart.
+
 ## Development
 
 [Development guidelines and contribution information will be added here].

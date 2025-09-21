@@ -11,8 +11,7 @@ export type RemoteServerConfig = {
   type: 'streamable-http';
   url: string;
   name: string;
-  description?: string;
-  note?: string;
+  headers?: Record<string, string>; // optional custom headers (e.g., Authorization)
 };
 
 export type DiscoveredTool = {
@@ -27,6 +26,7 @@ type ServerRecord = {
   name: string;
   url: string;
   description?: string;
+  serverInfo?: any;
   type: 'http-sdk';
   sdkClient: MCPClientSDK;
   tools: DiscoveredTool[];
@@ -74,10 +74,22 @@ export class MCPClient {
       const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js') as any;
 
       const client: MCPClientSDK = new Client({ name: `delegate1-mcp-${serverConfig.name}`, version: '1.0.0' } as any);
-      const transport: HTTPTransport = new StreamableHTTPClientTransport(new URL(serverConfig.url)) as any;
+      const transportOptions: any = {};
+      if (serverConfig.headers && typeof serverConfig.headers === 'object') {
+        transportOptions.headers = serverConfig.headers;
+      }
+      const transport: HTTPTransport = new (StreamableHTTPClientTransport as any)(new URL(serverConfig.url), transportOptions) as any;
 
       log.debug(`Connecting to MCP server ${serverConfig.name} at ${serverConfig.url}`);
       await (client as any).connect(transport);
+
+      // Read server-reported info (name/version/etc.) from initialize result
+      let serverInfo: any = undefined;
+      try {
+        if (typeof (client as any).getServerVersion === 'function') {
+          serverInfo = (client as any).getServerVersion();
+        }
+      } catch {}
 
       const serverId = `remote_http_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
@@ -90,7 +102,8 @@ export class MCPClient {
         id: serverId,
         name: serverConfig.name,
         url: serverConfig.url,
-        description: serverConfig.description,
+        description: (serverInfo && (serverInfo.name || serverInfo.productName)) || undefined,
+        serverInfo,
         type: 'http-sdk',
         sdkClient: client,
         tools,

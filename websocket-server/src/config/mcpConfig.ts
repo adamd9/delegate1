@@ -14,7 +14,7 @@ function validateServers(value: unknown): RemoteServerConfig[] {
     if (!entry || typeof entry !== 'object') {
       throw new Error('Each MCP server entry must be an object');
     }
-    const { type, url, name, description, note } = entry as any;
+    const { type, url, name, headers } = entry as any;
     if (type !== 'streamable-http') {
       throw new Error('Unsupported MCP server type');
     }
@@ -29,8 +29,17 @@ function validateServers(value: unknown): RemoteServerConfig[] {
       url: url.trim(),
       name: name.trim(),
     };
-    if (description && typeof description === 'string') record.description = description;
-    if (note && typeof note === 'string') record.note = note;
+    // description/note in config are ignored; we prefer server-reported metadata post-initialize
+    if (headers && typeof headers === 'object' && !Array.isArray(headers)) {
+      // Only accept string:string pairs; coerce others to string where possible
+      const clean: Record<string, string> = {};
+      for (const [k, v] of Object.entries(headers)) {
+        if (typeof k !== 'string') continue;
+        if (typeof v === 'string') clean[k] = v;
+        else if (v != null) clean[k] = String(v);
+      }
+      if (Object.keys(clean).length > 0) record.headers = clean;
+    }
     result.push(record);
   }
   return result;
