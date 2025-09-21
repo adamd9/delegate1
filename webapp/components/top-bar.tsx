@@ -1,6 +1,6 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { PhoneCall, Bot } from "lucide-react";
+import { PhoneCall, Bot, Settings as SettingsIcon } from "lucide-react";
 import Link from "next/link";
 
 interface TopBarProps {
@@ -16,6 +16,12 @@ const TopBar = ({ children }: TopBarProps) => {
       </div>
       <div className="flex gap-3 items-center">
         {children}
+        <Button variant="ghost" size="sm">
+          <Link href="/settings" className="flex items-center gap-2">
+            <SettingsIcon className="w-4 h-4" />
+            Settings
+          </Link>
+        </Button>
         <Button variant="ghost" size="sm">
   <Link
     href="/voice"
