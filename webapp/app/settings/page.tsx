@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,8 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Check, Edit, Plus, Trash, AlertCircle, Settings, Wrench, Phone, Info, BookOpen, Server, ChevronsLeft } from "lucide-react";
+import { Edit, Plus, Trash, Wrench, Phone, Info, BookOpen, Server, ChevronsLeft } from "lucide-react";
 import { ToolConfigurationDialog } from "@/components/tool-configuration-dialog";
 import { toolTemplates } from "@/lib/tool-templates";
 import { useBackendTools } from "@/lib/use-backend-tools";
@@ -21,7 +20,6 @@ import { getBackendUrl } from "@/lib/get-backend-url";
 
 // Simple vertical nav structure
 const SECTIONS = [
-  { id: "general", label: "General", icon: Settings },
   { id: "tools", label: "Tools", icon: Wrench },
   { id: "voice", label: "Voice & Telephony", icon: Phone },
   { id: "logs", label: "Logs", icon: BookOpen },
@@ -32,7 +30,7 @@ const SECTIONS = [
 ] as const;
 
 export default function SettingsPage() {
-  const [active, setActive] = useState<string>("general");
+  const [active, setActive] = useState<string>("tools");
 
   // Sync with URL query (?tab=tools)
   useEffect(() => {
@@ -40,6 +38,7 @@ export default function SettingsPage() {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
     if (tab && SECTIONS.some(s => s.id === tab)) setActive(tab);
+    else setActive("tools");
   }, []);
 
   useEffect(() => {
@@ -51,8 +50,6 @@ export default function SettingsPage() {
   }, [active]);
 
   // Shared state (adapted from session-configuration-panel)
-  const [instructions, setInstructions] = useState("You are a helpful assistant in a phone call.");
-  const [voice, setVoice] = useState("ballad");
   const [tools, setTools] = useState<string[]>([]);
 
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -61,8 +58,6 @@ export default function SettingsPage() {
   const [isJsonValid, setIsJsonValid] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
 
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [resetStatus, setResetStatus] = useState<"idle" | "resetting" | "done" | "error">("idle");
   const [buildInfo, setBuildInfo] = useState<{ commitId: string; commitMessage: string } | null>(null);
 
@@ -76,30 +71,7 @@ export default function SettingsPage() {
       .catch(() => {/* ignore */});
   }, []);
 
-  useEffect(() => {
-    setHasUnsavedChanges(true);
-  }, [instructions, voice, tools]);
-
-  useEffect(() => {
-    if (saveStatus === "saved") {
-      const t = setTimeout(() => setSaveStatus("idle"), 2500);
-      return () => clearTimeout(t);
-    }
-  }, [saveStatus]);
-
-  // Save handler (local success marker; wire to backend if applicable)
-  const handleSave = async () => {
-    try {
-      setSaveStatus("saving");
-      // TODO: Wire to backend if/when an endpoint exists. For now, mark as saved.
-      // Example (if implemented): await fetch(`${getBackendUrl()}/session/config`, { method: 'POST', body: JSON.stringify({...}) })
-      await new Promise((r) => setTimeout(r, 250));
-      setSaveStatus("saved");
-      setHasUnsavedChanges(false);
-    } catch (e) {
-      setSaveStatus("error");
-    }
-  };
+  // No general save flow; configuration is managed in agent configs.
 
   const handleResetSessions = async () => {
     if (resetStatus === "resetting") return;
@@ -194,8 +166,6 @@ export default function SettingsPage() {
     }
   };
 
-  const voices = useMemo(() => ["ash", "ballad", "coral", "sage", "verse"], []);
-
   return (
     <div className="flex flex-col md:flex-row h-[calc(100dvh-64px)]">{/* reserve space for top bar height approx */}
       {/* Left nav (desktop) */}
@@ -236,51 +206,7 @@ export default function SettingsPage() {
         </div>
 
         <ScrollArea className="h-[calc(100dvh-64px-80px)] md:h-[calc(100dvh-64px-32px)] pr-2">
-          {active === "general" && (
-            <Card className="w-full">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">General</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium leading-none">Instructions</label>
-                  <Textarea
-                    placeholder="Enter instructions"
-                    className="min-h-[100px] resize-none"
-                    value={instructions}
-                    onChange={(e) => setInstructions(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium leading-none">Voice</label>
-                  <Select value={voice} onValueChange={setVoice}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select voice" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {voices.map((v) => (
-                        <SelectItem key={v} value={v}>{v}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-              <CardFooter className="flex items-center justify-between text-xs text-muted-foreground">
-                <div>
-                  {saveStatus === "error" ? (
-                    <span className="text-red-500 inline-flex items-center gap-1"><AlertCircle className="h-3 w-3" /> Save failed</span>
-                  ) : hasUnsavedChanges ? (
-                    <span>Not saved</span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1"><Check className="h-3 w-3" /> Saved</span>
-                  )}
-                </div>
-                <Button onClick={handleSave} disabled={saveStatus === "saving" || !hasUnsavedChanges}>
-                  {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "Saved" : "Save Configuration"}
-                </Button>
-              </CardFooter>
-            </Card>
-          )}
+          {/* General tab removed: instructions and voice settings are managed in agent configs. */}
 
           {active === "logs" && (
             <Card className="w-full">
@@ -411,7 +337,6 @@ export default function SettingsPage() {
                   </div>
                 )}
               </CardContent>
-              <CardFooter />
             </Card>
           )}
         </ScrollArea>
