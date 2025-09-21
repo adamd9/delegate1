@@ -59,6 +59,14 @@ export async function processChatSocketMessage(
         try {
           appendEvent({ type: 'conversation.completed', conversation_id: targetConvId, ended_at: endedAt, status: 'completed' });
         } catch {}
+        // Clear sticky currentConversationId if it matches the finalized conversation
+        try {
+          if ((session as any).currentConversationId === targetConvId) {
+            (session as any).currentConversationId = undefined;
+          }
+          // Also clear assistant anchor to avoid cross-conversation linking
+          try { (session as any).lastAssistantStepId = undefined; } catch {}
+        } catch {}
         // Broadcast to all chat clients
         for (const ws of chatClients) {
           if (isOpen(ws)) jsonSend(ws, { type: 'conversation.finalized', conversation_id: targetConvId, ok: true, ended_at: endedAt, timestamp: Date.now() });
@@ -255,10 +263,18 @@ export async function handleTextChatMessage(
     session.currentRequest = { id: requestId, channel, canceled: false, startedAt: Date.now() };
     // ThoughtFlow: ensure session and start run
     const { id: sessionId } = ensureSession();
-    const conversationId = `conv_${requestId}`;
-    appendEvent({ type: 'conversation.started', conversation_id: conversationId, request_id: requestId, channel, started_at: new Date().toISOString() });
+    // Sticky conversation: reuse existing conversation until explicitly finalized
+    let conversationId = (session as any).currentConversationId as string | undefined;
+    const isNewConversation = !conversationId;
+    if (!conversationId) {
+      conversationId = `conv_${requestId}`;
+      (session as any).currentConversationId = conversationId;
+      appendEvent({ type: 'conversation.started', conversation_id: conversationId, request_id: requestId, channel, started_at: new Date().toISOString() });
+    }
     const userStepId = `step_user_${requestId}`;
-    appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: userStepId , label: ThoughtFlowStepType.UserMessage, payload: { content }, timestamp: Date.now() });
+    // Link user turn to the most recent assistant message if available to preserve sub-threading
+    const userDepends = (session as any).lastAssistantStepId ? [(session as any).lastAssistantStepId] : undefined;
+    appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: userStepId , label: ThoughtFlowStepType.UserMessage, payload: { content }, ...(userDepends ? { depends_on: userDepends } : {}), timestamp: Date.now() });
     // Inform UI that work has started
     for (const ws of chatClients) {
       if (isOpen(ws)) jsonSend(ws, { type: "chat.working", request_id: requestId, timestamp: Date.now() });
@@ -546,10 +562,11 @@ export async function handleTextChatMessage(
               if (confirmResponseId) session.previousResponseId = confirmResponseId;
               const text = confirmText || followUpResponse.output_text || "(action completed)";
               const assistantStepId_handled = `step_assistant_${Date.now()}`;
-              // Prefer to depend on the supervisor assistant_call step if provided by the tool result
+              // Depend on the known local tool step; include supervisor-provided anchor if present for richer linking
               const supAnchor = (functionResult && typeof functionResult === 'object' && (functionResult as any).supLastStepId) ? (functionResult as any).supLastStepId : undefined;
-              const anchorDepends = supAnchor || toolStepId;
-              appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: assistantStepId_handled, label: ThoughtFlowStepType.AssistantMessage, payload: { text }, depends_on: anchorDepends, timestamp: Date.now() });
+              const dependsArr = supAnchor ? [toolStepId, supAnchor] : [toolStepId];
+              appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: assistantStepId_handled, label: ThoughtFlowStepType.AssistantMessage, payload: { text }, depends_on: dependsArr, timestamp: Date.now() });
+              try { (session as any).lastAssistantStepId = assistantStepId_handled; } catch {}
               const assistantMessage = {
                 type: 'assistant' as const,
                 content: text,
@@ -585,8 +602,9 @@ export async function handleTextChatMessage(
           const finalResponse = followUpResponse.output_text || "Supervisor agent completed.";
           const assistantStepId_supervisor = `step_assistant_${Date.now()}`;
           const supAnchor2 = (functionResult && typeof functionResult === 'object' && (functionResult as any).supLastStepId) ? (functionResult as any).supLastStepId : undefined;
-          const anchorDepends2 = supAnchor2 || toolStepId;
-          appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: assistantStepId_supervisor, label: ThoughtFlowStepType.AssistantMessage, payload: { text: finalResponse }, depends_on: anchorDepends2, timestamp: Date.now() });
+          const dependsArr2 = supAnchor2 ? [toolStepId, supAnchor2] : [toolStepId];
+          appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: assistantStepId_supervisor, label: ThoughtFlowStepType.AssistantMessage, payload: { text: finalResponse }, depends_on: dependsArr2, timestamp: Date.now() });
+          try { (session as any).lastAssistantStepId = assistantStepId_supervisor; } catch {}
           const assistantMessage = {
             type: "assistant" as const,
             content: finalResponse,
@@ -674,6 +692,7 @@ export async function handleTextChatMessage(
     const assistantText = response.output_text || "(No text output)";
     const assistantStepId_fallback = `step_assistant_${Date.now()}`;
     appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: assistantStepId_fallback, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, depends_on: llmStepId, timestamp: Date.now() });
+    try { (session as any).lastAssistantStepId = assistantStepId_fallback; } catch {}
     const assistantMessage = {
       type: "assistant" as const,
       content: assistantText,

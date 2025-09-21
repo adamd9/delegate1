@@ -44,6 +44,10 @@ export interface Session {
   openAIApiKey?: string;
   conversationHistory?: ConversationItem[];
   previousResponseId?: string; // For Responses API conversation tracking
+  // Sticky conversation tracking for web chat: reuse an open conversation until explicitly finalized
+  currentConversationId?: string;
+  // Track the most recent assistant step to link subsequent user turns in ThoughtFlow
+  lastAssistantStepId?: string;
   waitingForTool?: boolean;
   // Minimal in-flight chat request tracking
   currentRequest?: {
