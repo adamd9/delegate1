@@ -88,6 +88,8 @@ function finalizeRun(status: 'error' | undefined = undefined) {
   // Clear in-flight turn and sticky conversation id at end of call
   session.currentRequest = undefined;
   try { (session as any).currentConversationId = undefined; } catch {}
+  try { (session as any).lastAssistantStepId = undefined; } catch {}
+  try { (session as any).lastUserStepId = undefined; } catch {}
 }
 
 export function establishCallSocket(ws: WebSocket, openAIApiKey: string) {
@@ -118,6 +120,9 @@ export function processRealtimeCallEvent(data: RawData) {
       // Establish a sticky conversation for the lifetime of the call
       try {
         ensureSession();
+        // Reset dependency anchors at call start
+        try { (session as any).lastAssistantStepId = undefined; } catch {}
+        try { (session as any).lastUserStepId = undefined; } catch {}
         const existingConv = (session as any).currentConversationId as string | undefined;
         if (!existingConv) {
           const convId = `conv_call_${Date.now()}`;
@@ -261,7 +266,8 @@ export function processRealtimeModelEvent(
           appendEvent({ type: 'conversation.started', conversation_id: conversationId, channel: 'voice', started_at: new Date().toISOString() });
         }
         const stepId = `step_user_${requestId}`;
-        appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: stepId, label: ThoughtFlowStepType.UserMessage, payload: { content: transcript }, timestamp: Date.now() });
+        const userDepends = (session as any).lastAssistantStepId ? [(session as any).lastAssistantStepId] : undefined;
+        appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: stepId, label: ThoughtFlowStepType.UserMessage, payload: { content: transcript }, ...(userDepends ? { depends_on: userDepends } : {}), timestamp: Date.now() });
         // Append user voice turn to unified conversation history
         try {
           if (!session.conversationHistory) session.conversationHistory = [];
@@ -286,6 +292,7 @@ export function processRealtimeModelEvent(
           console.warn("⚠️ Failed to append user voice transcript to history", e);
         }
         appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: stepId, timestamp: Date.now() });
+        try { (session as any).lastUserStepId = stepId; } catch {}
       }
       break;
     }
@@ -456,8 +463,10 @@ export function processRealtimeModelEvent(
         const convId = (session as any).currentConversationId as string | undefined;
         if (convId && session.currentRequest) {
           const stepId = `step_assistant_${session.currentRequest.id}_${Date.now()}`;
-          appendEvent({ type: 'step.started', conversation_id: convId, step_id: stepId, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, timestamp: Date.now() });
+          const depends = (session as any).lastUserStepId ? [(session as any).lastUserStepId] : undefined;
+          appendEvent({ type: 'step.started', conversation_id: convId, step_id: stepId, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, ...(depends ? { depends_on: depends } : {}), timestamp: Date.now() });
           appendEvent({ type: 'step.completed', conversation_id: convId, step_id: stepId, timestamp: Date.now() });
+          try { (session as any).lastAssistantStepId = stepId; } catch {}
           // Do NOT finalize the conversation per turn; keep conversation open until call ends
         }
       }

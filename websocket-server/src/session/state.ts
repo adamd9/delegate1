@@ -47,6 +47,8 @@ export interface Session {
   currentConversationId?: string;
   // Track the most recent assistant step to link subsequent user turns in ThoughtFlow
   lastAssistantStepId?: string;
+  // Track the most recent user step to link assistant responses in ThoughtFlow
+  lastUserStepId?: string;
   waitingForTool?: boolean;
   // Minimal in-flight chat request tracking
   currentRequest?: {
