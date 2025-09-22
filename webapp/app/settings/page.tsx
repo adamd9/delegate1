@@ -12,12 +12,46 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Wrench, Info, BookOpen, Server, ChevronsLeft } from "lucide-react";
+import { Wrench, Info, BookOpen, Server, ChevronsLeft, Boxes } from "lucide-react";
 import { getBackendUrl } from "@/lib/get-backend-url";
+
+type CatalogTool = {
+  id: string;
+  name: string;
+  sanitizedName: string;
+  origin: string;
+  tags: string[];
+  description?: string;
+};
+
+type AgentPolicy = {
+  allowNames?: string[];
+  allowTags?: string[];
+  denyNames?: string[];
+  denyTags?: string[];
+};
+
+type AgentDebugEntry = {
+  policy: AgentPolicy;
+  tools: string[];
+};
+
+type AgentsDebugResponse = Record<string, AgentDebugEntry>;
+
+type AgentToolSchema =
+  | { type: "web_search" }
+  | {
+      type: "function";
+      name: string;
+      description: string;
+      parameters: unknown;
+      strict: boolean;
+    };
 
 // Simple vertical nav structure
 const SECTIONS = [
   { id: "logs", label: "Logs", icon: BookOpen },
+  { id: "catalog", label: "Tools", icon: Boxes },
   { id: "adaptations", label: "Adaptations", icon: BookOpen },
   { id: "mcp", label: "MCP Servers", icon: Server },
   { id: "maintenance", label: "Maintenance", icon: Wrench },
@@ -44,7 +78,99 @@ export default function SettingsPage() {
     window.history.replaceState(null, "", url);
   }, [active]);
 
-  // No tools configuration; tab removed.
+  const [catalogTools, setCatalogTools] = useState<CatalogTool[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState<boolean>(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+
+  const [agentsInfo, setAgentsInfo] = useState<AgentsDebugResponse>({});
+  const [agentsLoading, setAgentsLoading] = useState<boolean>(true);
+  const [agentsError, setAgentsError] = useState<string | null>(null);
+  const [agentSchemas, setAgentSchemas] = useState<Record<string, AgentToolSchema[]>>({});
+  const [agentSchemaErrors, setAgentSchemaErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const backendUrl = getBackendUrl();
+
+    const loadCatalog = async () => {
+      setCatalogLoading(true);
+      setCatalogError(null);
+      try {
+        const res = await fetch(`${backendUrl}/catalog/tools`);
+        if (!res.ok) {
+          throw new Error(`Failed to load tool catalog (HTTP ${res.status})`);
+        }
+        const data = (await res.json()) as CatalogTool[];
+        if (!cancelled) {
+          setCatalogTools(data);
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error("Failed to load tool catalog", err);
+        setCatalogError(err?.message || "Failed to load tool catalog");
+        setCatalogTools([]);
+      } finally {
+        if (!cancelled) {
+          setCatalogLoading(false);
+        }
+      }
+    };
+
+    const loadAgents = async () => {
+      setAgentsLoading(true);
+      setAgentsError(null);
+      setAgentSchemaErrors({});
+      try {
+        const res = await fetch(`${backendUrl}/agents`);
+        if (!res.ok) {
+          throw new Error(`Failed to load agents (HTTP ${res.status})`);
+        }
+        const data = (await res.json()) as AgentsDebugResponse;
+        if (cancelled) return;
+        setAgentsInfo(data);
+
+        const schemaData: Record<string, AgentToolSchema[]> = {};
+        const schemaErrors: Record<string, string> = {};
+
+        await Promise.all(
+          Object.keys(data).map(async (agentId) => {
+            try {
+              const schemaRes = await fetch(`${backendUrl}/agents/${agentId}/tools`);
+              if (!schemaRes.ok) {
+                throw new Error(`Failed to load tools (HTTP ${schemaRes.status})`);
+              }
+              const schemaJson = (await schemaRes.json()) as AgentToolSchema[];
+              schemaData[agentId] = schemaJson;
+            } catch (schemaErr: any) {
+              schemaErrors[agentId] = schemaErr?.message || "Failed to load tools for agent";
+            }
+          })
+        );
+
+        if (!cancelled) {
+          setAgentSchemas(schemaData);
+          setAgentSchemaErrors(schemaErrors);
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error("Failed to load agents", err);
+        setAgentsError(err?.message || "Failed to load agents");
+        setAgentsInfo({});
+        setAgentSchemas({});
+      } finally {
+        if (!cancelled) {
+          setAgentsLoading(false);
+        }
+      }
+    };
+
+    void loadCatalog();
+    void loadAgents();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [resetStatus, setResetStatus] = useState<"idle" | "resetting" | "done" | "error">("idle");
   const [buildInfo, setBuildInfo] = useState<{ commitId: string; commitMessage: string } | null>(null);
@@ -132,6 +258,173 @@ export default function SettingsPage() {
               <CardContent className="space-y-3">
                 <div className="rounded-md border overflow-hidden">
                   <iframe src="/logs" className="w-full h-[65vh]" />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {active === "catalog" && (
+            <Card className="w-full">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Tool Catalogue</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5 text-sm">
+                <p className="text-xs text-muted-foreground">
+                  Read-only view of the tool registry resolved from the backend along with agent policies and assigned tools.
+                </p>
+
+                <div className="space-y-2">
+                  <h3 className="text-sm font-medium">Registered tools</h3>
+                  {catalogLoading && (
+                    <p className="text-xs text-muted-foreground">Loading tools…</p>
+                  )}
+                  {!catalogLoading && catalogError && (
+                    <p className="text-xs text-destructive">{catalogError}</p>
+                  )}
+                  {!catalogLoading && !catalogError && (
+                    <div className="rounded-md border divide-y">
+                      {catalogTools.length === 0 && (
+                        <div className="p-3 text-xs text-muted-foreground">No tools discovered.</div>
+                      )}
+                      {catalogTools.map((tool) => (
+                        <div key={tool.id} className="p-3 space-y-2">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                            <div className="font-medium">{tool.name}</div>
+                            <code className="text-xs text-muted-foreground">{tool.id}</code>
+                          </div>
+                          {tool.description ? (
+                            <p className="text-xs text-muted-foreground">{tool.description}</p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground italic">No description</p>
+                          )}
+                          <div className="flex flex-wrap gap-2 text-[11px]">
+                            <span className="rounded border bg-muted px-2 py-0.5 uppercase tracking-wide text-[10px] text-muted-foreground">
+                              {tool.origin}
+                            </span>
+                            {tool.tags.map((tag) => (
+                              <span key={`${tool.id}-${tag}`} className="rounded border px-2 py-0.5">
+                                {tag}
+                              </span>
+                            ))}
+                            <span className="rounded border px-2 py-0.5">{tool.sanitizedName}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium">Agents</h3>
+                  {agentsLoading && <p className="text-xs text-muted-foreground">Loading agent mappings…</p>}
+                  {!agentsLoading && agentsError && (
+                    <p className="text-xs text-destructive">{agentsError}</p>
+                  )}
+                  {!agentsLoading && !agentsError && (
+                    <div className="space-y-3">
+                      {Object.entries(agentsInfo)
+                        .sort(([a], [b]) => {
+                          if (a === b) return 0;
+                          if (a === "base") return -1;
+                          if (b === "base") return 1;
+                          if (a === "supervisor") return -1;
+                          if (b === "supervisor") return 1;
+                          return a.localeCompare(b);
+                        })
+                        .map(([agentId, entry]) => (
+                          <div key={agentId} className="rounded-md border p-3 space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                              <div className="font-medium capitalize">{agentId} agent</div>
+                              <div className="text-xs text-muted-foreground">
+                                {entry.tools.length} resolved tool{entry.tools.length === 1 ? "" : "s"}
+                              </div>
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div className="space-y-2">
+                                <p className="text-xs font-semibold">Allow names</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {entry.policy.allowNames?.length ? (
+                                    entry.policy.allowNames.map((name) => (
+                                      <span key={`${agentId}-allow-${name}`} className="rounded border px-2 py-0.5 text-xs">
+                                        {name}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">None</span>
+                                  )}
+                                </div>
+                                <p className="text-xs font-semibold">Allow tags</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {entry.policy.allowTags?.length ? (
+                                    entry.policy.allowTags.map((tag) => (
+                                      <span key={`${agentId}-allow-tag-${tag}`} className="rounded border px-2 py-0.5 text-xs">
+                                        {tag}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">None</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <p className="text-xs font-semibold">Deny names</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {entry.policy.denyNames?.length ? (
+                                    entry.policy.denyNames.map((name) => (
+                                      <span key={`${agentId}-deny-${name}`} className="rounded border px-2 py-0.5 text-xs">
+                                        {name}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">None</span>
+                                  )}
+                                </div>
+                                <p className="text-xs font-semibold">Deny tags</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {entry.policy.denyTags?.length ? (
+                                    entry.policy.denyTags.map((tag) => (
+                                      <span key={`${agentId}-deny-tag-${tag}`} className="rounded border px-2 py-0.5 text-xs">
+                                        {tag}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">None</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <p className="text-xs font-semibold">Resolved tool identifiers</p>
+                              <div className="flex flex-wrap gap-2">
+                                {entry.tools.length ? (
+                                  entry.tools.map((tool) => (
+                                    <span key={`${agentId}-resolved-${tool}`} className="rounded border px-2 py-0.5 text-xs">
+                                      {tool}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">No tools resolved</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <p className="text-xs font-semibold">Responses API payload</p>
+                              {agentSchemaErrors[agentId] ? (
+                                <p className="text-xs text-destructive">{agentSchemaErrors[agentId]}</p>
+                              ) : (
+                                <pre className="whitespace-pre-wrap break-all rounded-md bg-muted p-2 text-[11px] overflow-x-auto">
+                                  {JSON.stringify(agentSchemas[agentId] || [], null, 2)}
+                                </pre>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
