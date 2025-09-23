@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -95,6 +95,9 @@ export default function SettingsPage() {
   const [agentSchemas, setAgentSchemas] = useState<Record<string, AgentToolSchema[]>>({});
   const [agentSchemaErrors, setAgentSchemaErrors] = useState<Record<string, string>>({});
 
+  const catalogSectionRef = useRef<HTMLDivElement | null>(null);
+  const agentSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
   const sortedAgents = useMemo(
     () =>
       Object.entries(agentsInfo).sort(([a], [b]) => {
@@ -107,6 +110,17 @@ export default function SettingsPage() {
       }),
     [agentsInfo]
   );
+
+  const scrollToSection = (sectionId: "catalog" | string) => {
+    const target =
+      sectionId === "catalog"
+        ? catalogSectionRef.current
+        : agentSectionRefs.current[sectionId];
+
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -289,11 +303,48 @@ export default function SettingsPage() {
                 <CardTitle className="text-base">Tool Catalogue</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5 text-sm">
+                {(sortedAgents.length > 0 || catalogTools.length > 0) && (
+                  <div className="sticky top-0 z-10 rounded-md border bg-card/95 p-3 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Jump to section
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => scrollToSection("catalog")}
+                      >
+                        Tool Catalogue
+                      </Button>
+                      {sortedAgents.map(([agentId]) => (
+                        <Button
+                          key={`toc-${agentId}`}
+                          type="button"
+                          size="sm"
+                          variant={
+                            agentId === "base" || agentId === "supervisor"
+                              ? "secondary"
+                              : "outline"
+                          }
+                          onClick={() => scrollToSection(agentId)}
+                        >
+                          {formatAgentLabel(agentId)} Agent
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <p className="text-xs text-muted-foreground">
                   Read-only view of the tool registry resolved from the backend along with agent policies and assigned tools.
                 </p>
 
-                <div className="space-y-2">
+                <div
+                  ref={catalogSectionRef}
+                  id="settings-tools-catalogue"
+                  className="space-y-2 scroll-mt-24"
+                >
                   <h3 className="text-sm font-medium">Registered tools</h3>
                   {catalogLoading && (
                     <p className="text-xs text-muted-foreground">Loading tools…</p>
@@ -342,22 +393,13 @@ export default function SettingsPage() {
                   )}
                   {!agentsLoading && !agentsError && (
                     <div className="space-y-3">
-                      {sortedAgents.length > 0 && (
-                        <div className="rounded-md border bg-muted/40 p-3">
-                          <p className="text-xs font-semibold text-muted-foreground">Jump to agent</p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {sortedAgents.map(([agentId]) => (
-                              <Button key={`toc-${agentId}`} variant="outline" size="sm" asChild>
-                                <a href={`#agent-${agentId}`}>{formatAgentLabel(agentId)} Agent</a>
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                       {sortedAgents.map(([agentId, entry]) => (
                         <div
                           key={agentId}
                           id={`agent-${agentId}`}
+                          ref={(node) => {
+                            agentSectionRefs.current[agentId] = node;
+                          }}
                           className="rounded-md border p-3 space-y-3 scroll-mt-24"
                         >
                           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
