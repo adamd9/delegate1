@@ -16,8 +16,6 @@ export interface CanonicalTool {
 export interface AgentPolicy {
   allowNames?: string[];
   allowTags?: string[];
-  denyNames?: string[];
-  denyTags?: string[];
 }
 
 const toolsById = new Map<string, CanonicalTool>();
@@ -28,8 +26,47 @@ export function sanitizeToolName(name: string) {
   return name.replace(/[^a-zA-Z0-9_-]/g, '-');
 }
 
+function clonePolicy(policy: AgentPolicy): AgentPolicy {
+  return {
+    allowNames: Array.isArray(policy.allowNames)
+      ? [...policy.allowNames]
+      : policy.allowNames,
+    allowTags: Array.isArray(policy.allowTags)
+      ? [...policy.allowTags]
+      : policy.allowTags,
+  };
+}
+
+function normalizeOptionalStringArray(values: string[] | undefined): string[] | undefined {
+  if (values === undefined) return undefined;
+  const normalized = values
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  return Array.from(new Set(normalized));
+}
+
 export function registerAgent(id: string, policy: AgentPolicy) {
-  agents.set(id, policy);
+  agents.set(id, clonePolicy(policy));
+}
+
+export function getAgentPolicy(id: string): AgentPolicy | undefined {
+  const policy = agents.get(id);
+  if (!policy) return undefined;
+  return clonePolicy(policy);
+}
+
+export function updateAgentPolicy(id: string, updates: Partial<AgentPolicy>) {
+  const existing = agents.get(id);
+  if (!existing) throw new Error(`Agent not registered: ${id}`);
+  const next = clonePolicy(existing);
+  if (updates.allowNames !== undefined) {
+    next.allowNames = normalizeOptionalStringArray(updates.allowNames) ?? [];
+  }
+  if (updates.allowTags !== undefined) {
+    next.allowTags = normalizeOptionalStringArray(updates.allowTags) ?? [];
+  }
+  agents.set(id, next);
+  return clonePolicy(next);
 }
 
 export function registerTools(providerId: string, canonical: (Omit<CanonicalTool, 'id' | 'sanitizedName'> & { name: string })[]) {
@@ -71,35 +108,21 @@ export function listAllTools(): CanonicalTool[] {
 }
 
 export function getSchemasForAgent(agentId: string) {
-  const policy = agents.get(agentId) || {};
+  const policy = agents.get(agentId);
   const allowSet = new Set<string>();
-  const denySet = new Set<string>();
 
   const all = listAllTools();
 
-  if (policy.allowNames && policy.allowNames.length) {
-    for (const t of all) if (policy.allowNames.includes(t.name)) allowSet.add(t.id);
+  const allowNames = policy?.allowNames;
+  if (allowNames?.length) {
+    for (const t of all) if (allowNames.includes(t.name)) allowSet.add(t.id);
   }
-  if (policy.allowTags && policy.allowTags.length) {
-    for (const t of all) if (t.tags.some(tag => policy.allowTags!.includes(tag))) allowSet.add(t.id);
-  }
-
-  // If no explicit allow provided, default to allow nothing (explicit opt-in)
-
-  if (policy.denyNames && policy.denyNames.length) {
-    for (const id of Array.from(allowSet)) {
-      const t = toolsById.get(id);
-      if (t && policy.denyNames.includes(t.name)) denySet.add(id);
-    }
-  }
-  if (policy.denyTags && policy.denyTags.length) {
-    for (const id of Array.from(allowSet)) {
-      const t = toolsById.get(id);
-      if (t && t.tags.some(tag => policy.denyTags!.includes(tag))) denySet.add(id);
-    }
+  const allowTags = policy?.allowTags;
+  if (allowTags?.length) {
+    for (const t of all) if (t.tags.some(tag => allowTags.includes(tag))) allowSet.add(t.id);
   }
 
-  const finalIds = Array.from(allowSet).filter(id => !denySet.has(id));
+  const finalIds = Array.from(allowSet);
   const final = finalIds.map(id => toolsById.get(id)!).filter(Boolean);
   // Return Responses API tools list (mix of builtins and functions)
   return final.map((t) => {
@@ -129,8 +152,9 @@ export async function executeBySanitizedName(sanitizedName: string, args: any): 
 }
 
 export function getAgentsDebug() {
-  const result: any = {};
-  for (const [id, policy] of agents.entries()) {
+  const result: Record<string, { policy: AgentPolicy; tools: string[] }> = {};
+  for (const id of agents.keys()) {
+    const policy = getAgentPolicy(id) || {};
     result[id] = {
       policy,
       tools: (getSchemasForAgent(id) || []).map((s: any) => s.type === 'function' ? s.name : s.type)

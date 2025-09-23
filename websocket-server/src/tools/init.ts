@@ -11,7 +11,7 @@ export async function initToolsRegistry() {
   // MCP tools are discovered asynchronously before this is called
   registerMcpTools();
 
-  // Agent policies: allow/deny by names/tags only (minimal)
+  // Agent policies: allow lists by names/tags only (minimal)
   const baseToolNames = (getAgent('base').tools || []).map(t => t.schema?.name).filter(Boolean) as string[];
   registerAgent('base', {
     // Final selection comes from agent config tools
