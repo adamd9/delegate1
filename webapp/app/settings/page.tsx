@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -27,8 +27,6 @@ type CatalogTool = {
 type AgentPolicy = {
   allowNames?: string[];
   allowTags?: string[];
-  denyNames?: string[];
-  denyTags?: string[];
 };
 
 type AgentDebugEntry = {
@@ -65,6 +63,15 @@ const formatAgentLabel = (agentId: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ") || agentId;
 
+const sortNames = (names: string[]) => [...names].sort((a, b) => a.localeCompare(b));
+
+const arraysEqualIgnoringOrder = (a: string[] = [], b: string[] = []) => {
+  if (a.length !== b.length) return false;
+  const sortedA = sortNames(a);
+  const sortedB = sortNames(b);
+  return sortedA.every((value, index) => value === sortedB[index]);
+};
+
 export default function SettingsPage() {
   const [active, setActive] = useState<string>("logs");
 
@@ -94,9 +101,18 @@ export default function SettingsPage() {
   const [agentsError, setAgentsError] = useState<string | null>(null);
   const [agentSchemas, setAgentSchemas] = useState<Record<string, AgentToolSchema[]>>({});
   const [agentSchemaErrors, setAgentSchemaErrors] = useState<Record<string, string>>({});
+  const [allowNameDrafts, setAllowNameDrafts] = useState<Record<string, string[]>>({});
+  const [allowNameSaveState, setAllowNameSaveState] = useState<
+    Record<string, "idle" | "saving" | "success" | "error">
+  >({});
+  const [allowNameSaveErrors, setAllowNameSaveErrors] = useState<Record<string, string | null>>({});
+  const [selectResetCounters, setSelectResetCounters] = useState<Record<string, number>>({});
 
   const catalogSectionRef = useRef<HTMLDivElement | null>(null);
   const agentSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const cancelRef = useRef(false);
+
+  const backendUrl = useMemo(() => getBackendUrl(), []);
 
   const sortedAgents = useMemo(
     () =>
@@ -122,89 +138,249 @@ export default function SettingsPage() {
     }
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    const backendUrl = getBackendUrl();
-
-    const loadCatalog = async () => {
-      setCatalogLoading(true);
-      setCatalogError(null);
-      try {
-        const res = await fetch(`${backendUrl}/catalog/tools`);
-        if (!res.ok) {
-          throw new Error(`Failed to load tool catalog (HTTP ${res.status})`);
-        }
-        const data = (await res.json()) as CatalogTool[];
-        if (!cancelled) {
-          setCatalogTools(data);
-        }
-      } catch (err: any) {
-        if (cancelled) return;
-        console.error("Failed to load tool catalog", err);
-        setCatalogError(err?.message || "Failed to load tool catalog");
-        setCatalogTools([]);
-      } finally {
-        if (!cancelled) {
-          setCatalogLoading(false);
-        }
+  const loadCatalog = useCallback(async () => {
+    setCatalogLoading(true);
+    setCatalogError(null);
+    try {
+      const res = await fetch(`${backendUrl}/catalog/tools`);
+      if (!res.ok) {
+        throw new Error(`Failed to load tool catalog (HTTP ${res.status})`);
       }
-    };
+      const data = (await res.json()) as CatalogTool[];
+      if (cancelRef.current) return;
+      setCatalogTools(data);
+    } catch (err: any) {
+      if (cancelRef.current) return;
+      console.error("Failed to load tool catalog", err);
+      setCatalogError(err?.message || "Failed to load tool catalog");
+      setCatalogTools([]);
+    } finally {
+      if (cancelRef.current) return;
+      setCatalogLoading(false);
+    }
+  }, [backendUrl]);
 
-    const loadAgents = async () => {
-      setAgentsLoading(true);
-      setAgentsError(null);
-      setAgentSchemaErrors({});
-      try {
-        const res = await fetch(`${backendUrl}/agents`);
-        if (!res.ok) {
-          throw new Error(`Failed to load agents (HTTP ${res.status})`);
-        }
-        const data = (await res.json()) as AgentsDebugResponse;
-        if (cancelled) return;
-        setAgentsInfo(data);
+  const loadAgents = useCallback(async () => {
+    setAgentsLoading(true);
+    setAgentsError(null);
+    setAgentSchemaErrors({});
+    try {
+      const res = await fetch(`${backendUrl}/agents`);
+      if (!res.ok) {
+        throw new Error(`Failed to load agents (HTTP ${res.status})`);
+      }
+      const data = (await res.json()) as AgentsDebugResponse;
+      if (cancelRef.current) return;
+      setAgentsInfo(data);
 
-        const schemaData: Record<string, AgentToolSchema[]> = {};
-        const schemaErrors: Record<string, string> = {};
+      const schemaData: Record<string, AgentToolSchema[]> = {};
+      const schemaErrors: Record<string, string> = {};
 
-        await Promise.all(
-          Object.keys(data).map(async (agentId) => {
-            try {
-              const schemaRes = await fetch(`${backendUrl}/agents/${agentId}/tools`);
-              if (!schemaRes.ok) {
-                throw new Error(`Failed to load tools (HTTP ${schemaRes.status})`);
-              }
-              const schemaJson = (await schemaRes.json()) as AgentToolSchema[];
-              schemaData[agentId] = schemaJson;
-            } catch (schemaErr: any) {
-              schemaErrors[agentId] = schemaErr?.message || "Failed to load tools for agent";
+      await Promise.all(
+        Object.keys(data).map(async (agentId) => {
+          try {
+            const schemaRes = await fetch(`${backendUrl}/agents/${agentId}/tools`);
+            if (!schemaRes.ok) {
+              throw new Error(`Failed to load tools (HTTP ${schemaRes.status})`);
             }
-          })
-        );
+            const schemaJson = (await schemaRes.json()) as AgentToolSchema[];
+            schemaData[agentId] = schemaJson;
+          } catch (schemaErr: any) {
+            schemaErrors[agentId] = schemaErr?.message || "Failed to load tools for agent";
+          }
+        })
+      );
 
-        if (!cancelled) {
-          setAgentSchemas(schemaData);
-          setAgentSchemaErrors(schemaErrors);
-        }
-      } catch (err: any) {
-        if (cancelled) return;
-        console.error("Failed to load agents", err);
-        setAgentsError(err?.message || "Failed to load agents");
-        setAgentsInfo({});
-        setAgentSchemas({});
-      } finally {
-        if (!cancelled) {
-          setAgentsLoading(false);
-        }
+      if (cancelRef.current) return;
+      setAgentSchemas(schemaData);
+      setAgentSchemaErrors(schemaErrors);
+
+      const drafts: Record<string, string[]> = {};
+      const agentIds = Object.keys(data);
+      for (const [agentId, entry] of Object.entries(data)) {
+        const names = entry.policy.allowNames ? [...entry.policy.allowNames] : [];
+        drafts[agentId] = sortNames(names);
       }
-    };
+      setAllowNameDrafts(drafts);
+      setAllowNameSaveState((prev) => {
+        const next: Record<string, "idle" | "saving" | "success" | "error"> = {};
+        agentIds.forEach((agentId) => {
+          next[agentId] = prev[agentId] ?? "idle";
+        });
+        return next;
+      });
+      setAllowNameSaveErrors((prev) => {
+        const next: Record<string, string | null> = {};
+        agentIds.forEach((agentId) => {
+          next[agentId] = prev[agentId] ?? null;
+        });
+        return next;
+      });
+      setSelectResetCounters((prev) => {
+        const next: Record<string, number> = {};
+        agentIds.forEach((agentId) => {
+          next[agentId] = prev[agentId] ?? 0;
+        });
+        return next;
+      });
+    } catch (err: any) {
+      if (cancelRef.current) return;
+      console.error("Failed to load agents", err);
+      setAgentsError(err?.message || "Failed to load agents");
+      setAgentsInfo({});
+      setAgentSchemas({});
+      setAllowNameDrafts({});
+      setAllowNameSaveState({});
+      setAllowNameSaveErrors({});
+      setSelectResetCounters({});
+    } finally {
+      if (cancelRef.current) return;
+      setAgentsLoading(false);
+    }
+  }, [backendUrl]);
 
+  useEffect(() => {
+    cancelRef.current = false;
     void loadCatalog();
     void loadAgents();
-
     return () => {
-      cancelled = true;
+      cancelRef.current = true;
     };
-  }, []);
+  }, [loadCatalog, loadAgents]);
+
+  const modifyAllowNames = useCallback(
+    (agentId: string, updater: (current: string[]) => string[]) => {
+      setAllowNameDrafts((prev) => {
+        const original = prev[agentId] ? [...prev[agentId]] : [];
+        const updated = updater([...original]);
+        const nextValues = sortNames(updated);
+        if (arraysEqualIgnoringOrder(original, nextValues)) {
+          return prev;
+        }
+        return { ...prev, [agentId]: nextValues };
+      });
+      setAllowNameSaveState((prev) => {
+        const status = prev[agentId];
+        if (status === "saving") return prev;
+        return { ...prev, [agentId]: "idle" };
+      });
+      setAllowNameSaveErrors((prev) => ({ ...prev, [agentId]: null }));
+    },
+    []
+  );
+
+  const handleAddAllowName = useCallback(
+    (agentId: string, name: string) => {
+      if (!name) return;
+      const existing = allowNameDrafts[agentId] ?? [];
+      if (existing.includes(name)) return;
+      modifyAllowNames(agentId, (current) => {
+        current.push(name);
+        return current;
+      });
+      setSelectResetCounters((prev) => ({
+        ...prev,
+        [agentId]: (prev[agentId] ?? 0) + 1,
+      }));
+    },
+    [allowNameDrafts, modifyAllowNames]
+  );
+
+  const handleRemoveAllowName = useCallback(
+    (agentId: string, name: string) => {
+      modifyAllowNames(agentId, (current) => current.filter((value) => value !== name));
+    },
+    [modifyAllowNames]
+  );
+
+  const handleResetAllowNames = useCallback(
+    (agentId: string) => {
+      const original = agentsInfo[agentId]?.policy.allowNames ?? [];
+      setAllowNameDrafts((prev) => ({
+        ...prev,
+        [agentId]: sortNames([...original]),
+      }));
+      setAllowNameSaveState((prev) => ({ ...prev, [agentId]: "idle" }));
+      setAllowNameSaveErrors((prev) => ({ ...prev, [agentId]: null }));
+      setSelectResetCounters((prev) => ({
+        ...prev,
+        [agentId]: (prev[agentId] ?? 0) + 1,
+      }));
+    },
+    [agentsInfo]
+  );
+
+  const handleSaveAllowNames = useCallback(
+    async (agentId: string) => {
+      const names = allowNameDrafts[agentId] ?? [];
+      setAllowNameSaveState((prev) => ({ ...prev, [agentId]: "saving" }));
+      setAllowNameSaveErrors((prev) => ({ ...prev, [agentId]: null }));
+      try {
+        const res = await fetch(`${backendUrl}/agents/${agentId}/policy`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ allowNames: names }),
+        });
+        if (!res.ok) {
+          let errorMessage = `Failed to update allow names (HTTP ${res.status})`;
+          try {
+            const payload = (await res.json()) as { error?: string };
+            if (payload?.error) errorMessage = payload.error;
+          } catch {
+            // ignore JSON parse errors
+          }
+          throw new Error(errorMessage);
+        }
+        const payload = (await res.json()) as { agent?: AgentDebugEntry };
+        if (!payload?.agent) {
+          throw new Error("Unexpected response from server");
+        }
+        if (cancelRef.current) return;
+
+        setAgentsInfo((prev) => ({ ...prev, [agentId]: payload.agent! }));
+        const updatedNames = payload.agent.policy.allowNames
+          ? [...payload.agent.policy.allowNames]
+          : [];
+        setAllowNameDrafts((prev) => ({
+          ...prev,
+          [agentId]: sortNames(updatedNames),
+        }));
+        setAllowNameSaveState((prev) => ({ ...prev, [agentId]: "success" }));
+        setAllowNameSaveErrors((prev) => ({ ...prev, [agentId]: null }));
+
+        try {
+          const schemaRes = await fetch(`${backendUrl}/agents/${agentId}/tools`);
+          if (!schemaRes.ok) {
+            throw new Error(`Failed to load tools (HTTP ${schemaRes.status})`);
+          }
+          const schemaJson = (await schemaRes.json()) as AgentToolSchema[];
+          if (!cancelRef.current) {
+            setAgentSchemas((prev) => ({ ...prev, [agentId]: schemaJson }));
+            setAgentSchemaErrors((prev) => {
+              const next = { ...prev };
+              delete next[agentId];
+              return next;
+            });
+          }
+        } catch (schemaErr: any) {
+          if (!cancelRef.current) {
+            setAgentSchemaErrors((prev) => ({
+              ...prev,
+              [agentId]: schemaErr?.message || "Failed to load tools for agent",
+            }));
+          }
+        }
+      } catch (err: any) {
+        if (cancelRef.current) return;
+        setAllowNameSaveState((prev) => ({ ...prev, [agentId]: "error" }));
+        setAllowNameSaveErrors((prev) => ({
+          ...prev,
+          [agentId]: err?.message || "Failed to update allow names",
+        }));
+      }
+    },
+    [allowNameDrafts, backendUrl]
+  );
 
   const [resetStatus, setResetStatus] = useState<"idle" | "resetting" | "done" | "error">("idle");
   const [buildInfo, setBuildInfo] = useState<{ commitId: string; commitMessage: string } | null>(null);
@@ -393,105 +569,164 @@ export default function SettingsPage() {
                   )}
                   {!agentsLoading && !agentsError && (
                     <div className="space-y-3">
-                      {sortedAgents.map(([agentId, entry]) => (
-                        <div
-                          key={agentId}
-                          id={`agent-${agentId}`}
-                          ref={(node) => {
-                            agentSectionRefs.current[agentId] = node;
-                          }}
-                          className="rounded-md border p-3 space-y-3 scroll-mt-24"
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                            <div className="font-medium">{formatAgentLabel(agentId)} Agent</div>
-                            <div className="text-xs text-muted-foreground">
-                              {entry.tools.length} resolved tool{entry.tools.length === 1 ? "" : "s"}
-                            </div>
-                          </div>
+                      {sortedAgents.map(([agentId, entry]) => {
+                        const draftAllowNames = allowNameDrafts[agentId] ?? [];
+                        const availableTools = catalogTools
+                          .filter((tool) => !draftAllowNames.includes(tool.name))
+                          .sort((a, b) => a.name.localeCompare(b.name));
+                        const allowListChanged = !arraysEqualIgnoringOrder(
+                          entry.policy.allowNames ?? [],
+                          draftAllowNames
+                        );
+                        const saveStatus = allowNameSaveState[agentId] ?? "idle";
+                        const saveError = allowNameSaveErrors[agentId];
+                        const selectKey = selectResetCounters[agentId] ?? 0;
 
-                          <div className="grid gap-3 sm:grid-cols-2">
+                        return (
+                          <div
+                            key={agentId}
+                            id={`agent-${agentId}`}
+                            ref={(node) => {
+                              agentSectionRefs.current[agentId] = node;
+                            }}
+                            className="rounded-md border p-3 space-y-3 scroll-mt-24"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                              <div className="font-medium">{formatAgentLabel(agentId)} Agent</div>
+                              <div className="text-xs text-muted-foreground">
+                                {entry.tools.length} resolved tool{entry.tools.length === 1 ? "" : "s"}
+                              </div>
+                            </div>
+
+                            <div className="space-y-4">
+                              <div className="space-y-2">
+                                <p className="text-xs font-semibold">Allow names</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {draftAllowNames.length ? (
+                                    draftAllowNames.map((name) => (
+                                      <span
+                                        key={`${agentId}-allow-${name}`}
+                                        className="flex items-center gap-1 rounded border px-2 py-0.5 text-xs"
+                                      >
+                                        {name}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveAllowName(agentId, name)}
+                                          className="text-muted-foreground transition-colors hover:text-destructive"
+                                          aria-label={`Remove ${name} from allow list`}
+                                        >
+                                          ×
+                                        </button>
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">None</span>
+                                  )}
+                                </div>
+                                {catalogLoading ? (
+                                  <p className="text-xs text-muted-foreground">Tool catalog loading…</p>
+                                ) : catalogError ? (
+                                  <p className="text-xs text-destructive">
+                                    Tool catalog unavailable: {catalogError}
+                                  </p>
+                                ) : availableTools.length ? (
+                                  <Select
+                                    key={`select-${agentId}-${selectKey}`}
+                                    onValueChange={(value) => handleAddAllowName(agentId, value)}
+                                  >
+                                    <SelectTrigger className="w-full max-w-xs sm:w-auto">
+                                      <SelectValue placeholder="Add tool to allow list" />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-64">
+                                      {availableTools.map((tool) => (
+                                        <SelectItem key={`${agentId}-add-${tool.name}`} value={tool.name}>
+                                          <div className="flex flex-col">
+                                            <span>{tool.name}</span>
+                                            <span className="text-[11px] text-muted-foreground">
+                                              {tool.sanitizedName}
+                                            </span>
+                                          </div>
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">
+                                    All catalog tools are currently allowed.
+                                  </p>
+                                )}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleSaveAllowNames(agentId)}
+                                    disabled={!allowListChanged || saveStatus === "saving"}
+                                  >
+                                    {saveStatus === "saving" ? "Saving…" : "Save allow list"}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleResetAllowNames(agentId)}
+                                    disabled={!allowListChanged || saveStatus === "saving"}
+                                  >
+                                    Reset
+                                  </Button>
+                                  {saveStatus === "success" && (
+                                    <span className="text-xs text-green-600">Saved</span>
+                                  )}
+                                  {saveStatus === "error" && saveError && (
+                                    <span className="text-xs text-destructive">{saveError}</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <p className="text-xs font-semibold">Allow tags</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {entry.policy.allowTags?.length ? (
+                                    entry.policy.allowTags.map((tag) => (
+                                      <span
+                                        key={`${agentId}-allow-tag-${tag}`}
+                                        className="rounded border px-2 py-0.5 text-xs"
+                                      >
+                                        {tag}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">None</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
                             <div className="space-y-2">
-                              <p className="text-xs font-semibold">Allow names</p>
+                              <p className="text-xs font-semibold">Resolved tool identifiers</p>
                               <div className="flex flex-wrap gap-2">
-                                {entry.policy.allowNames?.length ? (
-                                  entry.policy.allowNames.map((name) => (
-                                    <span key={`${agentId}-allow-${name}`} className="rounded border px-2 py-0.5 text-xs">
-                                      {name}
+                                {entry.tools.length ? (
+                                  entry.tools.map((tool) => (
+                                    <span key={`${agentId}-resolved-${tool}`} className="rounded border px-2 py-0.5 text-xs">
+                                      {tool}
                                     </span>
                                   ))
                                 ) : (
-                                  <span className="text-xs text-muted-foreground">None</span>
-                                )}
-                              </div>
-                              <p className="text-xs font-semibold">Allow tags</p>
-                              <div className="flex flex-wrap gap-2">
-                                {entry.policy.allowTags?.length ? (
-                                  entry.policy.allowTags.map((tag) => (
-                                    <span key={`${agentId}-allow-tag-${tag}`} className="rounded border px-2 py-0.5 text-xs">
-                                      {tag}
-                                    </span>
-                                  ))
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">None</span>
+                                  <span className="text-xs text-muted-foreground">No tools resolved</span>
                                 )}
                               </div>
                             </div>
 
                             <div className="space-y-2">
-                              <p className="text-xs font-semibold">Deny names</p>
-                              <div className="flex flex-wrap gap-2">
-                                {entry.policy.denyNames?.length ? (
-                                  entry.policy.denyNames.map((name) => (
-                                    <span key={`${agentId}-deny-${name}`} className="rounded border px-2 py-0.5 text-xs">
-                                      {name}
-                                    </span>
-                                  ))
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">None</span>
-                                )}
-                              </div>
-                              <p className="text-xs font-semibold">Deny tags</p>
-                              <div className="flex flex-wrap gap-2">
-                                {entry.policy.denyTags?.length ? (
-                                  entry.policy.denyTags.map((tag) => (
-                                    <span key={`${agentId}-deny-tag-${tag}`} className="rounded border px-2 py-0.5 text-xs">
-                                      {tag}
-                                    </span>
-                                  ))
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">None</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="space-y-2">
-                            <p className="text-xs font-semibold">Resolved tool identifiers</p>
-                            <div className="flex flex-wrap gap-2">
-                              {entry.tools.length ? (
-                                entry.tools.map((tool) => (
-                                  <span key={`${agentId}-resolved-${tool}`} className="rounded border px-2 py-0.5 text-xs">
-                                    {tool}
-                                  </span>
-                                ))
+                              <p className="text-xs font-semibold">Responses API payload</p>
+                              {agentSchemaErrors[agentId] ? (
+                                <p className="text-xs text-destructive">{agentSchemaErrors[agentId]}</p>
                               ) : (
-                                <span className="text-xs text-muted-foreground">No tools resolved</span>
+                                <pre className="whitespace-pre-wrap break-all rounded-md bg-muted p-2 text-[11px] overflow-x-auto">
+                                  {JSON.stringify(agentSchemas[agentId] || [], null, 2)}
+                                </pre>
                               )}
                             </div>
                           </div>
-
-                          <div className="space-y-2">
-                            <p className="text-xs font-semibold">Responses API payload</p>
-                            {agentSchemaErrors[agentId] ? (
-                              <p className="text-xs text-destructive">{agentSchemaErrors[agentId]}</p>
-                            ) : (
-                              <pre className="whitespace-pre-wrap break-all rounded-md bg-muted p-2 text-[11px] overflow-x-auto">
-                                {JSON.stringify(agentSchemas[agentId] || [], null, 2)}
-                              </pre>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
