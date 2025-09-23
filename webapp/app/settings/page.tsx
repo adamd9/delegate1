@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -58,6 +58,13 @@ const SECTIONS = [
   { id: "about", label: "About", icon: Info },
 ] as const;
 
+const formatAgentLabel = (agentId: string) =>
+  agentId
+    .split(/[-_\s]+/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ") || agentId;
+
 export default function SettingsPage() {
   const [active, setActive] = useState<string>("logs");
 
@@ -87,6 +94,33 @@ export default function SettingsPage() {
   const [agentsError, setAgentsError] = useState<string | null>(null);
   const [agentSchemas, setAgentSchemas] = useState<Record<string, AgentToolSchema[]>>({});
   const [agentSchemaErrors, setAgentSchemaErrors] = useState<Record<string, string>>({});
+
+  const catalogSectionRef = useRef<HTMLDivElement | null>(null);
+  const agentSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const sortedAgents = useMemo(
+    () =>
+      Object.entries(agentsInfo).sort(([a], [b]) => {
+        if (a === b) return 0;
+        if (a === "base") return -1;
+        if (b === "base") return 1;
+        if (a === "supervisor") return -1;
+        if (b === "supervisor") return 1;
+        return a.localeCompare(b);
+      }),
+    [agentsInfo]
+  );
+
+  const scrollToSection = (sectionId: "catalog" | string) => {
+    const target =
+      sectionId === "catalog"
+        ? catalogSectionRef.current
+        : agentSectionRefs.current[sectionId];
+
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -269,11 +303,48 @@ export default function SettingsPage() {
                 <CardTitle className="text-base">Tool Catalogue</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5 text-sm">
+                {(sortedAgents.length > 0 || catalogTools.length > 0) && (
+                  <div className="sticky top-0 z-10 rounded-md border bg-card/95 p-3 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Jump to section
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => scrollToSection("catalog")}
+                      >
+                        Tool Catalogue
+                      </Button>
+                      {sortedAgents.map(([agentId]) => (
+                        <Button
+                          key={`toc-${agentId}`}
+                          type="button"
+                          size="sm"
+                          variant={
+                            agentId === "base" || agentId === "supervisor"
+                              ? "secondary"
+                              : "outline"
+                          }
+                          onClick={() => scrollToSection(agentId)}
+                        >
+                          {formatAgentLabel(agentId)} Agent
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <p className="text-xs text-muted-foreground">
                   Read-only view of the tool registry resolved from the backend along with agent policies and assigned tools.
                 </p>
 
-                <div className="space-y-2">
+                <div
+                  ref={catalogSectionRef}
+                  id="settings-tools-catalogue"
+                  className="space-y-2 scroll-mt-24"
+                >
                   <h3 className="text-sm font-medium">Registered tools</h3>
                   {catalogLoading && (
                     <p className="text-xs text-muted-foreground">Loading tools…</p>
@@ -322,107 +393,105 @@ export default function SettingsPage() {
                   )}
                   {!agentsLoading && !agentsError && (
                     <div className="space-y-3">
-                      {Object.entries(agentsInfo)
-                        .sort(([a], [b]) => {
-                          if (a === b) return 0;
-                          if (a === "base") return -1;
-                          if (b === "base") return 1;
-                          if (a === "supervisor") return -1;
-                          if (b === "supervisor") return 1;
-                          return a.localeCompare(b);
-                        })
-                        .map(([agentId, entry]) => (
-                          <div key={agentId} className="rounded-md border p-3 space-y-3">
-                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                              <div className="font-medium capitalize">{agentId} agent</div>
-                              <div className="text-xs text-muted-foreground">
-                                {entry.tools.length} resolved tool{entry.tools.length === 1 ? "" : "s"}
-                              </div>
+                      {sortedAgents.map(([agentId, entry]) => (
+                        <div
+                          key={agentId}
+                          id={`agent-${agentId}`}
+                          ref={(node) => {
+                            agentSectionRefs.current[agentId] = node;
+                          }}
+                          className="rounded-md border p-3 space-y-3 scroll-mt-24"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                            <div className="font-medium">{formatAgentLabel(agentId)} Agent</div>
+                            <div className="text-xs text-muted-foreground">
+                              {entry.tools.length} resolved tool{entry.tools.length === 1 ? "" : "s"}
                             </div>
+                          </div>
 
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <div className="space-y-2">
-                                <p className="text-xs font-semibold">Allow names</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {entry.policy.allowNames?.length ? (
-                                    entry.policy.allowNames.map((name) => (
-                                      <span key={`${agentId}-allow-${name}`} className="rounded border px-2 py-0.5 text-xs">
-                                        {name}
-                                      </span>
-                                    ))
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">None</span>
-                                  )}
-                                </div>
-                                <p className="text-xs font-semibold">Allow tags</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {entry.policy.allowTags?.length ? (
-                                    entry.policy.allowTags.map((tag) => (
-                                      <span key={`${agentId}-allow-tag-${tag}`} className="rounded border px-2 py-0.5 text-xs">
-                                        {tag}
-                                      </span>
-                                    ))
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">None</span>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="space-y-2">
-                                <p className="text-xs font-semibold">Deny names</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {entry.policy.denyNames?.length ? (
-                                    entry.policy.denyNames.map((name) => (
-                                      <span key={`${agentId}-deny-${name}`} className="rounded border px-2 py-0.5 text-xs">
-                                        {name}
-                                      </span>
-                                    ))
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">None</span>
-                                  )}
-                                </div>
-                                <p className="text-xs font-semibold">Deny tags</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {entry.policy.denyTags?.length ? (
-                                    entry.policy.denyTags.map((tag) => (
-                                      <span key={`${agentId}-deny-tag-${tag}`} className="rounded border px-2 py-0.5 text-xs">
-                                        {tag}
-                                      </span>
-                                    ))
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">None</span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
+                          <div className="grid gap-3 sm:grid-cols-2">
                             <div className="space-y-2">
-                              <p className="text-xs font-semibold">Resolved tool identifiers</p>
+                              <p className="text-xs font-semibold">Allow names</p>
                               <div className="flex flex-wrap gap-2">
-                                {entry.tools.length ? (
-                                  entry.tools.map((tool) => (
-                                    <span key={`${agentId}-resolved-${tool}`} className="rounded border px-2 py-0.5 text-xs">
-                                      {tool}
+                                {entry.policy.allowNames?.length ? (
+                                  entry.policy.allowNames.map((name) => (
+                                    <span key={`${agentId}-allow-${name}`} className="rounded border px-2 py-0.5 text-xs">
+                                      {name}
                                     </span>
                                   ))
                                 ) : (
-                                  <span className="text-xs text-muted-foreground">No tools resolved</span>
+                                  <span className="text-xs text-muted-foreground">None</span>
+                                )}
+                              </div>
+                              <p className="text-xs font-semibold">Allow tags</p>
+                              <div className="flex flex-wrap gap-2">
+                                {entry.policy.allowTags?.length ? (
+                                  entry.policy.allowTags.map((tag) => (
+                                    <span key={`${agentId}-allow-tag-${tag}`} className="rounded border px-2 py-0.5 text-xs">
+                                      {tag}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">None</span>
                                 )}
                               </div>
                             </div>
 
                             <div className="space-y-2">
-                              <p className="text-xs font-semibold">Responses API payload</p>
-                              {agentSchemaErrors[agentId] ? (
-                                <p className="text-xs text-destructive">{agentSchemaErrors[agentId]}</p>
+                              <p className="text-xs font-semibold">Deny names</p>
+                              <div className="flex flex-wrap gap-2">
+                                {entry.policy.denyNames?.length ? (
+                                  entry.policy.denyNames.map((name) => (
+                                    <span key={`${agentId}-deny-${name}`} className="rounded border px-2 py-0.5 text-xs">
+                                      {name}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">None</span>
+                                )}
+                              </div>
+                              <p className="text-xs font-semibold">Deny tags</p>
+                              <div className="flex flex-wrap gap-2">
+                                {entry.policy.denyTags?.length ? (
+                                  entry.policy.denyTags.map((tag) => (
+                                    <span key={`${agentId}-deny-tag-${tag}`} className="rounded border px-2 py-0.5 text-xs">
+                                      {tag}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">None</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold">Resolved tool identifiers</p>
+                            <div className="flex flex-wrap gap-2">
+                              {entry.tools.length ? (
+                                entry.tools.map((tool) => (
+                                  <span key={`${agentId}-resolved-${tool}`} className="rounded border px-2 py-0.5 text-xs">
+                                    {tool}
+                                  </span>
+                                ))
                               ) : (
-                                <pre className="whitespace-pre-wrap break-all rounded-md bg-muted p-2 text-[11px] overflow-x-auto">
-                                  {JSON.stringify(agentSchemas[agentId] || [], null, 2)}
-                                </pre>
+                                <span className="text-xs text-muted-foreground">No tools resolved</span>
                               )}
                             </div>
                           </div>
-                        ))}
+
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold">Responses API payload</p>
+                            {agentSchemaErrors[agentId] ? (
+                              <p className="text-xs text-destructive">{agentSchemaErrors[agentId]}</p>
+                            ) : (
+                              <pre className="whitespace-pre-wrap break-all rounded-md bg-muted p-2 text-[11px] overflow-x-auto">
+                                {JSON.stringify(agentSchemas[agentId] || [], null, 2)}
+                              </pre>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
