@@ -2,7 +2,12 @@ import Database from 'better-sqlite3';
 import { existsSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 
-const DB_FILE = process.env.DB_FILE || join(__dirname, '..', '..', 'runtime-data', 'db', 'assistant.sqlite');
+// Resolve DB path for containerized deployments.
+// Use RUNTIME_DATA_DIR when provided (e.g., in Docker/K8s), otherwise use local dev default.
+const RUNTIME_DATA_DIR = process.env.RUNTIME_DATA_DIR;
+const DB_FILE = RUNTIME_DATA_DIR
+  ? join(RUNTIME_DATA_DIR, 'db', 'assistant.sqlite')
+  : join(__dirname, '..', '..', 'runtime-data', 'db', 'assistant.sqlite');
 
 let db: any | null = null;
 const LEDGER_DEBUG = (process.env.LEDGER_DEBUG || '').toLowerCase() === 'true';

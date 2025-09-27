@@ -278,10 +278,45 @@ For detailed documentation, see [`scripts/README.md`](scripts/README.md).
 - **WebSocket (chat + observability)**: ws://localhost:8081/chat
 - **Voice Client**: http://localhost:3001
 
+### Runtime data persistence (Docker/K8s)
+
+Development defaults write runtime data inside the repo, which persists locally between runs:
+
+- Notes: `websocket-server/runtime-data/notes.json`
+- SQLite DB: `websocket-server/runtime-data/db/assistant.sqlite`
+
+In containerized deployments, the container filesystem is ephemeral. To persist data across restarts, mount a volume and configure paths using environment variables:
+
+- `RUNTIME_DATA_DIR`: Base directory for runtime data (recommended). If set, defaults become:
+  - Notes at `${RUNTIME_DATA_DIR}/notes.json`
+  - SQLite DB at `${RUNTIME_DATA_DIR}/db/assistant.sqlite`
+- `SESSION_HISTORY_LIMIT`: Number of past conversations returned by the API/WS replay (default 3, max 50). Increase in production if you want to see more history by default.
+
+Example Docker Compose service:
+
+```yaml
+services:
+  websocket-server:
+    image: your-org/delegate1-websocket-server:latest
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - RUNTIME_DATA_DIR=/runtime-data
+      - SESSION_HISTORY_LIMIT=20
+    volumes:
+      - ./data/runtime-data:/runtime-data
+    ports:
+      - "8081:8081"
+```
+
+Example Kubernetes (conceptual):
+
+- Create a PersistentVolumeClaim and mount it at `/runtime-data`.
+- Set `RUNTIME_DATA_DIR=/runtime-data` in env.
+- Optionally set `SESSION_HISTORY_LIMIT=20`.
+
 ### Available Scripts
 
 From the root directory:
-
 - `npm run dev` - Start backend, frontend, and voice client in development mode
 - `npm run dev:core` - Start only backend and frontend (without voice client)
 - `npm run start` - Start both servers in production mode

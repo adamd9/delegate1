@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import path from 'path';
 
 export interface NoteData {
@@ -9,7 +10,12 @@ export interface NoteData {
   timestamp: number;
 }
 
-const NOTES_FILE = path.join(__dirname, '..', 'notes.json');
+// Resolve notes storage path
+// Use RUNTIME_DATA_DIR when provided (e.g., in Docker/K8s), otherwise use local dev default.
+const RUNTIME_DATA_DIR = process.env.RUNTIME_DATA_DIR;
+const NOTES_FILE = RUNTIME_DATA_DIR
+  ? path.join(RUNTIME_DATA_DIR, 'notes.json')
+  : path.join(__dirname, '..', 'runtime-data', 'notes.json');
 
 async function readAll(): Promise<NoteData[]> {
   try {
@@ -33,6 +39,8 @@ async function readAll(): Promise<NoteData[]> {
 }
 
 async function writeAll(notes: NoteData[]): Promise<void> {
+  const dir = path.dirname(NOTES_FILE);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   await fs.writeFile(NOTES_FILE, JSON.stringify(notes, null, 2), 'utf-8');
 }
 
