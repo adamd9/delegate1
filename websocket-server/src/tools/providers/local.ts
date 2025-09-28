@@ -1,5 +1,4 @@
 import { registerTools, ToolOrigin } from "../registry";
-import { getWeatherFunction } from "../handlers/weather";
 import { sendCanvas } from "../handlers/canvas";
 import { sendSmsTool } from "../handlers/sms";
 import { getNextResponseFromSupervisorFunction } from "../handlers/supervisor-escalation";
@@ -30,14 +29,6 @@ function wrap(name: string, description: string, parameters: any, origin: ToolOr
 export function registerLocalTools() {
   const providerId = 'local';
   const tools = [
-    wrap(
-      getWeatherFunction.schema.name,
-      getWeatherFunction.schema.description,
-      getWeatherFunction.schema.parameters,
-      'local',
-      ['local', 'base-default'],
-      (args) => getWeatherFunction.handler(args)
-    ),
     // Base agent escalation entrypoint to supervisor
     wrap(
       getNextResponseFromSupervisorFunction.schema.name,
