@@ -7,6 +7,23 @@ const log = {
   error: (...args: any[]) => console.error('[mcpClient]', ...args),
 };
 
+// Mask sensitive header values for safe logging
+function maskHeaders(headers?: Record<string, string>): Record<string, string> | undefined {
+  if (!headers) return headers;
+  const masked: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    if (typeof v !== 'string') { masked[k] = String(v); continue; }
+    const lower = k.toLowerCase();
+    if (/(key|token|secret|authorization)/.test(lower)) {
+      const shown = v.length > 8 ? `${v.slice(0,4)}…${v.slice(-4)}` : '***';
+      masked[k] = `[masked:${shown}]`;
+    } else {
+      masked[k] = v;
+    }
+  }
+  return masked;
+}
+
 export type RemoteServerConfig = {
   type: 'streamable-http';
   url: string;
@@ -78,6 +95,12 @@ export class MCPClient {
       if (serverConfig.headers && typeof serverConfig.headers === 'object') {
         transportOptions.headers = serverConfig.headers;
       }
+      // Targeted debug: log the exact URL/name and masked headers before connecting
+      log.debug('Connecting (HTTP) to MCP server', {
+        name: serverConfig.name,
+        url: serverConfig.url,
+        headers: maskHeaders(transportOptions.headers),
+      });
       const transport: HTTPTransport = new (StreamableHTTPClientTransport as any)(new URL(serverConfig.url), transportOptions) as any;
 
       log.debug(`Connecting to MCP server ${serverConfig.name} at ${serverConfig.url}`);
