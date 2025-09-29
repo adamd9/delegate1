@@ -1,8 +1,11 @@
 import { promises as fs } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { RemoteServerConfig } from '../tools/mcp/client';
 
-const RUNTIME_DIR = join(__dirname, '..', '..', 'runtime-data');
+// Use absolute path from env var if set, otherwise fall back to relative path for dev
+const RUNTIME_DIR = process.env.RUNTIME_DATA_DIR 
+  ? resolve(process.env.RUNTIME_DATA_DIR)
+  : join(__dirname, '..', '..', 'runtime-data');
 const CONFIG_FILE = join(RUNTIME_DIR, 'mcp-servers.json');
 
 function validateServers(value: unknown): RemoteServerConfig[] {

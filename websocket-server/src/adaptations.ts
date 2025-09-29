@@ -36,7 +36,10 @@ export interface AdaptationEdit {
   description?: string;
 }
 
-const RUNTIME_DIR = path.join(__dirname, '..', 'runtime-data');
+// Use absolute path from env var if set, otherwise fall back to relative path for dev
+const RUNTIME_DIR = process.env.RUNTIME_DATA_DIR
+  ? path.resolve(process.env.RUNTIME_DATA_DIR)
+  : path.join(__dirname, '..', 'runtime-data');
 const EDITS_FILE = path.join(RUNTIME_DIR, 'adaptations.edits.json');
 
 // Code-defined skeleton of known adaptation identifiers and metadata.
