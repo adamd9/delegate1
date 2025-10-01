@@ -38,7 +38,7 @@ export function registerCatalogRoutes(app: Application) {
     }
   });
 
-  app.patch('/agents/:id/policy', (req: Request, res: Response) => {
+  app.patch('/agents/:id/policy', async (req: Request, res: Response) => {
     const id = (req.params as any).id;
     if (!id || typeof id !== 'string') {
       res.status(400).json({ error: 'Agent id is required' });
@@ -70,7 +70,7 @@ export function registerCatalogRoutes(app: Application) {
     }
 
     try {
-      const policy = updateAgentPolicy(id, updates);
+      const policy = await updateAgentPolicy(id, updates);
       res.json({
         status: 'updated',
         agent: {

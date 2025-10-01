@@ -586,6 +586,88 @@ After saving, watch the backend logs for lines like:
 
 When the supervisor decides to use a tool, it will see names like `mcp.corp-tools.search` or `mcp.public-demo.fetch`. You can also trigger them via the function-calling path programmatically by referring to their namespaced schema names.
 
+## Agent Tool Policies (Allow Lists)
+
+Delegate 1 uses a centralized tools registry that allows you to control which tools each agent can access. Agent policies define "allow lists" that filter the available tools from the catalog.
+
+### How it works
+
+- **Code-defined defaults**: Each agent config (e.g., `websocket-server/src/agentConfigs/baseAgent.ts`) defines default tools
+- **Runtime overrides**: You can modify tool allow lists via the webapp UI at `/settings?tab=catalog`
+- **Persistent storage**: Changes are saved to `websocket-server/runtime-data/agent-policies.json`
+- **Merge behavior**: On startup, persisted policies override code defaults
+
+### Policy structure
+
+Each agent has a policy with two filter mechanisms:
+
+```typescript
+{
+  "allowNames": ["tool_name_1", "tool_name_2"],  // Explicit tool names
+  "allowTags": ["supervisor-allowed", "base-default"]  // Tool tags
+}
+```
+
+- **`allowNames`**: Explicit list of tool names (e.g., `"create_note"`, `"mcp.real-browser.anchor_navigate"`)
+- **`allowTags`**: Tags that tools are registered with (e.g., `"supervisor-allowed"` for web_search)
+
+A tool is available to an agent if it matches **either** an allowed name **or** an allowed tag.
+
+### Managing policies via webapp
+
+1. Navigate to **Settings → Tools** in the webapp
+2. Scroll to the agent section (e.g., "Supervisor Agent")
+3. Use the dropdown to add tools to the allow list
+4. Click **"Save allow list"**
+5. Changes persist to `runtime-data/agent-policies.json`
+
+### Managing policies programmatically
+
+**GET `/agents/:id/policy`** - View current policy (via `/agents` endpoint)
+
+```bash
+curl -s http://localhost:8081/agents | jq '.supervisor.policy'
+```
+
+**PATCH `/agents/:id/policy`** - Update policy
+
+```bash
+curl -X PATCH http://localhost:8081/agents/supervisor/policy \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "allowNames": ["create_note", "mcp.real-browser.anchor_navigate"],
+    "allowTags": ["supervisor-allowed"]
+  }'
+```
+
+### Persistence location
+
+- **File**: `websocket-server/runtime-data/agent-policies.json`
+- **Format**: JSON object mapping agent IDs to policies
+- **Docker/K8s**: Respects `RUNTIME_DATA_DIR` environment variable
+
+Example `agent-policies.json`:
+
+```json
+{
+  "base": {
+    "allowNames": ["get_weather", "escalate_to_supervisor"],
+    "allowTags": ["base-default"]
+  },
+  "supervisor": {
+    "allowNames": ["create_note", "mcp.real-browser.anchor_navigate"],
+    "allowTags": ["supervisor-allowed"]
+  }
+}
+```
+
+### Important notes
+
+- **MCP tools are NOT auto-allowed**: Discovered MCP tools must be explicitly added to the allow list
+- **Builtin tools use tags**: Tools like `web_search` are tagged with `supervisor-allowed` and included via `allowTags`
+- **Restart behavior**: Persisted policies override code defaults on server restart
+- **No policy file**: If the file doesn't exist, agents use their code-defined defaults
+
 ## Catalog and Agent Tooling Endpoints
 
 These debug/inspection endpoints expose the canonical tools catalog and the agent-specific tool visibility as assembled by the centralized registry in `websocket-server/src/tools/registry.ts` and mounted in `websocket-server/src/server/routes/catalog.ts`.

@@ -1,5 +1,5 @@
 
-import { AgentConfig, FunctionHandler } from './types';
+import { AgentConfig } from './types';
 import { agentPersonality } from "./personality";
 
 // Supervisor Agent Configuration
@@ -7,12 +7,14 @@ import { agentPersonality } from "./personality";
 // - The `model` here is consumed by the supervisor orchestrator at
 //   `src/tools/orchestrators/supervisor.ts`, which imports this config and uses
 //   `supervisorAgentConfig.model` for both the initial and follow-up Responses API calls.
-// - The `tools` array does NOT get passed directly to the OpenAI Responses API.
-//   Instead, during startup, `src/tools/init.ts` reads these tool names via
+// - The `tools` array defines the DEFAULT tools for the supervisor agent.
+//   During startup, `src/tools/init.ts` reads these tool names via
 //   `getAgent('supervisor')` and registers an agent policy with `registerAgent('supervisor', { allowNames, allowTags })`.
 //   Later, when we escalate, `getSchemasForAgent('supervisor')` returns the final tool schema list
 //   by intersecting registered providers (builtin/local/MCP) with the supervisor agent policy.
 //   This also allows inclusion by tags (e.g., tools tagged `supervisor-allowed` like builtin web_search).
+// - MCP tools are NOT automatically added here. They must be explicitly added via the webapp's
+//   tools catalog page, which persists changes to runtime-data/agent-policies.json.
 export const supervisorAgentConfig: AgentConfig = {
   name: "delegate_supervisor",
   instructions: `You are an expert supervisor agent providing guidance to a junior AI assistant. 
@@ -32,7 +34,3 @@ Guidelines:
   tools: [],
   model: "gpt-5-mini",
 };
-
-export function updateSupervisorMcpTools(handlers: FunctionHandler[]) {
-  supervisorAgentConfig.tools = handlers;
-}

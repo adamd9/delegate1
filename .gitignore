@@ -12,3 +12,4 @@ scripts/localtunnel/*.log
 websocket-server/runtime-data/
 .ngrok
 websocket-server/adaptations.edits.json
+.ngrok_cmd

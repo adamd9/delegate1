@@ -1,7 +1,6 @@
 import { FunctionHandler } from '../../agentConfigs/types';
 import { mcpClient, type DiscoveredTool, type RemoteServerConfig } from './client';
 import { getMcpConfig } from '../../config/mcpConfig';
-import { updateSupervisorMcpTools } from '../../agentConfigs/supervisorAgentConfig';
 
 // Simple logger
 const log = {
@@ -37,7 +36,6 @@ async function performDiscovery() {
     await mcpClient.initialize();
   } catch (err: any) {
     log.error('Failed to initialize MCP client', err?.message || err);
-    updateSupervisorMcpTools([]);
     return;
   }
 
@@ -46,13 +44,11 @@ async function performDiscovery() {
     servers = await getMcpConfig();
   } catch (err: any) {
     log.warn('Unable to load MCP config', err?.message || err);
-    updateSupervisorMcpTools([]);
     return;
   }
 
   if (!Array.isArray(servers) || servers.length === 0) {
     log.info('No MCP servers configured. Skipping discovery.');
-    updateSupervisorMcpTools([]);
     return;
   }
 
@@ -88,7 +84,6 @@ async function performDiscovery() {
     }
   }
 
-  updateSupervisorMcpTools([...discoveredHandlers]);
   log.info(`MCP discovery complete. ${discoveredHandlers.length} tool(s) registered.`);
 }
 

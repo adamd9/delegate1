@@ -1,4 +1,6 @@
 import { FunctionHandler } from "../agentConfigs/types";
+import { promises as fs } from 'fs';
+import path from 'path';
 
 export type ToolOrigin = 'local' | 'mcp' | 'builtin';
 
@@ -21,6 +23,62 @@ export interface AgentPolicy {
 const toolsById = new Map<string, CanonicalTool>();
 const idBySanitized = new Map<string, string>();
 const agents = new Map<string, AgentPolicy>();
+
+// Persistence configuration
+const RUNTIME_DIR = process.env.RUNTIME_DATA_DIR
+  ? path.resolve(process.env.RUNTIME_DATA_DIR)
+  : path.join(__dirname, '..', '..', 'runtime-data');
+const POLICIES_FILE = path.join(RUNTIME_DIR, 'agent-policies.json');
+
+type PersistedPolicies = Record<string, AgentPolicy>;
+
+// Load persisted policies from disk
+async function loadPersistedPolicies(): Promise<PersistedPolicies> {
+  try {
+    await fs.mkdir(RUNTIME_DIR, { recursive: true });
+    const data = await fs.readFile(POLICIES_FILE, 'utf-8');
+    const parsed = JSON.parse(data);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      console.warn('[registry] Invalid agent-policies.json format, ignoring');
+      return {};
+    }
+    console.log('[registry] Loaded persisted policies for', Object.keys(parsed).length, 'agent(s)');
+    return parsed as PersistedPolicies;
+  } catch (err: any) {
+    if (err.code === 'ENOENT') {
+      console.log('[registry] No persisted policies file found, starting fresh');
+      return {};
+    }
+    console.warn('[registry] Failed to load persisted policies:', err?.message || err);
+    return {};
+  }
+}
+
+// Save current policies to disk
+async function savePersistedPolicies(): Promise<void> {
+  try {
+    await fs.mkdir(RUNTIME_DIR, { recursive: true });
+    const policies: PersistedPolicies = {};
+    for (const [id, policy] of agents.entries()) {
+      policies[id] = clonePolicy(policy);
+    }
+    await fs.writeFile(POLICIES_FILE, JSON.stringify(policies, null, 2) + '\n', 'utf-8');
+    console.log('[registry] Saved policies for', Object.keys(policies).length, 'agent(s)');
+  } catch (err: any) {
+    console.error('[registry] Failed to save persisted policies:', err?.message || err);
+  }
+}
+
+// Merge persisted policies with code-defined defaults
+function mergePolicies(codeDefault: AgentPolicy, persisted: AgentPolicy | undefined): AgentPolicy {
+  if (!persisted) return clonePolicy(codeDefault);
+  
+  // Persisted values take precedence over code defaults
+  return {
+    allowNames: persisted.allowNames !== undefined ? persisted.allowNames : codeDefault.allowNames,
+    allowTags: persisted.allowTags !== undefined ? persisted.allowTags : codeDefault.allowTags,
+  };
+}
 
 export function sanitizeToolName(name: string) {
   return name.replace(/[^a-zA-Z0-9_-]/g, '-');
@@ -45,8 +103,9 @@ function normalizeOptionalStringArray(values: string[] | undefined): string[] | 
   return Array.from(new Set(normalized));
 }
 
-export function registerAgent(id: string, policy: AgentPolicy) {
-  agents.set(id, clonePolicy(policy));
+export function registerAgent(id: string, policy: AgentPolicy, persisted?: PersistedPolicies) {
+  const merged = persisted?.[id] ? mergePolicies(policy, persisted[id]) : clonePolicy(policy);
+  agents.set(id, merged);
 }
 
 export function getAgentPolicy(id: string): AgentPolicy | undefined {
@@ -55,7 +114,7 @@ export function getAgentPolicy(id: string): AgentPolicy | undefined {
   return clonePolicy(policy);
 }
 
-export function updateAgentPolicy(id: string, updates: Partial<AgentPolicy>) {
+export async function updateAgentPolicy(id: string, updates: Partial<AgentPolicy>) {
   const existing = agents.get(id);
   if (!existing) throw new Error(`Agent not registered: ${id}`);
   const next = clonePolicy(existing);
@@ -66,6 +125,10 @@ export function updateAgentPolicy(id: string, updates: Partial<AgentPolicy>) {
     next.allowTags = normalizeOptionalStringArray(updates.allowTags) ?? [];
   }
   agents.set(id, next);
+  
+  // Persist to disk
+  await savePersistedPolicies();
+  
   return clonePolicy(next);
 }
 
@@ -161,4 +224,13 @@ export function getAgentsDebug() {
     };
   }
   return result;
+}
+
+// Export persistence functions for use during initialization
+export async function initializeAgentPolicies(): Promise<PersistedPolicies> {
+  return await loadPersistedPolicies();
+}
+
+export async function saveAgentPolicies(): Promise<void> {
+  await savePersistedPolicies();
 }

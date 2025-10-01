@@ -10,7 +10,7 @@ export function registerMcpTools() {
     description: h.schema.description || '',
     parameters: h.schema.parameters,
     origin: 'mcp' as const,
-    tags: ['mcp', 'supervisor-allowed'],
+    tags: ['mcp'], // Only tag with 'mcp', not 'supervisor-allowed' - must be explicitly added via allowNames
     handler: async (args: any) => {
       const out = await h.handler(args);
       if (typeof out === 'string') return out;
