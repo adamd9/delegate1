@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Delegate 1 is a revolutionary single-threaded, single-session, multi-channel AI assistant that provides seamless conversational experiences across multiple communication channels. Unlike traditional AI assistants that handle each interaction in isolation, Delegate 1 maintains a unified conversation thread that spans across different input and output modalities.
+Delegate 1 is a revolutionary single-threaded, single-session, multi-channel AI assistant that provides seamless conversational experiences across multiple communication channels! Unlike traditional AI assistants that handle each interaction in isolation, Delegate 1 maintains a unified conversation thread that spans across different input and output modalities.
 
 ### Purpose
 
@@ -317,6 +317,7 @@ Example Kubernetes (conceptual):
 ### Available Scripts
 
 From the root directory:
+
 - `npm run dev` - Start backend, frontend, and voice client in development mode
 - `npm run dev:core` - Start only backend and frontend (without voice client)
 - `npm run start` - Start both servers in production mode
@@ -359,19 +360,16 @@ Notes:
   npm run backend:dev
   npm run frontend:dev
   ```
-
 - Install browsers once (if not already):
 
   ```bash
   npx playwright install chromium
   ```
-
 - Run only the UI test (headless):
 
   ```bash
   npm run test:e2e -- tests/e2e/ui-notes.spec.ts
   ```
-
 - Run headed (watch the browser):
 
   ```bash
@@ -456,12 +454,13 @@ jsonSend(session.modelConn, {
 ```
 
 - Barge-in grace period
+
   - In `processRealtimeModelEvent()` we only truncate assistant speech on `input_audio_buffer.speech_started` after at least `BARGE_IN_GRACE_MS` of assistant audio has played. Increase this to reduce abrupt cutoffs; set to `0` for immediate barge-in.
-
 - Runtime overrides via UI (optional)
-  - The web UI “Session Settings” dialog sends a `session.update` via the chat WebSocket (`/chat`). The server stores this in `session.saved_config` and merges it into the model session on connect. If you include a `turn_detection` object there, it overrides the constants at runtime.
 
+  - The web UI “Session Settings” dialog sends a `session.update` via the chat WebSocket (`/chat`). The server stores this in `session.saved_config` and merges it into the model session on connect. If you include a `turn_detection` object there, it overrides the constants at runtime.
 - Tuning tips
+
   - Make it less sensitive to background noise: increase `VAD_THRESHOLD` (e.g., 0.7–0.8) and/or `VAD_PREFIX_PADDING_MS` (e.g., 120–200ms).
   - Reduce premature turn endings: increase `VAD_SILENCE_DURATION_MS` (e.g., 400–600ms).
   - Avoid instant barge-in: increase `BARGE_IN_GRACE_MS` (e.g., 500–800ms).
@@ -673,28 +672,29 @@ Example `agent-policies.json`:
 These debug/inspection endpoints expose the canonical tools catalog and the agent-specific tool visibility as assembled by the centralized registry in `websocket-server/src/tools/registry.ts` and mounted in `websocket-server/src/server/routes/catalog.ts`.
 
 - **GET `/tools`**
+
   - Back-compat list of raw function schemas from `websocket-server/src/functionHandlers.ts` (which delegates to `agentConfigs`).
   - Example:
     ```bash
     curl -s http://localhost:8081/tools | jq .
     ```
-
 - **GET `/catalog/tools`**
+
   - Canonical tools catalog with metadata from the centralized registry (local, MCP, and built-ins).
   - Fields: `id`, `name`, `sanitizedName`, `origin`, `tags`, `description`.
   - Example:
     ```bash
     curl -s http://localhost:8081/catalog/tools | jq .
     ```
-
 - **GET `/agents`**
+
   - Agents debug view with exposure policies and resolved tool names.
   - Example:
     ```bash
     curl -s http://localhost:8081/agents | jq .
     ```
-
 - **GET `/agents/:id/tools`**
+
   - Tools available to a specific agent in OpenAI Responses API "tools" format.
   - For built-ins (e.g., web search), entries look like `{ "type": "web_search" }`.
   - For functions, entries look like `{ "type": "function", "name": "<sanitizedName>", "description": "...", "parameters": { ... }, "strict": false }`.
