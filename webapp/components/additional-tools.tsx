@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import VoiceMiniApp from "@/components/voice-mini-app";
 import { getWebSocketUrl } from "@/lib/get-backend-url";
 import { CircleStop } from "lucide-react";
 import { useTranscript } from "@/contexts/TranscriptContext";
@@ -82,7 +81,6 @@ export default function AdditionalTools() {
         {status === 'err' && (
           <span className="text-xs text-red-600">Finalize failed</span>
         )}
-      <VoiceMiniApp />
     </div>
   );
 }
