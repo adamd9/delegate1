@@ -1,6 +1,7 @@
 node_modules
 .next
 .env
+.env.published_app_logs
 generate-token.js
 .DS_Store
 websocket-server/session-data.json
