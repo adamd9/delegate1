@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Single-threaded, multi-channel AI assistant with voice, text, and phone capabilities",
   "private": true,
+  "workspaces": [
+    "webapp",
+    "websocket-server"
+  ],
   "scripts": {
     "kill-ports": "bash scripts/kill-ports.sh",
     "predev": "npm run kill-ports",
@@ -17,7 +21,7 @@
     "frontend:dev": "cd webapp && npm run dev",
     "frontend:start": "cd webapp && npm start",
     "frontend:build": "cd webapp && npm run build",
-    "install:all": "npm install && cd websocket-server && npm install && cd ../webapp && npm install",
+    "install:all": "npm install",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "clean": "rm -rf node_modules websocket-server/node_modules webapp/node_modules websocket-server/dist",
