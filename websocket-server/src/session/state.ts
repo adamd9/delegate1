@@ -36,6 +36,18 @@ export interface Session {
   modelConn?: WebSocket; // Raw WebSocket for voice
   textModelConn?: WebSocket; // OpenAI SDK WebSocket for text
   openaiClient?: any; // typed in channel modules
+  voiceTuning?: {
+    mode: 'normal' | 'noisy';
+    turnDetection?: {
+      type?: 'server_vad' | 'semantic_vad' | 'none';
+      threshold?: number;
+      prefix_padding_ms?: number;
+      silence_duration_ms?: number;
+      [key: string]: any;
+    };
+    bargeInGraceMs?: number;
+    updatedAtMs?: number;
+  };
   streamSid?: string;
   lastAssistantItem?: string;
   responseStartTimestamp?: number;

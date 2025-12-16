@@ -4,6 +4,7 @@ import { sendSmsTool } from "../handlers/sms";
 import { getNextResponseFromSupervisorFunction } from "../handlers/supervisor-escalation";
 import { memAddFunction, memSearchFunction } from "../handlers/mem0";
 import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction } from "../handlers/notes";
+import { setVoiceNoiseModeTool } from "../handlers/voice-noise-mode";
 
 function wrap(name: string, description: string, parameters: any, origin: ToolOrigin, tags: string[], handler: (args: any) => Promise<any>) {
   return {
@@ -85,6 +86,14 @@ export function registerLocalTools() {
       'local',
       ['local', 'base-default'],
       (args) => deleteNoteFunction.handler(args)
+    ),
+    wrap(
+      setVoiceNoiseModeTool.schema.name,
+      setVoiceNoiseModeTool.schema.description,
+      setVoiceNoiseModeTool.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => setVoiceNoiseModeTool.handler(args)
     ),
   ];
 

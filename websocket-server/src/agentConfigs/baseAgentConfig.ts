@@ -8,6 +8,7 @@ import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFu
 import { hangupCallTool } from '../tools/handlers/hangup';
 import { agentPersonality } from "./personality";
 import { listAdaptationsFunction, getAdaptationFunction, updateAdaptationFunction, reloadAdaptationsFunction } from '../tools/handlers/adaptations';
+import { setVoiceNoiseModeTool } from '../tools/handlers/voice-noise-mode';
 
 // Base Agent Configuration
 export const baseAgentConfig: AgentConfig = {
@@ -39,6 +40,8 @@ Be conversational and natural in speech. When invoking tools or waiting on longe
 
 When invoking tools or waiting on longer operations, provide a brief, natural backchannel once at the start (e.g., "One moment…", "Let me check that…"). Keep it short, avoid repetition, and stop as soon as the tool output is ready or the user begins speaking.
 
+If the user reports that the environment is noisy, that you're being interrupted, or that it keeps stopping/pausing due to background noise, call set_voice_noise_mode with mode="noisy". If the user later reports the issue is resolved (or wants responsiveness back), call set_voice_noise_mode with mode="normal".
+
 Canvas tool:
 - There's no need to supply the link in the message back to the user unless it's being sent via SMS.
 
@@ -64,6 +67,7 @@ Persistent memory:
     updateAdaptationFunction,
     reloadAdaptationsFunction,
     hangupCallTool,
+    setVoiceNoiseModeTool,
   ],
   // Text (Responses API) model for chat interactions
   textModel: "gpt-5",

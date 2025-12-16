@@ -36,6 +36,19 @@ const VAD_SILENCE_DURATION_MS: number = 300; // Require this much silence to fli
 // Set to 0 to allow immediate interruption on speech_started.
 const BARGE_IN_GRACE_MS: number = 300;
 
+function getVoiceTuningForCall() {
+  const tuning = (session as any)?.voiceTuning;
+  const turnDetection = tuning?.turnDetection || {
+    type: VAD_TYPE,
+    threshold: VAD_THRESHOLD,
+    prefix_padding_ms: VAD_PREFIX_PADDING_MS,
+    silence_duration_ms: VAD_SILENCE_DURATION_MS,
+  };
+  const bargeInGraceMs =
+    typeof tuning?.bargeInGraceMs === 'number' ? tuning.bargeInGraceMs : BARGE_IN_GRACE_MS;
+  return { turnDetection, bargeInGraceMs };
+}
+
 function stopHoldMusicLoop() {
   if (holdMusicTimer) {
     clearTimeout(holdMusicTimer);
@@ -185,15 +198,11 @@ export function establishRealtimeModelConnection() {
     const agentInstructions = [contextInstructions(context), baseInstructions].join('\n');
 
     // Build turn detection config from constants (can be overridden by saved_config)
+    const { turnDetection: runtimeTurnDetection } = getVoiceTuningForCall();
     const turnDetection =
-      VAD_TYPE === 'none'
+      runtimeTurnDetection?.type === 'none'
         ? { type: 'none' }
-        : {
-            type: VAD_TYPE,
-            threshold: VAD_THRESHOLD,
-            prefix_padding_ms: VAD_PREFIX_PADDING_MS,
-            silence_duration_ms: VAD_SILENCE_DURATION_MS,
-          } as any;
+        : (runtimeTurnDetection as any);
     jsonSend(session.modelConn, {
       type: "session.update",
       session: {
@@ -319,11 +328,12 @@ export function processRealtimeModelEvent(
       const startedAt = session.responseStartTimestamp;
       if (startedAt !== undefined) {
         const elapsedMs = (session.latestMediaTimestamp || 0) - (startedAt || 0);
-        if (elapsedMs >= BARGE_IN_GRACE_MS) {
+        const { bargeInGraceMs } = getVoiceTuningForCall();
+        if (elapsedMs >= bargeInGraceMs) {
           handleTruncation();
         } else {
           // Ignore early speech_started signals to avoid abrupt interruption
-          try { console.debug(`[VAD] speech_started ignored due to grace period: ${elapsedMs}ms < ${BARGE_IN_GRACE_MS}ms`); } catch {}
+          try { console.debug(`[VAD] speech_started ignored due to grace period: ${elapsedMs}ms < ${bargeInGraceMs}ms`); } catch {}
         }
       }
       break;
