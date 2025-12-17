@@ -2,12 +2,13 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type http from 'http';
 import { IncomingMessage } from 'http';
 import { establishCallSocket } from '../session/call';
+import { establishBrowserCallSocket } from '../session/browserCall';
 import { establishChatSocket } from '../session/chat';
-import session from '../sessionSingleton';
+import { session } from '../session/state';
 
 /**
  * Attaches a WebSocketServer to the given HTTP server and wires up
- * handlers for `wss://.../call` and `wss://.../chat` paths.
+ * handlers for `wss://.../call`, `wss://.../browser-call`, and `wss://.../chat` paths.
  *
  * logs websocket is decommissioned; it is treated as closed.
  */
@@ -41,11 +42,37 @@ export function attachWebSockets(
         } catch {}
         session.twilioConn = undefined;
       }
+      if (session && session.browserConn) {
+        try {
+          session.browserConn.close();
+        } catch {}
+        session.browserConn = undefined;
+      }
       session.twilioConn = ws;
       establishCallSocket(ws, openAIApiKey);
       ws.on('close', () => {
         if (session && session.twilioConn === ws) {
           session.twilioConn = undefined;
+        }
+      });
+    } else if (type === 'browser-call') {
+      if (session && session.twilioConn) {
+        try {
+          session.twilioConn.close();
+        } catch {}
+        session.twilioConn = undefined;
+      }
+      if (session && session.browserConn) {
+        try {
+          session.browserConn.close();
+        } catch {}
+        session.browserConn = undefined;
+      }
+      session.browserConn = ws;
+      establishBrowserCallSocket(ws, openAIApiKey);
+      ws.on('close', () => {
+        if (session && session.browserConn === ws) {
+          session.browserConn = undefined;
         }
       });
     } else if (type === 'logs') {

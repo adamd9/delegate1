@@ -23,16 +23,27 @@ const TopBar = ({ children }: TopBarProps) => {
           </Link>
         </Button>
         <Button variant="ghost" size="sm">
-  <Link
-    href="/voice"
-    className="flex items-center gap-2"
-    target="_blank"
-    rel="noopener noreferrer"
-  >
-    <PhoneCall className="w-4 h-4" />
-    Voice
-  </Link>
-</Button>
+          <Link
+            href="/voice"
+            className="flex items-center gap-2"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <PhoneCall className="w-4 h-4" />
+            Twilio Voice
+          </Link>
+        </Button>
+        <Button variant="ghost" size="sm">
+          <Link
+            href="/voice-direct"
+            className="flex items-center gap-2"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <PhoneCall className="w-4 h-4" />
+            Direct Voice
+          </Link>
+        </Button>
       </div>
     </div>
   );

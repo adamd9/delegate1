@@ -356,6 +356,18 @@ export function processRealtimeModelEvent(
           });
         }
       }
+      if (session.browserConn) {
+        if (session.responseStartTimestamp === undefined) {
+          session.responseStartTimestamp = session.latestMediaTimestamp || 0;
+        }
+        if (event.item_id) session.lastAssistantItem = event.item_id;
+        if (isOpen(session.browserConn)) {
+          jsonSend(session.browserConn, {
+            event: "media",
+            media: { payload: event.delta },
+          });
+        }
+      }
       break;
     case "response.output_item.done": {
       console.log("[VOICE][ASSISTANT][FINAL-VOICE]", event);
@@ -470,6 +482,11 @@ export function processRealtimeModelEvent(
           }
         }
 
+        // Response finished; clear truncation tracking so subsequent speech_started
+        // does not truncate an already-completed assistant response.
+        session.lastAssistantItem = undefined;
+        session.responseStartTimestamp = undefined;
+
         const convId = (session as any).currentConversationId as string | undefined;
         if (convId && session.currentRequest) {
           const stepId = `step_assistant_${session.currentRequest.id}_${Date.now()}`;
@@ -534,17 +551,22 @@ function handleTruncation() {
   const elapsedMs =
     (session.latestMediaTimestamp || 0) - (session.responseStartTimestamp || 0);
   const audio_end_ms = elapsedMs > 0 ? elapsedMs : 0;
-  if (session.twilioConn && session.streamSid) {
-    jsonSend(session.twilioConn, {
+  if (isOpen(session.modelConn)) {
+    jsonSend(session.modelConn, {
       type: "conversation.item.truncate",
       item_id: session.lastAssistantItem,
       content_index: 0,
       audio_end_ms,
     } as any);
+  }
+  if (session.twilioConn && session.streamSid) {
     jsonSend(session.twilioConn, {
       event: "clear",
       streamSid: session.streamSid,
     } as any);
+  }
+  if (session.browserConn) {
+    jsonSend(session.browserConn, { event: "clear" } as any);
   }
   session.lastAssistantItem = undefined;
   session.responseStartTimestamp = undefined;

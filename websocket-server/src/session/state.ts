@@ -31,6 +31,7 @@ export type ConversationItem =
 
 export interface Session {
   twilioConn?: WebSocket;
+  browserConn?: WebSocket;
   frontendConn?: WebSocket;
   chatConn?: WebSocket;
   modelConn?: WebSocket; // Raw WebSocket for voice
@@ -104,13 +105,17 @@ export function cleanupConnection(ws?: WebSocket) {
 export function closeModel() {
   cleanupConnection(session.modelConn);
   session.modelConn = undefined;
-  if (!session.twilioConn && !session.frontendConn) session = {};
+  if (!session.twilioConn && !session.browserConn && !session.frontendConn) session = {};
 }
 
 export function closeAllConnections() {
   if (session.twilioConn) {
     session.twilioConn.close();
     session.twilioConn = undefined;
+  }
+  if (session.browserConn) {
+    session.browserConn.close();
+    session.browserConn = undefined;
   }
   if (session.modelConn) {
     session.modelConn.close();
