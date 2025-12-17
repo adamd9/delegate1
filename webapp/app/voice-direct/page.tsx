@@ -67,10 +67,45 @@ export default function VoiceDirectPage() {
   const playbackTimeRef = useRef<number>(0);
   const playbackMutedUntilRef = useRef<number>(0);
   const playbackSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const holdSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
 
   const addLog = (message: string, type: LogEntry['type'] = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs((prev) => [...prev, { timestamp, message, type }].slice(-50));
+  };
+
+  const playHoldPcm16 = async (base64: string, sampleRate = 24000) => {
+    const ctx = await ensureAudioContext();
+    const int16 = base64ToInt16(base64);
+    const floats = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) floats[i] = int16[i] / 32768;
+
+    const buffer = ctx.createBuffer(1, floats.length, sampleRate);
+    buffer.copyToChannel(floats, 0);
+
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    holdSourcesRef.current.add(src);
+    src.onended = () => {
+      try {
+        holdSourcesRef.current.delete(src);
+      } catch {}
+    };
+    // Start ASAP; hold tone should not be queued behind assistant audio
+    src.start(ctx.currentTime + 0.01);
+  };
+
+  const clearHoldPlayback = () => {
+    for (const src of Array.from(holdSourcesRef.current)) {
+      try {
+        src.onended = null;
+        src.stop(0);
+      } catch {}
+      try {
+        holdSourcesRef.current.delete(src);
+      } catch {}
+    }
   };
 
   const updateStatus = (newStatus: string, cls: typeof statusClass) => {
@@ -238,6 +273,14 @@ export default function VoiceDirectPage() {
           const msg = JSON.parse(evt.data);
           if (msg?.event === 'clear') {
             await clearPlayback();
+            return;
+          }
+          if (msg?.event === 'hold.clear') {
+            clearHoldPlayback();
+            return;
+          }
+          if (msg?.event === 'hold.media' && msg?.media?.payload) {
+            await playHoldPcm16(msg.media.payload, 24000);
             return;
           }
           if (msg?.event === 'media' && msg?.media?.payload) {

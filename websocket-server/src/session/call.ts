@@ -15,8 +15,54 @@ const assistantVoiceByItem = new Map<string, string>();
 
 // Timer handle for hold music loop
 let holdMusicTimer: NodeJS.Timeout | undefined;
+let browserHoldMusicTimer: NodeJS.Timeout | undefined;
 // Add slight gap between hold music loops to avoid a harsh beat
 const HOLD_MUSIC_LOOP_INTERVAL_MS = HOLD_MUSIC_DURATION_MS + 250;
+
+const BROWSER_HOLD_SAMPLE_RATE_HZ = 24000;
+const BROWSER_HOLD_DURATION_MS = 3000;
+const BROWSER_HOLD_LOOP_INTERVAL_MS = BROWSER_HOLD_DURATION_MS + 250;
+let holdMusicPcm16Base64: string | undefined;
+
+function getHoldMusicPcm16Base64(): string {
+  if (holdMusicPcm16Base64) return holdMusicPcm16Base64;
+  const durationSeconds = BROWSER_HOLD_DURATION_MS / 1000;
+  const samples = Math.max(1, Math.round(BROWSER_HOLD_SAMPLE_RATE_HZ * durationSeconds));
+  const buf = Buffer.alloc(samples * 2);
+
+  const chimeStarts = [0.0, 1.25];
+  const partials = [
+    { f: 660, a: 0.14 },
+    { f: 990, a: 0.08 },
+    { f: 1320, a: 0.05 },
+  ];
+  const attackS = 0.006;
+  const decayS = 0.2;
+  const chimeLenS = 1.5;
+
+  for (let i = 0; i < samples; i++) {
+    const t = i / BROWSER_HOLD_SAMPLE_RATE_HZ;
+
+    let v = 0;
+    for (const start of chimeStarts) {
+      const dt = t - start;
+      if (dt < 0 || dt > chimeLenS) continue;
+      const attackEnv = 1 - Math.exp(-dt / Math.max(attackS, 1e-6));
+      const decayEnv = Math.exp(-dt / Math.max(decayS, 1e-6));
+      const env = attackEnv * decayEnv;
+
+      for (const p of partials) {
+        v += Math.sin(2 * Math.PI * p.f * t) * p.a * env;
+      }
+    }
+
+    const clipped = Math.max(-1, Math.min(1, v));
+    const int16 = (clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff) | 0;
+    buf.writeInt16LE(int16, i * 2);
+  }
+  holdMusicPcm16Base64 = buf.toString('base64');
+  return holdMusicPcm16Base64;
+}
 
 // ===== Voice Activity Detection (VAD) and Barge-in Configuration =====
 // Adjust these constants to tune sensitivity and interruption behavior for voice calls.
@@ -54,6 +100,10 @@ function stopHoldMusicLoop() {
     clearTimeout(holdMusicTimer);
     holdMusicTimer = undefined;
   }
+  if (browserHoldMusicTimer) {
+    clearTimeout(browserHoldMusicTimer);
+    browserHoldMusicTimer = undefined;
+  }
   if (session.twilioConn && session.streamSid) {
     // Ensure any queued hold music is cleared
     jsonSend(session.twilioConn, {
@@ -61,13 +111,18 @@ function stopHoldMusicLoop() {
       streamSid: session.streamSid,
     });
   }
+  if (session.browserConn) {
+    jsonSend(session.browserConn, { event: 'hold.clear' } as any);
+  }
 }
 
 function startHoldMusicLoop() {
-  if (!session.twilioConn || !session.streamSid) return;
+  if (!(session.twilioConn && session.streamSid) && !session.browserConn) return;
 
-  const send = () => {
-    if (!session.waitingForTool || !session.twilioConn || !session.streamSid) return;
+  const sendTwilio = () => {
+    if (!session.waitingForTool) return;
+    if (!(session.twilioConn && session.streamSid)) return;
+
     jsonSend(session.twilioConn, {
       event: "media",
       streamSid: session.streamSid,
@@ -77,10 +132,22 @@ function startHoldMusicLoop() {
       event: "mark",
       streamSid: session.streamSid,
     });
-    holdMusicTimer = setTimeout(send, HOLD_MUSIC_LOOP_INTERVAL_MS);
+    holdMusicTimer = setTimeout(sendTwilio, HOLD_MUSIC_LOOP_INTERVAL_MS);
   };
 
-  send();
+  const sendBrowser = () => {
+    if (!session.waitingForTool) return;
+    if (!(session.browserConn && isOpen(session.browserConn))) return;
+
+    jsonSend(session.browserConn, {
+      event: 'hold.media',
+      media: { payload: getHoldMusicPcm16Base64() },
+    } as any);
+    browserHoldMusicTimer = setTimeout(sendBrowser, BROWSER_HOLD_LOOP_INTERVAL_MS);
+  };
+
+  if (session.twilioConn && session.streamSid) sendTwilio();
+  if (session.browserConn) sendBrowser();
 }
 
 function finalizeRun(status: 'error' | undefined = undefined) {

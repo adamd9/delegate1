@@ -1,6 +1,6 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { PhoneCall, Bot, Settings as SettingsIcon } from "lucide-react";
+import { PhoneCall, Bot, Settings as SettingsIcon, Mic } from "lucide-react";
 import Link from "next/link";
 
 interface TopBarProps {
@@ -42,6 +42,17 @@ const TopBar = ({ children }: TopBarProps) => {
           >
             <PhoneCall className="w-4 h-4" />
             Direct Voice
+          </Link>
+        </Button>
+        <Button variant="ghost" size="sm">
+          <Link
+            href="/miniapps/client_side_wake_word/index.html"
+            className="flex items-center gap-2"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Mic className="w-4 h-4" />
+            Wakeword Demo
           </Link>
         </Button>
       </div>
