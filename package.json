@@ -22,8 +22,8 @@
     "frontend:start": "cd webapp && npm start",
     "frontend:build": "cd webapp && npm run build",
     "install:all": "npm install",
-    "test:e2e": "playwright test",
-    "test:e2e:headed": "playwright test --headed",
+    "test:e2e": "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npx -y @playwright/test@1.55.0 test",
+    "test:e2e:headed": "npx -y @playwright/test@1.55.0 test --headed",
     "clean": "rm -rf node_modules websocket-server/node_modules webapp/node_modules websocket-server/dist",
     "script:token": "node scripts/twilio/generate-token.js",
     "script:list-apps": "node scripts/twilio/list-twiml-apps.js",
@@ -39,7 +39,6 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "@playwright/test": "^1.47.2",
     "ws": "^8.18.0"
   },
   "keywords": [
