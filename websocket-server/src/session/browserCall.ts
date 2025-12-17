@@ -13,16 +13,41 @@ import {
 } from "./state";
 import { processRealtimeModelEvent } from "./call";
 
+function logDroppingAudioIfNeeded() {
+  const now = Date.now();
+  const last = (session as any).lastBrowserDroppedAudioLogAtMs as number | undefined;
+  if (typeof last === 'number' && now - last < 5000) return;
+  (session as any).lastBrowserDroppedAudioLogAtMs = now;
+
+  try {
+    console.warn('[voice][audio] Dropping inbound browser audio because modelConn is not open', {
+      modelReadyState: session.modelConn?.readyState,
+      hasBrowserConn: !!session.browserConn,
+      latestMediaTimestamp: session.latestMediaTimestamp,
+      lastModelClose: (session as any).lastModelClose,
+    });
+  } catch {}
+}
+
 export function establishBrowserCallSocket(ws: WebSocket, openAIApiKey: string) {
   console.info("\ud83c\udf10 New browser voice connection");
   session.openAIApiKey = openAIApiKey;
   session.browserConn = ws;
 
   ws.on("message", (data) => processBrowserCallEvent(data));
-  ws.on("error", () => {
-    ws.close();
+  ws.on("error", (err) => {
+    try {
+      console.error('[ws][browser-call] websocket error', err);
+    } catch {}
+    try {
+      ws.close();
+    } catch {}
   });
-  ws.on("close", () => {
+  ws.on("close", (code: number, reason: Buffer) => {
+    try {
+      const r = reason?.toString?.() || '';
+      console.warn('[ws][browser-call] websocket closed', { code, reason: r });
+    } catch {}
     try {
       endSession();
     } catch {}
@@ -71,6 +96,8 @@ export function processBrowserCallEvent(data: RawData) {
           type: "input_audio_buffer.append",
           audio: msg.media?.payload,
         });
+      } else {
+        logDroppingAudioIfNeeded();
       }
       break;
     }
@@ -152,10 +179,19 @@ function establishBrowserRealtimeModelConnection() {
   session.modelConn.on("message", (data: RawData) =>
     processRealtimeModelEvent(data, logsClients, chatClients)
   );
-  session.modelConn.on("error", () => {
+  session.modelConn.on("error", (err) => {
+    try {
+      console.error('[ws][openai-realtime] websocket error (browser-call)', err);
+      (session as any).lastModelErrorAtMs = Date.now();
+    } catch {}
     closeModel();
   });
-  session.modelConn.on("close", () => {
+  session.modelConn.on("close", (code: number, reason: Buffer) => {
+    try {
+      const r = reason?.toString?.() || '';
+      (session as any).lastModelClose = { code, reason: r, atMs: Date.now(), source: 'browser-call' };
+      console.warn('[ws][openai-realtime] websocket closed (browser-call)', { code, reason: r });
+    } catch {}
     closeModel();
   });
 }

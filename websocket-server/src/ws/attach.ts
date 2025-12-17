@@ -38,11 +38,17 @@ export function attachWebSockets(
       // Restore old logic: only one active Twilio connection (session.twilioConn)
       if (session && session.twilioConn) {
         try {
+          console.warn('[ws][attach] Closing existing twilioConn due to new /call connection');
+        } catch {}
+        try {
           session.twilioConn.close();
         } catch {}
         session.twilioConn = undefined;
       }
       if (session && session.browserConn) {
+        try {
+          console.warn('[ws][attach] Closing existing browserConn due to new /call connection');
+        } catch {}
         try {
           session.browserConn.close();
         } catch {}
@@ -50,7 +56,11 @@ export function attachWebSockets(
       }
       session.twilioConn = ws;
       establishCallSocket(ws, openAIApiKey);
-      ws.on('close', () => {
+      ws.on('close', (code: number, reason: Buffer) => {
+        try {
+          const r = reason?.toString?.() || '';
+          console.warn('[ws][call] websocket closed', { code, reason: r });
+        } catch {}
         if (session && session.twilioConn === ws) {
           session.twilioConn = undefined;
         }
@@ -58,11 +68,17 @@ export function attachWebSockets(
     } else if (type === 'browser-call') {
       if (session && session.twilioConn) {
         try {
+          console.warn('[ws][attach] Closing existing twilioConn due to new /browser-call connection');
+        } catch {}
+        try {
           session.twilioConn.close();
         } catch {}
         session.twilioConn = undefined;
       }
       if (session && session.browserConn) {
+        try {
+          console.warn('[ws][attach] Closing existing browserConn due to new /browser-call connection');
+        } catch {}
         try {
           session.browserConn.close();
         } catch {}
@@ -70,7 +86,11 @@ export function attachWebSockets(
       }
       session.browserConn = ws;
       establishBrowserCallSocket(ws, openAIApiKey);
-      ws.on('close', () => {
+      ws.on('close', (code: number, reason: Buffer) => {
+        try {
+          const r = reason?.toString?.() || '';
+          console.warn('[ws][browser-call] websocket closed', { code, reason: r });
+        } catch {}
         if (session && session.browserConn === ws) {
           session.browserConn = undefined;
         }

@@ -19,6 +19,25 @@ let browserHoldMusicTimer: NodeJS.Timeout | undefined;
 // Add slight gap between hold music loops to avoid a harsh beat
 const HOLD_MUSIC_LOOP_INTERVAL_MS = HOLD_MUSIC_DURATION_MS + 250;
 
+function logDroppingAudioIfNeeded(source: 'twilio' | 'browser') {
+  const now = Date.now();
+  const last = (session as any).lastDroppedAudioLogAtMs as number | undefined;
+  if (typeof last === 'number' && now - last < 5000) return;
+  (session as any).lastDroppedAudioLogAtMs = now;
+
+  try {
+    console.warn('[voice][audio] Dropping inbound audio because modelConn is not open', {
+      source,
+      streamSid: session.streamSid,
+      modelReadyState: session.modelConn?.readyState,
+      hasTwilioConn: !!session.twilioConn,
+      hasBrowserConn: !!session.browserConn,
+      latestMediaTimestamp: session.latestMediaTimestamp,
+      lastModelClose: (session as any).lastModelClose,
+    });
+  } catch {}
+}
+
 const BROWSER_HOLD_SAMPLE_RATE_HZ = 24000;
 const BROWSER_HOLD_DURATION_MS = 3000;
 const BROWSER_HOLD_LOOP_INTERVAL_MS = BROWSER_HOLD_DURATION_MS + 250;
@@ -178,8 +197,25 @@ export function establishCallSocket(ws: WebSocket, openAIApiKey: string) {
   session.twilioConn = ws;
   // Twilio realtime media/events from the voice call
   ws.on("message", (data) => processRealtimeCallEvent(data));
-  ws.on("error", () => { finalizeRun('error'); ws.close(); });
-  ws.on("close", () => { finalizeRun(); try { endSession(); } catch {} });
+  ws.on("error", (err) => {
+    try {
+      console.error('[ws][twilio-call] websocket error', err);
+    } catch {}
+    finalizeRun('error');
+    try {
+      ws.close();
+    } catch {}
+  });
+  ws.on("close", (code: number, reason: Buffer) => {
+    try {
+      const r = reason?.toString?.() || '';
+      console.warn('[ws][twilio-call] websocket closed', { code, reason: r, streamSid: session.streamSid });
+    } catch {}
+    finalizeRun();
+    try {
+      endSession();
+    } catch {}
+  });
   // Cleanup handled in server.ts on close
 }
 
@@ -219,6 +255,8 @@ export function processRealtimeCallEvent(data: RawData) {
           type: "input_audio_buffer.append",
           audio: msg.media.payload,
         });
+      } else {
+        logDroppingAudioIfNeeded('twilio');
       }
       break;
     case "close":
@@ -237,6 +275,14 @@ export function establishRealtimeModelConnection() {
   if (!hasConnection || !session.openAIApiKey)
     return;
   if (isOpen(session.modelConn)) return;
+
+  try {
+    console.info('[ws][openai-realtime] establishing model websocket', {
+      hasTwilioConn: !!session.twilioConn,
+      hasBrowserConn: !!session.browserConn,
+      streamSid: session.streamSid,
+    });
+  } catch {}
 
   const voiceModel = getAgent('base').voiceModel || getAgent('base').model || "gpt-4o-realtime-preview-2024-12-17";
   session.modelConn = new WebSocket(
@@ -298,8 +344,28 @@ export function establishRealtimeModelConnection() {
   });
 
   session.modelConn.on("message", (data: RawData) => processRealtimeModelEvent(data, logsClients, chatClients));
-  session.modelConn.on("error", () => { finalizeRun('error'); closeModel(); });
-  session.modelConn.on("close", () => { finalizeRun(); closeModel(); });
+  session.modelConn.on("error", (err) => {
+    try {
+      console.error('[ws][openai-realtime] websocket error', err);
+      (session as any).lastModelErrorAtMs = Date.now();
+    } catch {}
+    finalizeRun('error');
+    closeModel();
+  });
+  session.modelConn.on("close", (code: number, reason: Buffer) => {
+    try {
+      const r = reason?.toString?.() || '';
+      (session as any).lastModelClose = { code, reason: r, atMs: Date.now() };
+      console.warn('[ws][openai-realtime] websocket closed', {
+        code,
+        reason: r,
+        streamSid: session.streamSid,
+        latestMediaTimestamp: session.latestMediaTimestamp,
+      });
+    } catch {}
+    finalizeRun();
+    closeModel();
+  });
 }
 
 function shouldForwardToFrontend(event: any): boolean {
@@ -439,6 +505,16 @@ export function processRealtimeModelEvent(
     case "response.output_item.done": {
       console.log("[VOICE][ASSISTANT][FINAL-VOICE]", event);
       const { item } = event;
+      try {
+        if (item?.status && item.status !== 'completed') {
+          console.warn('[VOICE][ASSISTANT] output item not completed', {
+            status: item.status,
+            itemType: item.type,
+            itemId: item.id,
+            streamSid: session.streamSid,
+          });
+        }
+      } catch {}
       if (item.type === "function_call") {
         handleFunctionCall(item, logsClients)
           .then((output) => {
