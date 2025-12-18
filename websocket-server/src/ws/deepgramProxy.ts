@@ -1,5 +1,6 @@
 import { WebSocket } from 'ws';
 import type { RawData } from 'ws';
+import { addDeepgramTranscript } from '../db/sqlite';
 
 export function establishDeepgramProxy(clientWs: WebSocket) {
   const apiKey = process.env.DEEPGRAM_API_KEY || '';
@@ -49,7 +50,29 @@ export function establishDeepgramProxy(clientWs: WebSocket) {
       if (isBinary) {
         clientWs.send(data);
       } else {
-        clientWs.send(data.toString());
+        const text = data.toString();
+        clientWs.send(text);
+
+        // Best-effort transcript persistence (server-side).
+        // We only log actual transcript-bearing messages.
+        try {
+          const msg = JSON.parse(text);
+          const transcript = msg?.channel?.alternatives?.[0]?.transcript;
+          if (typeof transcript === 'string' && transcript.trim()) {
+            addDeepgramTranscript({
+              transcript: transcript.trim(),
+              is_final: !!msg?.is_final,
+              session_hint: 'deepgram_proxy',
+              meta: {
+                is_final: !!msg?.is_final,
+                speech_final: !!msg?.speech_final,
+                type: msg?.type,
+              },
+            });
+          }
+        } catch {
+          // ignore non-JSON messages
+        }
       }
     } catch {}
   });

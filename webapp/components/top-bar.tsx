@@ -51,6 +51,9 @@ const TopBar = ({ children }: TopBarProps) => {
               <SelectItem value="/miniapps/client_side_wake_word/index.html">
                 Wakeword Demo
               </SelectItem>
+              <SelectItem value="/miniapps/wakeword_direct_voice/index.html">
+                Wakeword Direct Voice
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -94,6 +97,17 @@ const TopBar = ({ children }: TopBarProps) => {
             >
               <Mic className="w-4 h-4" />
               Wakeword Demo
+            </Link>
+          </Button>
+          <Button variant="ghost" size="sm">
+            <Link
+              href="/miniapps/wakeword_direct_voice/index.html"
+              className="flex items-center gap-2"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Mic className="w-4 h-4" />
+              Wakeword Direct Voice
             </Link>
           </Button>
         </div>

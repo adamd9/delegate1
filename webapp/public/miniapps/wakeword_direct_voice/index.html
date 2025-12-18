@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wakeword Direct Voice</title>
+  <link rel="stylesheet" href="style.css?v=3" />
+  <script>
+    // This miniapp intentionally duplicates logic; it does not import from other miniapps.
+    // We only need ONNX Runtime WASM for local Silero VAD.
+    document.write(
+      `<script src="https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.22.0/ort.wasm.min.js"><\/script>`
+    );
+  </script>
+</head>
+<body>
+  <div class="app">
+    <div class="circle-wrap">
+      <div id="status-circle" class="status-circle">
+        <div id="status-ring" class="status-ring"></div>
+      </div>
+    </div>
+
+    <div id="status-text" class="status-text">Idle</div>
+
+    <div class="controls">
+      <button id="action-btn" class="btn primary">Start</button>
+    </div>
+
+    <button id="settings-toggle" class="settings-toggle" aria-label="Open settings">⚙</button>
+
+    <div id="panel-overlay" class="panel-overlay" hidden>
+      <div class="panel-card" role="dialog" aria-modal="true" aria-label="Wakeword panels">
+        <div class="panel-header">
+          <div class="panel-tabs">
+            <button id="tab-diagnostics" class="tab active" type="button">Diagnostics</button>
+            <button id="tab-settings" class="tab" type="button">Settings</button>
+          </div>
+          <button id="panel-close" class="panel-close" type="button" aria-label="Close">✕</button>
+        </div>
+
+        <div id="panel-body-diagnostics" class="panel-body">
+          <div class="panel-grid">
+            <div class="panel-row"><div class="k">Status</div><div id="diag-status" class="v">Idle</div></div>
+            <div class="panel-row"><div class="k">VAD</div><div id="diag-vad" class="v">0.00</div></div>
+            <div class="panel-row"><div class="k">Speech</div><div id="diag-speech" class="v">false</div></div>
+            <div class="panel-row"><div class="k">Deepgram</div><div id="diag-dg" class="v">closed</div></div>
+            <div class="panel-row"><div class="k">Agent</div><div id="diag-agent" class="v">disconnected</div></div>
+          </div>
+          <div class="panel-section">
+            <div class="panel-section-title">Last transcript</div>
+            <div id="diag-transcript" class="panel-pre"></div>
+          </div>
+        </div>
+
+        <div id="panel-body-settings" class="panel-body" hidden>
+          <div class="panel-section">
+            <div class="panel-section-title">Wakeword phrases</div>
+            <textarea id="settings-phrases" class="panel-textarea" rows="4" spellcheck="false"></textarea>
+            <div class="panel-help">One per line. Matching ignores punctuation and case.</div>
+          </div>
+
+          <div class="panel-section">
+            <div class="panel-section-title">VAD threshold</div>
+            <div class="panel-inline">
+              <input id="settings-vad-threshold" class="panel-range" type="range" min="0" max="1" step="0.01" />
+              <div id="settings-vad-threshold-value" class="panel-mono">0.50</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="debug" class="debug" style="display:none"></div>
+  </div>
+
+  <script src="main.js?v=3"></script>
+</body>
+</html>

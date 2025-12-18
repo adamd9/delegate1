@@ -73,6 +73,17 @@ export function getDb() {
       ON thoughtflow_artifacts(session_id);
     CREATE INDEX IF NOT EXISTS idx_thoughtflow_artifacts_conversation
       ON thoughtflow_artifacts(conversation_id);
+
+    CREATE TABLE IF NOT EXISTS deepgram_transcripts (
+      id TEXT PRIMARY KEY,
+      created_at_ms INTEGER NOT NULL,
+      transcript TEXT NOT NULL,
+      is_final INTEGER,
+      session_hint TEXT,
+      meta_json TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_deepgram_transcripts_created_at
+      ON deepgram_transcripts(created_at_ms);
   `);
   return db;
 }
@@ -156,6 +167,23 @@ export function addConversationEvent(rec: { id?: string; conversation_id: string
     } catch {}
   }
   return { id, seq };
+}
+
+export function addDeepgramTranscript(rec: {
+  transcript: string;
+  is_final?: boolean;
+  created_at_ms?: number;
+  session_hint?: string;
+  meta?: any;
+}) {
+  const db = getDb();
+  const created_at_ms = rec.created_at_ms || Date.now();
+  const id = `dg_${created_at_ms}_${Math.random().toString(36).slice(2, 8)}`;
+  const meta_json = JSON.stringify(rec.meta ?? {});
+  db.prepare(
+    'INSERT INTO deepgram_transcripts (id, created_at_ms, transcript, is_final, session_hint, meta_json) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(id, created_at_ms, rec.transcript, rec.is_final ? 1 : 0, rec.session_hint || null, meta_json);
+  return { id };
 }
 
 export function listConversationEvents(conversation_id: string) {
