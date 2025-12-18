@@ -13,6 +13,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const gainSlider = document.getElementById('gain-slider');
     const gainValue = document.getElementById('gain-value');
 
+    const deepgramApiKeyInput = document.getElementById('deepgram-api-key');
+    const deepgramKeywordInput = document.getElementById('deepgram-keyword');
+
+    const deepgramTranscriptEl = document.getElementById('deepgram-transcript');
+    const deepgramAudioSecondsEl = document.getElementById('deepgram-audio-seconds');
+    const deepgramAudioMinutesEl = document.getElementById('deepgram-audio-minutes');
+
     // --- App State & Config ---
     let audioContext, workletNode, scoreChart, gainNode, mediaStream, successSound;
     let isListening = false;
@@ -20,6 +27,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let isDetectionCoolingDown = false; // Cooldown flag for success sound
     const sampleRate = 16000;
     const frameSize = 1280; // 80ms chunk size
+
+    const appMode = window.app_mode || window.backend_mode || 'wasm';
+    const isDeepgramMode = appMode === 'deepgram';
 
     // --- VAD & Utterance Management ---
     // AHA Moment #6 (The Fix): The wake word model has a significant processing delay (latency)
@@ -41,7 +51,24 @@ document.addEventListener('DOMContentLoaded', () => {
         'alexa': { url: 'models/alexa_v0.1.onnx', session: null, scores: new Array(50).fill(0) },
         'hey_mycroft': { url: 'models/hey_mycroft_v0.1.onnx', session: null, scores: new Array(50).fill(0) },
         'hey_jarvis': { url: 'models/hey_jarvis_v0.1.onnx', session: null, scores: new Array(50).fill(0) },
+        'hey_aych_kay': { url: 'models/hey_aych_kay.onnx', session: null, scores: new Array(50).fill(0) },
     };
+
+    const DEEPGRAM_API_KEY_STORAGE_KEY = 'miniapp_deepgram_api_key';
+    const DEEPGRAM_KEYWORD_STORAGE_KEY = 'miniapp_deepgram_keyword';
+    let deepgramWs = null;
+    let deepgramIsStreaming = false;
+    let deepgramUtteranceMatched = false;
+    let deepgramTranscriptFinal = '';
+    let deepgramTranscriptInterim = '';
+    let deepgramAudioSamplesSent = 0;
+    let deepgramCloseTimer = null;
+    let deepgramCloseRequested = false;
+
+    const DEEPGRAM_PREROLL_CHUNKS = 6; // 6 * 80ms = ~480ms
+    let deepgramPreRollBuffer = [];
+    let deepgramPendingPreRoll = [];
+    let deepgramPendingConnectAudio = [];
 
     const audioProcessorCode = `
         class AudioProcessor extends AudioWorkletProcessor {
@@ -65,7 +92,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         registerProcessor('audio-processor', AudioProcessor);
     `;
-
 
     // --- Charting & UI ---
     function initChart() {
@@ -96,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
         scoreChart.data.datasets.forEach((d, i) => { d.data = models[Object.keys(models)[i]].scores; });
         scoreChart.update('none');
     }
-    
+
     function injectCss() {
         const style = document.createElement('style');
         style.textContent = `
@@ -105,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         document.head.appendChild(style);
     }
-    
+
     // --- WAV Audio Creation Helper ---
     function createWavBlobUrl(audioChunks) {
         let totalLength = audioChunks.reduce((len, chunk) => len + chunk.length, 0); if (totalLength === 0) return null;
@@ -121,14 +147,261 @@ document.addEventListener('DOMContentLoaded', () => {
         const wavBlob = new Blob([view, pcmData], { type: 'audio/wav' }); return URL.createObjectURL(wavBlob);
     }
 
+    function createWavBlob(audioChunks) {
+        let totalLength = audioChunks.reduce((len, chunk) => len + chunk.length, 0);
+        if (totalLength === 0) return null;
+        let combined = new Float32Array(totalLength);
+        let offset = 0;
+        for (const chunk of audioChunks) { combined.set(chunk, offset); offset += chunk.length; }
+        let pcmData = new Int16Array(totalLength);
+        for (let i = 0; i < totalLength; i++) {
+            let s = Math.max(-1, Math.min(1, combined[i]));
+            pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        const wavHeader = new ArrayBuffer(44);
+        const view = new DataView(wavHeader);
+        const channels = 1, bitsPerSample = 16;
+        const byteRate = sampleRate * channels * (bitsPerSample / 8), blockAlign = channels * (bitsPerSample / 8);
+        view.setUint32(0, 0x52494646, false);
+        view.setUint32(4, 36 + pcmData.byteLength, true);
+        view.setUint32(8, 0x57415645, false);
+        view.setUint32(12, 0x666d7420, false);
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, channels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bitsPerSample, true);
+        view.setUint32(36, 0x64617461, false);
+        view.setUint32(40, pcmData.byteLength, true);
+        return new Blob([view, pcmData], { type: 'audio/wav' });
+    }
+
+    function normalizeTextForMatch(text) {
+        return (text || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    }
+
+    function keywordMatchesTranscript(keyword, transcript) {
+        const k = normalizeTextForMatch(keyword);
+        const t = normalizeTextForMatch(transcript);
+        if (!k) return false;
+        if (!t) return false;
+        return t.includes(k);
+    }
+
+    function float32ToLinear16PcmBytes(float32Array) {
+        const buf = new ArrayBuffer(float32Array.length * 2);
+        const view = new DataView(buf);
+        for (let i = 0; i < float32Array.length; i++) {
+            const s = Math.max(-1, Math.min(1, float32Array[i]));
+            view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        }
+        return buf;
+    }
+
+    function updateDeepgramUsageUi() {
+        if (!deepgramAudioSecondsEl || !deepgramAudioMinutesEl) return;
+        const seconds = deepgramAudioSamplesSent / sampleRate;
+        deepgramAudioSecondsEl.textContent = seconds.toFixed(1);
+        deepgramAudioMinutesEl.textContent = (seconds / 60).toFixed(2);
+    }
+
+    function deepgramRecordPreRollChunk(chunk) {
+        if (!isDeepgramMode) return;
+        deepgramPreRollBuffer.push(new Float32Array(chunk));
+        while (deepgramPreRollBuffer.length > DEEPGRAM_PREROLL_CHUNKS) {
+            deepgramPreRollBuffer.shift();
+        }
+    }
+
+    function updateDeepgramTranscriptUi() {
+        if (!deepgramTranscriptEl) return;
+        const lines = [];
+        if (deepgramTranscriptFinal) lines.push(deepgramTranscriptFinal.trim());
+        if (deepgramTranscriptInterim) lines.push(`[interim] ${deepgramTranscriptInterim.trim()}`);
+        deepgramTranscriptEl.textContent = lines.join('\n');
+    }
+
+    function deepgramResetStreamingState() {
+        deepgramUtteranceMatched = false;
+        deepgramTranscriptFinal = '';
+        deepgramTranscriptInterim = '';
+        updateDeepgramTranscriptUi();
+    }
+
+    function closeDeepgramStream() {
+        if (!deepgramWs) return;
+        if (deepgramCloseTimer) {
+            clearTimeout(deepgramCloseTimer);
+            deepgramCloseTimer = null;
+        }
+        try {
+            if (deepgramWs.readyState === WebSocket.OPEN) {
+                deepgramWs.send(JSON.stringify({ type: 'CloseStream' }));
+            }
+        } catch (e) {
+            // ignore
+        }
+        try {
+            deepgramWs.close();
+        } catch (e) {
+            // ignore
+        }
+        deepgramWs = null;
+        deepgramIsStreaming = false;
+        deepgramCloseRequested = false;
+    }
+
+    function requestDeepgramFinalizeAndClose() {
+        if (!deepgramWs) return;
+        if (deepgramCloseTimer) return;
+        deepgramCloseRequested = true;
+
+        try {
+            if (deepgramWs.readyState === WebSocket.OPEN) {
+                // Ask Deepgram to flush remaining hypotheses.
+                deepgramWs.send(JSON.stringify({ type: 'Finalize' }));
+            }
+        } catch (e) {
+            // ignore
+        }
+
+        // Give Deepgram a brief window to emit final results for very short utterances.
+        deepgramCloseTimer = setTimeout(() => {
+            deepgramCloseTimer = null;
+            closeDeepgramStream();
+        }, 800);
+    }
+
+    function openDeepgramStream() {
+        if (!isDeepgramMode) return;
+        if (deepgramWs) return;
+
+        const apiKey = (deepgramApiKeyInput?.value || '').trim();
+        if (!apiKey) {
+            statusText.textContent = 'Deepgram API key is required.';
+            return;
+        }
+
+        // Live streaming endpoint. We send 16-bit PCM (linear16) at 16kHz mono.
+        const url = 'wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&punctuate=true&language=en&encoding=linear16&sample_rate=16000&channels=1&interim_results=true&endpointing=250';
+
+        // In browsers, custom headers aren't allowed. Deepgram supports auth via Sec-WebSocket-Protocol.
+        deepgramWs = new WebSocket(url, ['token', apiKey]);
+        deepgramIsStreaming = true;
+        deepgramResetStreamingState();
+
+        // Capture a snapshot of the last ~480ms so we can send it immediately on open.
+        deepgramPendingPreRoll = deepgramPreRollBuffer.slice();
+        deepgramPendingConnectAudio = [];
+
+        deepgramWs.onopen = () => {
+            statusText.textContent = 'Streaming to Deepgram...';
+
+            // Flush pre-roll first to avoid chopping the beginning off short utterances.
+            if (deepgramPendingPreRoll.length) {
+                for (const preChunk of deepgramPendingPreRoll) {
+                    try {
+                        const pcmBytes = float32ToLinear16PcmBytes(preChunk);
+                        deepgramWs.send(pcmBytes);
+                        deepgramAudioSamplesSent += preChunk.length;
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+                deepgramPendingPreRoll = [];
+                updateDeepgramUsageUi();
+            }
+
+            // Flush any chunks captured while the WS was CONNECTING.
+            if (deepgramPendingConnectAudio.length) {
+                for (const queuedChunk of deepgramPendingConnectAudio) {
+                    try {
+                        const pcmBytes = float32ToLinear16PcmBytes(queuedChunk);
+                        deepgramWs.send(pcmBytes);
+                        deepgramAudioSamplesSent += queuedChunk.length;
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+                deepgramPendingConnectAudio = [];
+                updateDeepgramUsageUi();
+            }
+        };
+
+        deepgramWs.onmessage = (evt) => {
+            try {
+                const msg = JSON.parse(evt.data);
+                const transcript = msg?.channel?.alternatives?.[0]?.transcript || '';
+                if (typeof transcript !== 'string') return;
+
+                if (msg?.is_final) {
+                    if (transcript.trim()) {
+                        deepgramTranscriptFinal = `${deepgramTranscriptFinal}${deepgramTranscriptFinal ? '\n' : ''}${transcript.trim()}`;
+                    }
+                    deepgramTranscriptInterim = '';
+                } else {
+                    deepgramTranscriptInterim = transcript;
+                }
+
+                updateDeepgramTranscriptUi();
+
+                const keyword = (deepgramKeywordInput?.value || '').trim();
+                const combined = `${deepgramTranscriptFinal}\n${deepgramTranscriptInterim}`;
+                const matched = keywordMatchesTranscript(keyword, combined);
+                if (matched && !deepgramUtteranceMatched) {
+                    deepgramUtteranceMatched = true;
+
+                    if (detectionFadeTimer) clearTimeout(detectionFadeTimer);
+                    detectionText.textContent = `Matched "${keyword}"`;
+                    detectionText.classList.remove('fading');
+                    detectionFadeTimer = setTimeout(() => { detectionText.classList.add('fading'); }, 2500);
+
+                    if (!isDetectionCoolingDown) {
+                        isDetectionCoolingDown = true;
+                        successSound.play();
+                        setTimeout(() => { isDetectionCoolingDown = false; }, 2000);
+                    }
+                }
+
+                if (deepgramCloseRequested && (msg?.speech_final || msg?.is_final)) {
+                    // We requested close; now that Deepgram has flushed, close promptly.
+                    closeDeepgramStream();
+                }
+            } catch (e) {
+                // ignore malformed messages
+            }
+        };
+
+        deepgramWs.onerror = () => {
+            statusText.textContent = 'Deepgram stream error.';
+        };
+
+        deepgramWs.onclose = () => {
+            deepgramWs = null;
+            deepgramIsStreaming = false;
+            statusText.textContent = 'Listening...';
+        };
+    }
+
     // --- Model Loading & State Initialization ---
     async function loadModels() {
         statusText.textContent = 'Loading models...';
         const sessionOptions = { executionProviders: ['wasm'] };
         try {
-            [melspecModel, embeddingModel, vadModel] = await Promise.all([ ort.InferenceSession.create('models/melspectrogram.onnx', sessionOptions), ort.InferenceSession.create('models/embedding_model.onnx', sessionOptions), ort.InferenceSession.create('models/silero_vad.onnx', sessionOptions) ]);
-            for (const name in models) { models[name].session = await ort.InferenceSession.create(models[name].url, sessionOptions); }
-            statusText.textContent = 'Models loaded. Ready to start.';
+            if (isDeepgramMode) {
+                vadModel = await ort.InferenceSession.create('models/silero_vad.onnx', sessionOptions);
+                statusText.textContent = 'VAD loaded. Ready to start (Deepgram mode).';
+            } else {
+                [melspecModel, embeddingModel, vadModel] = await Promise.all([
+                    ort.InferenceSession.create('models/melspectrogram.onnx', sessionOptions),
+                    ort.InferenceSession.create('models/embedding_model.onnx', sessionOptions),
+                    ort.InferenceSession.create('models/silero_vad.onnx', sessionOptions)
+                ]);
+                for (const name in models) { models[name].session = await ort.InferenceSession.create(models[name].url, sessionOptions); }
+                statusText.textContent = 'Models loaded. Ready to start.';
+            }
             startButton.disabled = false; testButton.disabled = false; startButton.textContent = 'Start Listening';
         } catch(e) {
             statusText.textContent = `Model loading failed: ${e.message}`;
@@ -139,9 +412,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function resetState() {
         mel_buffer = [];
         embedding_buffer = [];
+
         for (let i = 0; i < 16; i++) {
             embedding_buffer.push(new Float32Array(96).fill(0));
         }
+
         const vadStateShape = [2, 1, 64];
         if (!vadState.h) {
             vadState.h = new ort.Tensor('float32', new Float32Array(128).fill(0), vadStateShape);
@@ -157,9 +432,18 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const name in models) { models[name].scores.fill(0); }
         detectionText.textContent = '';
         detectionText.classList.remove('fading');
-        updateChart();
+        closeDeepgramStream();
+        deepgramResetStreamingState();
+        deepgramAudioSamplesSent = 0;
+        deepgramPreRollBuffer = [];
+        deepgramPendingPreRoll = [];
+        deepgramPendingConnectAudio = [];
+        updateDeepgramUsageUi();
+        if (!isDeepgramMode) {
+            updateChart();
+        }
     }
-    
+
     // --- VAD ---
     async function runVad(chunk) {
         try {
@@ -173,6 +457,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- CONTINUOUS INFERENCE PIPELINE ---
     async function runInference(chunk, isSpeechConsideredActive) {
+        if (isDeepgramMode) {
+            return;
+        }
         // Stage 1: Audio Chunk -> Melspectrogram
         const melspecTensor = new ort.Tensor('float32', chunk, [1, frameSize]);
         const melspecResults = await melspecModel.run({ [melspecModel.inputNames[0]]: melspecTensor });
@@ -180,10 +467,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // AHA Moment #1: The melspectrogram data MUST be transformed with this exact formula.
         for (let j = 0; j < new_mel_data.length; j++) { new_mel_data[j] = (new_mel_data[j] / 10.0) + 2.0; }
-        
+
         for (let j = 0; j < 5; j++) {
             // AHA Moment #2: ONNX Runtime reuses output buffers. We MUST create a copy.
-            mel_buffer.push(new Float32Array(new_mel_data.subarray(j * 32, (j + 1) * 32))); 
+            mel_buffer.push(new Float32Array(new_mel_data.subarray(j * 32, (j + 1) * 32)));
         }
 
         // Stage 2: Melspectrogram History -> Embedding Vector
@@ -224,7 +511,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     setTimeout(() => { isDetectionCoolingDown = false; }, 2000); // 2-second cooldown
                 }
             }
-            
+
             mel_buffer.splice(0, 8);
         }
         updateChart();
@@ -241,6 +528,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (audioContext && audioContext.state !== 'closed') { audioContext.close(); }
             isListening = false;
         }
+
+        closeDeepgramStream();
         startButton.textContent = 'Start Listening';
         statusText.textContent = 'Stopped.';
         vadStatusIndicator.classList.remove('active');
@@ -249,7 +538,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function startListening() {
         if (isListening) return;
-        
+
         startButton.disabled = true;
         startButton.textContent = 'Starting...';
 
@@ -259,10 +548,10 @@ document.addEventListener('DOMContentLoaded', () => {
             mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: micSelect.value ? { exact: micSelect.value } : undefined } });
             audioContext = new AudioContext({ sampleRate: sampleRate });
             const source = audioContext.createMediaStreamSource(mediaStream);
-            
+
             gainNode = audioContext.createGain();
             gainNode.gain.value = parseFloat(gainSlider.value);
-            
+
             const blob = new Blob([audioProcessorCode], { type: 'application/javascript' });
             const workletURL = URL.createObjectURL(blob);
             await audioContext.audioWorklet.addModule(workletURL);
@@ -270,7 +559,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             workletNode.port.onmessage = async (event) => {
                 const chunk = event.data; if (!chunk) return;
-                
+
+                deepgramRecordPreRollChunk(chunk);
+
                 const vadFired = await runVad(chunk);
                 vadStatusIndicator.classList.toggle('active', vadFired);
 
@@ -278,6 +569,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!isSpeechActive) { utteranceBuffer = []; }
                     isSpeechActive = true;
                     vadHangoverCounter = VAD_HANGOVER_FRAMES;
+
+                    if (isDeepgramMode && !deepgramIsStreaming) {
+                        openDeepgramStream();
+                    }
                 } else if (isSpeechActive) {
                     vadHangoverCounter--;
                     if (vadHangoverCounter <= 0) {
@@ -295,11 +590,29 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Append to place new clips at the bottom, in order.
                             debugAudioContainer.appendChild(clipContainer);
                         }
+
+                        if (isDeepgramMode) {
+                            requestDeepgramFinalizeAndClose();
+                        }
                     }
                 }
 
                 if (isSpeechActive) {
                     utteranceBuffer.push(chunk);
+
+                    if (isDeepgramMode && deepgramWs && deepgramWs.readyState === WebSocket.OPEN) {
+                        try {
+                            const pcmBytes = float32ToLinear16PcmBytes(chunk);
+                            deepgramWs.send(pcmBytes);
+                            deepgramAudioSamplesSent += chunk.length;
+                            updateDeepgramUsageUi();
+                        } catch (e) {
+                            // ignore
+                        }
+                    } else if (isDeepgramMode && deepgramWs && deepgramWs.readyState === WebSocket.CONNECTING) {
+                        // Capture the initial speech while the WS handshake completes.
+                        deepgramPendingConnectAudio.push(new Float32Array(chunk));
+                    }
                 }
                 
                 await runInference(chunk, isSpeechActive);
@@ -322,6 +635,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- DIAGNOSTIC TEST ---
     async function runWavTest_DirectLogic() {
+        if (isDeepgramMode) {
+            statusText.textContent = 'Test disabled in Deepgram mode.';
+            return;
+        }
         if (isListening) stopListening();
         resetState();
         statusText.textContent = "[Direct Test] Running...";
@@ -397,16 +714,27 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally { testButton.disabled = false; }
     }
 
-
     // --- Init ---
     async function init() {
         try {
             injectCss();
-            initChart();
+            if (!isDeepgramMode) {
+                initChart();
+            } else {
+                const chartContainer = chartCanvas.parentElement;
+                if (chartContainer) {
+                    chartContainer.style.display = 'none';
+                }
+            }
             successSound = new Audio('./success.mp3');
             successSound.preload = 'auto';
             await populateMicrophoneList();
             await loadModels();
+
+            if (isDeepgramMode) {
+                testButton.disabled = true;
+                testButton.textContent = 'Test disabled';
+            }
         } catch (e) { console.error("Initialization failed", e); statusText.textContent = `Error: ${e.message}`; }
     }
 
@@ -426,6 +754,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         gainValue.textContent = `${Math.round(gainLevel * 100)}%`;
     });
+
+    if (deepgramApiKeyInput) {
+        deepgramApiKeyInput.value = localStorage.getItem(DEEPGRAM_API_KEY_STORAGE_KEY) || '';
+        deepgramApiKeyInput.addEventListener('input', () => {
+            localStorage.setItem(DEEPGRAM_API_KEY_STORAGE_KEY, deepgramApiKeyInput.value);
+        });
+    }
+
+    if (deepgramKeywordInput) {
+        deepgramKeywordInput.value = localStorage.getItem(DEEPGRAM_KEYWORD_STORAGE_KEY) || '';
+        deepgramKeywordInput.addEventListener('input', () => {
+            localStorage.setItem(DEEPGRAM_KEYWORD_STORAGE_KEY, deepgramKeywordInput.value);
+        });
+    }
 
     startButton.addEventListener('click', () => { if (isListening) { stopListening(); } else { startListening(); } });
     testButton.addEventListener('click', runWavTest_DirectLogic);

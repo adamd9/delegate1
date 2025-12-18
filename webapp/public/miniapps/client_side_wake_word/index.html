@@ -7,16 +7,23 @@
     <link rel="stylesheet" href="style.css">
     <script>
         (function () {
-            const validModes = ['wasm', 'webgpu', 'webgl'];
+            const validModes = ['wasm', 'webgpu', 'webgl', 'deepgram'];
             const params = new URLSearchParams(window.location.search);
             const requestedMode = params.get('mode');
-            const backendMode = validModes.includes(requestedMode) ? requestedMode : 'wasm';
+            const appMode = validModes.includes(requestedMode) ? requestedMode : 'wasm';
 
-            window.backend_mode = backendMode;
-            document.title = `openWakeWord Web Demo (Backend: ${backendMode.toUpperCase()})`;
+            // For Deepgram mode we still need ONNX Runtime to run the local Silero VAD.
+            const ortBackendMode = appMode === 'deepgram' ? 'wasm' : appMode;
+
+            window.app_mode = appMode;
+            window.backend_mode = ortBackendMode;
+
+            document.title = appMode === 'deepgram'
+                ? 'openWakeWord Web Demo (Mode: DEEPGRAM)'
+                : `openWakeWord Web Demo (Backend: ${ortBackendMode.toUpperCase()})`;
 
             document.write(
-                `<script src="https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.22.0/ort.${backendMode}.min.js"><\/script>`
+                `<script src="https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.22.0/ort.${ortBackendMode}.min.js"><\/script>`
             );
         })();
     </script>
@@ -31,7 +38,15 @@
             <strong>Switch Backend:</strong>
             <a href="?mode=wasm">WASM</a> |
             <a href="?mode=webgpu">WebGPU</a> |
-            <a href="?mode=webgl">WebGL (not working)</a> 
+            <a href="?mode=webgl">WebGL (not working)</a> |
+            <a href="?mode=deepgram">Deepgram STT</a>
+        </div>
+
+        <div id="deepgram-controls" class="control-group" style="display: none;">
+            <label for="deepgram-api-key">Deepgram API Key:</label>
+            <input id="deepgram-api-key" type="password" placeholder="dg_..." autocomplete="off" />
+            <label for="deepgram-keyword">Keyword:</label>
+            <input id="deepgram-keyword" type="text" placeholder="e.g. hey jarvis" />
         </div>
 
         <div class="controls">
@@ -52,6 +67,17 @@
             <p id="detection-text"></p>
         </div>
 
+        <div id="deepgram-output" style="display: none;">
+            <div class="control-group">
+                <label>Audio Sent:</label>
+                <span><span id="deepgram-audio-seconds">0</span>s (<span id="deepgram-audio-minutes">0</span> min)</span>
+            </div>
+            <div class="control-group">
+                <label>Transcript:</label>
+                <pre id="deepgram-transcript" style="text-align: left; white-space: pre-wrap; margin: 0; width: 100%;"></pre>
+            </div>
+        </div>
+
         <div class="chart-container">
             <canvas id="score-chart"></canvas>
         </div>
@@ -63,10 +89,18 @@
 
     <script>
         (function () {
-            const backendMode = window.backend_mode || 'wasm';
+            const appMode = window.app_mode || 'wasm';
+            const deepgramControls = document.getElementById('deepgram-controls');
+            const deepgramOutput = document.getElementById('deepgram-output');
+            if (deepgramControls) {
+                deepgramControls.style.display = appMode === 'deepgram' ? 'flex' : 'none';
+            }
+            if (deepgramOutput) {
+                deepgramOutput.style.display = appMode === 'deepgram' ? 'block' : 'none';
+            }
             document.querySelectorAll('.backend-links a').forEach((a) => {
                 const href = a.getAttribute('href') || '';
-                if (href.includes(`mode=${backendMode}`)) {
+                if (href.includes(`mode=${appMode}`)) {
                     a.classList.add('active');
                 } else {
                     a.classList.remove('active');

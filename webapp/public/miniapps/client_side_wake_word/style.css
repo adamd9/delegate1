@@ -99,6 +99,7 @@ p {
   padding: 1rem;
   border-radius: 8px;
   border: 1px solid #404040;
+  flex-wrap: wrap;
 }
 
 .control-group label {
@@ -110,6 +111,7 @@ p {
 
 /* Form elements */
 #mic-select,
+.control-group input,
 .controls button {
   padding: 0.75rem 1rem;
   font-size: 1rem;
@@ -122,6 +124,22 @@ p {
   background-color: #333;
   color: #d4d4d4;
   min-width: 200px;
+}
+
+.control-group input {
+  background-color: #333;
+  color: #d4d4d4;
+  min-width: 220px;
+}
+
+.control-group input::placeholder {
+  color: #888;
+}
+
+.control-group input:focus {
+  outline: none;
+  border-color: #569cd6;
+  box-shadow: 0 0 0 2px rgba(86, 156, 214, 0.2);
 }
 
 #mic-select:focus {
