@@ -14,6 +14,7 @@ import { registerSessionRoutes } from './server/routes/session';
 import { registerAdaptationsRoutes } from './server/routes/adaptations';
 import { registerMcpConfigRoutes } from './server/routes/mcpConfig';
 import { registerCanvasRoutes } from './server/routes/canvas';
+import { registerDeepgramRoutes } from './server/routes/deepgram';
 import { getConfig } from './server/config/env';
 import { registerHealthRoutes, setReady } from './server/routes/health';
 import { chatClients, logsClients } from './ws/clients';
@@ -100,6 +101,9 @@ registerConversationRoutes(app, { defaultLimit: SESSION_HISTORY_LIMIT });
 
 // Canvas route
 registerCanvasRoutes(app);
+
+// Deepgram auth routes
+registerDeepgramRoutes(app);
 
 // Session control route
 registerSessionRoutes(app, { chatClients, logsClients });

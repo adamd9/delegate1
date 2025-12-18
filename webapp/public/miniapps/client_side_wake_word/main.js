@@ -13,7 +13,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const gainSlider = document.getElementById('gain-slider');
     const gainValue = document.getElementById('gain-value');
 
-    const deepgramApiKeyInput = document.getElementById('deepgram-api-key');
     const deepgramKeywordInput = document.getElementById('deepgram-keyword');
 
     const deepgramTranscriptEl = document.getElementById('deepgram-transcript');
@@ -54,10 +53,12 @@ document.addEventListener('DOMContentLoaded', () => {
         'hey_aych_kay': { url: 'models/hey_aych_kay.onnx', session: null, scores: new Array(50).fill(0) },
     };
 
-    const DEEPGRAM_API_KEY_STORAGE_KEY = 'miniapp_deepgram_api_key';
     const DEEPGRAM_KEYWORD_STORAGE_KEY = 'miniapp_deepgram_keyword';
+
     let deepgramWs = null;
     let deepgramIsStreaming = false;
+    let deepgramIsOpening = false;
+    let deepgramProxyWsUrl = '';
     let deepgramUtteranceMatched = false;
     let deepgramTranscriptFinal = '';
     let deepgramTranscriptInterim = '';
@@ -250,6 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         deepgramWs = null;
         deepgramIsStreaming = false;
+        deepgramIsOpening = false;
         deepgramCloseRequested = false;
     }
 
@@ -267,29 +269,57 @@ document.addEventListener('DOMContentLoaded', () => {
             // ignore
         }
 
-        // Give Deepgram a brief window to emit final results for very short utterances.
+        // Give Deepgram a window to emit final results for very short utterances.
+        // If we're still CONNECTING, use a longer fallback so we don't close before the socket opens.
+        const graceMs = deepgramWs.readyState === WebSocket.OPEN ? 1600 : 5000;
         deepgramCloseTimer = setTimeout(() => {
             deepgramCloseTimer = null;
             closeDeepgramStream();
-        }, 800);
+        }, graceMs);
     }
 
-    function openDeepgramStream() {
+    async function getDeepgramProxyWsUrl() {
+        if (deepgramProxyWsUrl) return deepgramProxyWsUrl;
+        // Default dev fallback if proxy endpoint isn't reachable.
+        let backendUrl = 'http://localhost:8081';
+        try {
+            const resp = await fetch('/api/backend-url', { cache: 'no-store' });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data?.backendUrl) backendUrl = data.backendUrl;
+            }
+        } catch (e) {
+            // ignore and fall back
+        }
+
+        const wsProtocol = (backendUrl || '').startsWith('https://') ? 'wss://' : 'ws://';
+        const hostWithPath = (backendUrl || '').replace(/^https?:\/\//, '').replace(/\/$/, '') + '/deepgram';
+        deepgramProxyWsUrl = `${wsProtocol}${hostWithPath}`;
+        return deepgramProxyWsUrl;
+    }
+
+    async function openDeepgramStream() {
         if (!isDeepgramMode) return;
         if (deepgramWs) return;
+        if (deepgramIsOpening) return;
 
-        const apiKey = (deepgramApiKeyInput?.value || '').trim();
-        if (!apiKey) {
-            statusText.textContent = 'Deepgram API key is required.';
+        // Mark opening immediately so VAD frames don't trigger repeated token requests.
+        deepgramIsOpening = true;
+        deepgramIsStreaming = true;
+
+        let wsUrl = '';
+        try {
+            statusText.textContent = 'Connecting to Deepgram proxy...';
+            wsUrl = await getDeepgramProxyWsUrl();
+        } catch (e) {
+            statusText.textContent = 'Deepgram proxy URL error.';
+            deepgramIsStreaming = false;
+            deepgramIsOpening = false;
             return;
         }
 
-        // Live streaming endpoint. We send 16-bit PCM (linear16) at 16kHz mono.
-        const url = 'wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&punctuate=true&language=en&encoding=linear16&sample_rate=16000&channels=1&interim_results=true&endpointing=250';
-
-        // In browsers, custom headers aren't allowed. Deepgram supports auth via Sec-WebSocket-Protocol.
-        deepgramWs = new WebSocket(url, ['token', apiKey]);
-        deepgramIsStreaming = true;
+        deepgramWs = new WebSocket(wsUrl);
+        deepgramIsOpening = false;
         deepgramResetStreamingState();
 
         // Capture a snapshot of the last ~480ms so we can send it immediately on open.
@@ -297,7 +327,7 @@ document.addEventListener('DOMContentLoaded', () => {
         deepgramPendingConnectAudio = [];
 
         deepgramWs.onopen = () => {
-            statusText.textContent = 'Streaming to Deepgram...';
+            statusText.textContent = 'Streaming to Deepgram (via proxy)...';
 
             // Flush pre-roll first to avoid chopping the beginning off short utterances.
             if (deepgramPendingPreRoll.length) {
@@ -328,11 +358,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 deepgramPendingConnectAudio = [];
                 updateDeepgramUsageUi();
             }
+
+            // If speech already ended before the socket opened, immediately request a flush.
+            if (deepgramCloseRequested) {
+                try {
+                    deepgramWs.send(JSON.stringify({ type: 'Finalize' }));
+                } catch (e) {
+                    // ignore
+                }
+
+                // Ensure we close eventually even if we never receive a final transcript.
+                if (deepgramCloseTimer) {
+                    clearTimeout(deepgramCloseTimer);
+                }
+                deepgramCloseTimer = setTimeout(() => {
+                    deepgramCloseTimer = null;
+                    closeDeepgramStream();
+                }, 1600);
+            }
         };
 
         deepgramWs.onmessage = (evt) => {
             try {
                 const msg = JSON.parse(evt.data);
+
+                // Control messages from our backend proxy.
+                if (msg?.type === 'proxy_open') {
+                    return;
+                }
+                if (msg?.type === 'error') {
+                    statusText.textContent = msg?.message ? `Deepgram proxy error: ${msg.message}` : 'Deepgram proxy error.';
+                    return;
+                }
                 const transcript = msg?.channel?.alternatives?.[0]?.transcript || '';
                 if (typeof transcript !== 'string') return;
 
@@ -374,13 +431,22 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        deepgramWs.onerror = () => {
-            statusText.textContent = 'Deepgram stream error.';
+        deepgramWs.onerror = (evt) => {
+            try {
+                console.error('[deepgram] websocket error', evt);
+            } catch {}
+            statusText.textContent = 'Deepgram proxy stream error.';
+            deepgramIsStreaming = false;
+            deepgramIsOpening = false;
         };
 
-        deepgramWs.onclose = () => {
+        deepgramWs.onclose = (evt) => {
+            try {
+                console.warn('[deepgram] websocket closed', { code: evt?.code, reason: evt?.reason, wasClean: evt?.wasClean });
+            } catch {}
             deepgramWs = null;
             deepgramIsStreaming = false;
+            deepgramIsOpening = false;
             statusText.textContent = 'Listening...';
         };
     }
@@ -754,13 +820,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         gainValue.textContent = `${Math.round(gainLevel * 100)}%`;
     });
-
-    if (deepgramApiKeyInput) {
-        deepgramApiKeyInput.value = localStorage.getItem(DEEPGRAM_API_KEY_STORAGE_KEY) || '';
-        deepgramApiKeyInput.addEventListener('input', () => {
-            localStorage.setItem(DEEPGRAM_API_KEY_STORAGE_KEY, deepgramApiKeyInput.value);
-        });
-    }
 
     if (deepgramKeywordInput) {
         deepgramKeywordInput.value = localStorage.getItem(DEEPGRAM_KEYWORD_STORAGE_KEY) || '';

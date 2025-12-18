@@ -4,6 +4,7 @@ import { IncomingMessage } from 'http';
 import { establishCallSocket } from '../session/call';
 import { establishBrowserCallSocket } from '../session/browserCall';
 import { establishChatSocket } from '../session/chat';
+import { establishDeepgramProxy } from './deepgramProxy';
 import { session } from '../session/state';
 
 /**
@@ -104,6 +105,8 @@ export function attachWebSockets(
       chatClients.add(ws);
       establishChatSocket(ws, openAIApiKey, chatClients, logsClients);
       ws.on('close', () => chatClients.delete(ws));
+    } else if (type === 'deepgram') {
+      establishDeepgramProxy(ws);
     } else {
       ws.close();
     }
