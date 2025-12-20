@@ -8,7 +8,11 @@ export interface CanvasData {
   timestamp: number;
 }
 
-const CANVAS_DIR = path.join(__dirname, '..', 'canvas-artifacts');
+// Persist under runtime-data when available (e.g., Docker volume mounted at /runtime-data)
+const RUNTIME_DATA_DIR = process.env.RUNTIME_DATA_DIR;
+const CANVAS_DIR = RUNTIME_DATA_DIR
+  ? path.join(RUNTIME_DATA_DIR, 'canvas-artifacts')
+  : path.join(__dirname, '..', 'canvas-artifacts');
 
 async function ensureDir() {
   await fs.mkdir(CANVAS_DIR, { recursive: true });
