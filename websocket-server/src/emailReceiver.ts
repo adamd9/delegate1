@@ -27,8 +27,17 @@ export async function checkInbox() {
   }
 
   let connection: imaps.ImapSimple | null = null;
+  const logImapError = (error: unknown) => {
+    const err = error as { code?: string; message?: string };
+    const isTimeout = err?.code === 'ETIMEDOUT';
+    const level = isTimeout ? console.warn : console.error;
+    level('[checkInbox] IMAP connection error', { error });
+  };
   try {
     connection = await imaps.connect(config);
+    connection.on('error', logImapError);
+    const rawConnection = (connection as unknown as { imap?: { on?: (event: string, handler: (err: unknown) => void) => void } }).imap;
+    rawConnection?.on?.('error', logImapError);
 
     await connection.openBox('INBOX');
 
@@ -75,12 +84,18 @@ export async function checkInbox() {
     return validEmails;
 
   } catch (err) {
-    console.error('[checkInbox] IMAP check failed', { err });
+    const error = err as { code?: string };
+    const isTimeout = error?.code === 'ETIMEDOUT';
+    const level = isTimeout ? console.warn : console.error;
+    level('[checkInbox] IMAP check failed', { err });
     return [];
   } finally {
     if (connection) {
-      connection.end();
+      try {
+        connection.end();
+      } catch (err) {
+        console.warn('[checkInbox] IMAP connection close failed', { err });
+      }
     }
   }
 }
-
