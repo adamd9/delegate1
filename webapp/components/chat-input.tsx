@@ -17,7 +17,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
   connectionStatus 
 }) => {
   const [message, setMessage] = useState("");
-  const [isExpanded, setIsExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -90,14 +89,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
               onKeyDown={handleKeyDown}
               placeholder={
                 connectionStatus === 'connected' 
-                  ? "Type your message... (Enter to send, Shift+Enter for new line)"
+                  ? "Type your message..."
                   : connectionStatus === 'connecting'
                   ? "Connecting to chat..."
                   : "Chat disconnected"
               }
               disabled={disabled || connectionStatus !== 'connected'}
               className={`
-                w-full px-3 py-2 border rounded-lg resize-none overflow-hidden
+                w-full px-3 py-2 border rounded-lg resize-none overflow-y-auto
                 min-h-[40px] max-h-[120px] transition-all duration-200
                 ${disabled || connectionStatus !== 'connected' 
                   ? 'bg-gray-100 text-gray-500 cursor-not-allowed' 
@@ -123,7 +122,13 @@ const ChatInput: React.FC<ChatInputProps> = ({
             Send
           </button>
         </div>
-        
+
+        {connectionStatus === 'connected' && (
+          <div className="mt-2 text-xs text-gray-400">
+            Enter to send • Shift+Enter for new line
+          </div>
+        )}
+
         {/* Helper Text */}
         <div className="mt-2 text-xs text-gray-500">
           {connectionStatus === 'connected' && (

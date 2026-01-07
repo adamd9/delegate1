@@ -32,7 +32,7 @@ export function EnhancedTranscript({
   // Track previous items in a ref to avoid triggering re-renders
   const prevLogsRef = useRef(transcriptItems);
   const [justCopied, setJustCopied] = useState(false);
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   function scrollToBottom() {
     if (transcriptRef.current) {
@@ -58,6 +58,12 @@ export function EnhancedTranscript({
     // Update ref without causing another render
     prevLogsRef.current = transcriptItems;
   }, [transcriptItems]);
+
+  useEffect(() => {
+    if (!inputRef.current) return;
+    inputRef.current.style.height = "auto";
+    inputRef.current.style.height = `${inputRef.current.scrollHeight}px`;
+  }, [userText]);
 
   const handleCopyTranscript = async () => {
     const transcriptText = transcriptItems
@@ -440,19 +446,20 @@ export function EnhancedTranscript({
 
       {/* Input Area and Additional Tools */}
       <div className="flex-shrink-0 border-t border-gray-200 p-4 space-y-4">
-        <div className="flex items-center gap-2">
-          <input
+        <div className="flex items-end gap-2">
+          <textarea
             ref={inputRef}
-            type="text"
             value={userText}
             onChange={(e) => setUserText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && canSend && !inFlight) {
+              if (e.key === "Enter" && !e.shiftKey && canSend && !inFlight) {
+                e.preventDefault();
                 onSendMessage();
               }
             }}
             placeholder="Type a message..."
-            className="flex-1 px-4 py-2 focus:outline-none border-0 bg-transparent"
+            className="flex-1 px-4 py-2 focus:outline-none border-0 bg-transparent resize-none overflow-y-auto min-h-[40px] max-h-[140px]"
+            rows={1}
           />
           {inFlight ? (
             <button
@@ -472,6 +479,9 @@ export function EnhancedTranscript({
               Send
             </button>
           )}
+        </div>
+        <div className="text-xs text-gray-400">
+          Enter to send • Shift+Enter for new line
         </div>
         <AdditionalTools />
       </div>
