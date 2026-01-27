@@ -1,6 +1,4 @@
 import { RawData, WebSocket } from "ws";
-import OpenAI, { ClientOptions } from "openai";
-import { ProxyAgent } from "undici";
 import { ResponsesTextInput } from "../types";
 import { getAgent, getDefaultAgent, FunctionHandler } from "../agentConfigs";
 import { executeFunctionCalls, executeFunctionCall } from "../tools/orchestrators/functionCallExecutor";
@@ -10,11 +8,12 @@ import { sendSms } from "../sms";
 import { getReplyTo } from "../emailState";
 import { sendEmail } from "../email";
 import { session, parseMessage, jsonSend, isOpen } from "./state";
-import { listConversations as dbListConversations, listConversationEvents, completeConversation } from "../db/sqlite";
+import { listConversations as dbListConversations, listConversationEvents, completeConversation, getConversationById } from "../db/sqlite";
 import { ensureSession, appendEvent, ThoughtFlowStepType, endSession } from "../observability/thoughtflow";
 import { addConversationEvent } from "../db/sqlite";
 import { replayHistoryOnConnect } from './history';
 import { getAdaptationTextById } from '../adaptations';
+import { createOpenAIClient } from "../services/openaiClient";
 
 export function establishChatSocket(
   ws: WebSocket,
@@ -240,13 +239,22 @@ export async function processChatSocketMessage(
   }
 }
 
+export type ChatResult = {
+  conversationId: string;
+  sessionId: string;
+  requestId: string;
+  assistantText: string;
+  supervisor: boolean;
+};
+
 export async function handleTextChatMessage(
   content: string,
   chatClients: Set<WebSocket>,
   logsClients: Set<WebSocket>,
   channel: Channel = 'text',
-  metadata: { subject?: string } = {}
-) {
+  metadata: { subject?: string } = {},
+  opts: { conversationId?: string } = {}
+): Promise<ChatResult | undefined> {
   const { currentTime, timeZone } = getTimeContext();
   const context: Context = {
     channel,
@@ -260,12 +268,18 @@ export async function handleTextChatMessage(
     session.currentRequest = { id: requestId, channel, canceled: false, startedAt: Date.now() };
     // ThoughtFlow: ensure session and start run
     const { id: sessionId } = ensureSession();
-    // Sticky conversation: reuse existing conversation until explicitly finalized
-    let conversationId = (session as any).currentConversationId as string | undefined;
-    const isNewConversation = !conversationId;
+    let conversationId = opts.conversationId || ((session as any).currentConversationId as string | undefined);
+    const conversationExists = conversationId ? Boolean(getConversationById(conversationId)) : false;
+    const isNewConversation = !conversationId || !conversationExists;
     if (!conversationId) {
       conversationId = `conv_${requestId}`;
+    }
+    if (opts.conversationId) {
       (session as any).currentConversationId = conversationId;
+    } else if (isNewConversation) {
+      (session as any).currentConversationId = conversationId;
+    }
+    if (isNewConversation) {
       appendEvent({ type: 'conversation.started', conversation_id: conversationId, request_id: requestId, channel, started_at: new Date().toISOString() });
     }
     const userStepId = `step_user_${requestId}`;
@@ -278,24 +292,13 @@ export async function handleTextChatMessage(
     }
     // Initialize OpenAI client if needed
     if (!session.openaiClient) {
-      if (!process.env.OPENAI_API_KEY) {
+      try {
+        session.openaiClient = createOpenAIClient();
+        console.log("✅ OpenAI REST client initialized for text chat");
+      } catch (err) {
         console.error("❌ No OpenAI API key set in environment");
         return;
       }
-      const options: ClientOptions = { apiKey: process.env.OPENAI_API_KEY };
-      if (process.env.CODEX_CLI === "true" && process.env.HTTPS_PROXY) {
-        try {
-          const dispatcher = new ProxyAgent(process.env.HTTPS_PROXY);
-          options.fetch = (url, init: any = {}) => {
-            return (globalThis.fetch as any)(url, { ...(init || {}), dispatcher });
-          };
-          console.debug("OpenAI Client", "Using undici ProxyAgent for Codex environment");
-        } catch (e) {
-          console.warn("OpenAI Client", "Failed to configure ProxyAgent, continuing without proxy:", e);
-        }
-      }
-      session.openaiClient = new OpenAI(options);
-      console.log("✅ OpenAI REST client initialized for text chat");
     }
     // Add user message to conversation history
     const userMessage = {
@@ -593,7 +596,7 @@ export async function handleTextChatMessage(
               session.currentRequest = undefined;
               // No additional logs emit to avoid duplicate assistant messages; chat.response carries meta now.
               appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_handled, timestamp: Date.now() });
-              return;
+              return { conversationId, sessionId, requestId, assistantText: text, supervisor: true };
             }
           }
           const finalResponse = followUpResponse.output_text || "Supervisor agent completed.";
@@ -647,7 +650,7 @@ export async function handleTextChatMessage(
           session.currentRequest = undefined;
           // No logs emit; chat.response above includes meta to avoid duplication
           appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_supervisor, timestamp: Date.now() });
-          return;
+          return { conversationId, sessionId, requestId, assistantText: finalResponse, supervisor: true };
         }
       } catch (err: any) {
         console.error("❌ Error executing function call:", err);
@@ -682,7 +685,7 @@ export async function handleTextChatMessage(
         // No logs emit; chat.response above includes meta
         appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: `step_error_${Date.now()}`, label: ThoughtFlowStepType.ToolError, payload: { error: err?.message || String(err) }, timestamp: Date.now() });
         // Do not auto-mark conversation completed on tool error; leave it open unless explicitly finalized
-        return;
+        return { conversationId, sessionId, requestId, assistantText: errorText, supervisor: true };
       }
     }
     // Fallback to assistant text output
@@ -728,6 +731,7 @@ export async function handleTextChatMessage(
     session.currentRequest = undefined;
     // Do not emit a duplicate assistant message to logs; chat.response includes meta
     appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_fallback, timestamp: Date.now() });
+    return { conversationId, sessionId, requestId, assistantText, supervisor: false };
   } catch (err) {
     console.error("❌ Error handling text chat message:", err);
     // Ensure clients are unblocked on error

@@ -12,6 +12,7 @@ import {
   closeModel,
 } from "./state";
 import { processRealtimeModelEvent } from "./call";
+import { getChatVoiceConfig } from "../voice/voiceConfig";
 
 function logDroppingAudioIfNeeded() {
   const now = Date.now();
@@ -150,13 +151,14 @@ function establishBrowserRealtimeModelConnection() {
         ? { type: 'none' }
         : (runtimeTurnDetection || { type: "server_vad" });
 
+    const voiceConfig = getChatVoiceConfig();
     jsonSend(session.modelConn, {
       type: "session.update",
       session: {
         modalities: ["text", "audio"],
         turn_detection: turnDetection,
-        voice: "ballad",
-        speed: 1.3,
+        voice: voiceConfig.voice,
+        speed: voiceConfig.speed,
         input_audio_transcription: { model: "whisper-1" },
         input_audio_format: "pcm16",
         output_audio_format: "pcm16",

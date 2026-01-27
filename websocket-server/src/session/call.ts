@@ -8,6 +8,7 @@ import { HOLD_MUSIC_ULAW_BASE64, HOLD_MUSIC_DURATION_MS } from "../assets/holdMu
 import { appendEvent, ThoughtFlowStepType, ensureSession, endSession } from "../observability/thoughtflow";
 import { addConversationEvent } from "../db/sqlite";
 import { chatClients, logsClients } from "../ws/clients";
+import { getChatVoiceConfig } from "../voice/voiceConfig";
 
 
 // Accumulator for assistant voice transcript text by item id (server logs only)
@@ -316,13 +317,14 @@ export function establishRealtimeModelConnection() {
       runtimeTurnDetection?.type === 'none'
         ? { type: 'none' }
         : (runtimeTurnDetection as any);
+    const voiceConfig = getChatVoiceConfig();
     jsonSend(session.modelConn, {
       type: "session.update",
       session: {
         modalities: ["text", "audio"],
         turn_detection: turnDetection,
-        voice: "ballad",
-        speed: 1.3,
+        voice: voiceConfig.voice,
+        speed: voiceConfig.speed,
         input_audio_transcription: { model: "whisper-1" },
         input_audio_format: "g711_ulaw",
         output_audio_format: "g711_ulaw",

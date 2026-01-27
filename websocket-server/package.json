@@ -8,7 +8,8 @@
     "copy-assets": "cp src/twiml.xml dist/ && mkdir -p dist/config && cp -R src/config/* dist/config/ || true",
     "start": "node dist/server.js",
     "dev": "nodemon --watch 'src/**/*' --watch '.env' --ext 'ts,js,xml,env' --exec 'ts-node' src/server.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:voice": "ts-node src/voice/voicePipeline.test.ts"
   },
   "keywords": [],
   "author": "",
@@ -18,6 +19,7 @@
     "@openai/agents": "^0.0.5",
     "@types/imap-simple": "^4.2.10",
     "@types/mailparser": "^3.4.6",
+    "@types/multer": "^2.0.0",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^7.0.1",
     "@types/ws": "^8.5.12",
@@ -31,6 +33,7 @@
     "mailparser": "^3.7.4",
     "marked": "^16.1.2",
     "mem0ai": "^2.1.37",
+    "multer": "^2.0.2",
     "nodemailer": "^7.0.6",
     "openai": "^5.12.2",
     "ts-node": "^10.9.2",

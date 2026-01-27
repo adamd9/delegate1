@@ -15,6 +15,7 @@ import { registerAdaptationsRoutes } from './server/routes/adaptations';
 import { registerMcpConfigRoutes } from './server/routes/mcpConfig';
 import { registerCanvasRoutes } from './server/routes/canvas';
 import { registerDeepgramRoutes } from './server/routes/deepgram';
+import { registerVoiceMessageRoutes } from './server/routes/voiceMessage';
 import { getConfig } from './server/config/env';
 import { registerHealthRoutes, setReady } from './server/routes/health';
 import { chatClients, logsClients } from './ws/clients';
@@ -104,6 +105,8 @@ registerCanvasRoutes(app);
 
 // Deepgram auth routes
 registerDeepgramRoutes(app);
+// Voice message REST endpoint
+registerVoiceMessageRoutes(app);
 
 // Session control route
 registerSessionRoutes(app, { chatClients, logsClients });

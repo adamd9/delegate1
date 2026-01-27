@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice Message Tester</title>
+    <link rel="stylesheet" href="style.css?v=1" />
+  </head>
+  <body>
+    <main class="card">
+      <header>
+        <h1>Voice Message Tester</h1>
+        <p>Record or upload audio and POST it to <code>/api/voice/message</code>.</p>
+      </header>
+
+      <section class="panel">
+        <label>
+          API Base URL
+          <input id="apiBase" type="text" value="http://localhost:8081" />
+        </label>
+        <label>
+          Conversation ID
+          <input id="conversationId" type="text" placeholder="leave blank for new" />
+        </label>
+        <div class="row">
+          <label class="checkbox">
+            <input id="endConversation" type="checkbox" />
+            End conversation after reply
+          </label>
+          <button id="newConversation" type="button">New conversation</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="row">
+          <button id="startRecording" type="button">Start recording</button>
+          <button id="stopRecording" type="button" disabled>Stop</button>
+          <span id="recordStatus">Idle</span>
+        </div>
+        <div class="row">
+          <button id="playRecording" type="button" disabled>Play recording</button>
+          <audio id="recordingPreview" controls></audio>
+        </div>
+        <label>
+          Or upload audio
+          <input id="audioFile" type="file" accept="audio/*" />
+        </label>
+      </section>
+
+      <section class="panel actions">
+        <button id="sendButton" type="button" disabled>Send to API</button>
+        <span id="sendStatus"></span>
+      </section>
+
+      <section class="panel results">
+        <h2>Response</h2>
+        <div class="result-block">
+          <h3>Transcript</h3>
+          <pre id="transcript"></pre>
+        </div>
+        <div class="result-block">
+          <h3>Assistant Text</h3>
+          <pre id="assistantText"></pre>
+        </div>
+        <div class="result-block">
+          <h3>Assistant Audio</h3>
+          <audio id="assistantAudio" controls></audio>
+        </div>
+      </section>
+    </main>
+
+    <script src="main.js?v=1"></script>
+  </body>
+</html>
