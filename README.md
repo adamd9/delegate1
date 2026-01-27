@@ -277,6 +277,7 @@ For detailed documentation, see [`scripts/README.md`](scripts/README.md).
 - **Backend API**: http://localhost:8081
 - **WebSocket (chat + observability)**: ws://localhost:8081/chat
 - **Voice Client**: http://localhost:3001
+- **Voice Message Miniapp**: http://localhost:3000/miniapps/voice_message_tester/index.html
 
 ### Runtime data persistence (Docker/K8s)
 
@@ -326,6 +327,14 @@ From the root directory:
 - `npm run clean` - Clean all node_modules and build artifacts
 - `npm run voice-client:dev` - Start only the voice client
 - `./start.sh` - Quick startup script with status messages
+
+### Voice Message API (REST)
+
+The backend exposes a multipart REST endpoint for short audio uploads:
+
+- `POST /api/voice/message`
+
+It runs STT → chat (same pipeline as text/SMS) → TTS and returns transcript, assistant text, and base64 MP3. See `docs/voice-message-api.md` for full request/response and error details.
 
 ### End-to-end tests (Playwright)
 
