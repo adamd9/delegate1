@@ -41,6 +41,46 @@ function extractOpenAiRequestId(err: any): string | undefined {
   );
 }
 
+function getUpstreamStatus(err: any): number | undefined {
+  return err?.status || err?.response?.status || err?.response?.statusCode;
+}
+
+function getUpstreamMessage(err: any): string | undefined {
+  const msg =
+    err?.message ||
+    err?.response?.data?.error?.message ||
+    err?.response?.error?.message ||
+    err?.response?.body?.error?.message;
+  return typeof msg === "string" && msg.trim() ? msg : undefined;
+}
+
+function logUpstreamError(err: any, meta?: any) {
+  const upstream = {
+    status: getUpstreamStatus(err),
+    request_id: extractOpenAiRequestId(err),
+    message: getUpstreamMessage(err),
+    type: err?.type || err?.name,
+    code: err?.code,
+  };
+  try {
+    console.error("[voice-message] OpenAI error", {
+      upstream,
+      meta,
+      stack: err?.stack,
+    });
+  } catch {}
+  try {
+    const responseBody =
+      err?.response?.data ||
+      err?.response?.body ||
+      err?.response?.error ||
+      err?.error;
+    if (responseBody) {
+      console.error("[voice-message] OpenAI error body", responseBody);
+    }
+  } catch {}
+}
+
 function isOpenAiError(err: any): boolean {
   if (!err) return false;
   if (err?.name === "OpenAIError") return true;
@@ -161,10 +201,12 @@ export function registerVoiceMessageRoutes(app: Application) {
       } else if (err instanceof VoiceMessageError) {
         res.status(err.status).json({ error: err.code, message: err.message });
       } else if (isOpenAiError(err)) {
+        logUpstreamError(err, { stage: "voice-message", path: "/api/voice/message" });
         res.status(502).json({
           error: "openai_upstream_error",
-          message: "OpenAI request failed",
+          message: getUpstreamMessage(err) || "OpenAI request failed",
           request_id: extractOpenAiRequestId(err),
+          upstream_status: getUpstreamStatus(err),
         });
       } else {
         res.status(500).json({ error: "server_error", message: err?.message || "Failed to process voice message" });
