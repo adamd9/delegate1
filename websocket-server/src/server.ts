@@ -36,7 +36,8 @@ const SESSION_HISTORY_LIMIT = cfg.sessionHistoryLimit;
 // Finalize any sessions that were left open (no session.ended) across restarts handled by startup module
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: true }));
+app.options('*', cors({ origin: true }));
 const server = http.createServer(app);
 
 // Track readiness across async startup steps so we can persist a startup note

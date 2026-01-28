@@ -32,6 +32,58 @@ function parseMeta(raw: any) {
   }
 }
 
+function sanitizeRequestHeaders(headers: Request["headers"]) {
+  const out: Record<string, string> = {};
+  const contentType = headers["content-type"];
+  const contentLength = headers["content-length"];
+  const userAgent = headers["user-agent"];
+  if (typeof contentType === "string") out["content-type"] = contentType;
+  if (typeof contentLength === "string") out["content-length"] = contentLength;
+  if (typeof userAgent === "string") out["user-agent"] = userAgent;
+
+  for (const [key, value] of Object.entries(headers)) {
+    if (!key.toLowerCase().startsWith("x-")) continue;
+    if (typeof value === "string") out[key.toLowerCase()] = value;
+  }
+  return out;
+}
+
+function bytesToHex(buf: Buffer, length: number) {
+  return buf.slice(0, length).toString("hex");
+}
+
+function bytesToAscii(buf: Buffer, length: number) {
+  const slice = buf.slice(0, length);
+  let out = "";
+  for (const byte of slice) {
+    out += byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".";
+  }
+  return out;
+}
+
+function looksLikeBase64(sample: string): boolean {
+  const compact = sample.replace(/\s+/g, "");
+  if (!compact) return false;
+  if (compact.length % 4 !== 0) return false;
+  return /^[A-Za-z0-9+/=]+$/.test(compact);
+}
+
+function detectMagic(buf: Buffer): string {
+  if (buf.length < 4) return "unknown";
+  const hex4 = buf.slice(0, 4).toString("hex");
+  const ascii4 = buf.slice(0, 4).toString("ascii");
+  if (ascii4 === "OggS") return "OggS";
+  if (ascii4 === "RIFF") return "RIFF";
+  if (ascii4 === "ID3") return "ID3";
+  if (ascii4 === "fLaC") return "fLaC";
+  if (hex4 === "1a45dfa3") return "EBML";
+  if (buf.length >= 12) {
+    const box = buf.slice(4, 8).toString("ascii");
+    if (box === "ftyp") return "ftyp";
+  }
+  return "unknown";
+}
+
 function extractOpenAiRequestId(err: any): string | undefined {
   return (
     err?.request_id ||
@@ -133,6 +185,11 @@ export function registerVoiceMessageRoutes(app: Application) {
     let inputPath: string | undefined;
 
     try {
+      const reqHeaders = sanitizeRequestHeaders(req.headers);
+      try {
+        console.info("[voice-message] request headers", reqHeaders);
+      } catch {}
+
       await new Promise<void>((resolve, reject) => {
         upload.single("audio")(req, res, (err: any) => {
           if (err) return reject(err);
@@ -142,6 +199,30 @@ export function registerVoiceMessageRoutes(app: Application) {
 
       const file = requireAudioFile((req as any).file as Express.Multer.File | undefined) as Express.Multer.File;
       inputPath = file.path;
+
+      try {
+        const fd = fs.openSync(inputPath, "r");
+        const buf = Buffer.alloc(64);
+        const bytesRead = fs.readSync(fd, buf, 0, 64, 0);
+        fs.closeSync(fd);
+        const sample = buf.slice(0, bytesRead);
+        const asciiPrefix = bytesToAscii(sample, 32);
+        const hexPrefix = bytesToHex(sample, 16);
+        const payloadInfo = {
+          filename: file.originalname,
+          part_content_type: file.mimetype,
+          part_content_length: file.size,
+          part_transfer_encoding: file.encoding || undefined,
+          raw_size_bytes: file.size,
+          hex_prefix: hexPrefix,
+          ascii_prefix: asciiPrefix,
+          looks_base64: looksLikeBase64(asciiPrefix),
+          magic: detectMagic(sample),
+        };
+        console.info("[voice-message] multipart audio metadata", payloadInfo);
+      } catch (e: any) {
+        console.warn("[voice-message] failed to inspect audio payload", e?.message || e);
+      }
 
       const meta = parseMeta((req.body as any)?.meta);
       const conversationId = ((req.body as any)?.conversation_id || "").toString() || undefined;
