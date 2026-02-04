@@ -115,9 +115,15 @@ function getVoiceTuningForCall() {
   return { turnDetection, bargeInGraceMs };
 }
 
+// Helper function to determine the correct audio format based on active connections
+export function getAudioFormatForSession(): 'g711_ulaw' | 'pcm16' {
+  // Twilio uses g711_ulaw, browser uses pcm16
+  return session.twilioConn ? 'g711_ulaw' : 'pcm16';
+}
+
 // Build complete session configuration for Realtime API
 // This should be used whenever sending session.update to ensure all required fields are included
-export function buildRealtimeSessionConfig(channel: Channel = 'voice', audioFormat: 'g711_ulaw' | 'pcm16' = 'g711_ulaw') {
+export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_ulaw' | 'pcm16') {
   const baseFunctions = getAgent('base').tools as FunctionHandler[];
   const functionSchemas = baseFunctions.map((f: FunctionHandler) => f.schema);
   const baseInstructions = getDefaultAgent().instructions;
@@ -330,7 +336,7 @@ export function establishRealtimeModelConnection() {
   );
 
   session.modelConn.on("open", () => {
-    const sessionConfig = buildRealtimeSessionConfig('voice');
+    const sessionConfig = buildRealtimeSessionConfig('voice', 'g711_ulaw');
     jsonSend(session.modelConn, {
       type: "session.update",
       session: sessionConfig,

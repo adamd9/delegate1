@@ -1,6 +1,6 @@
 import { FunctionHandler } from "../../agentConfigs/types";
 import { session, isOpen, jsonSend } from "../../session/state";
-import { buildRealtimeSessionConfig } from "../../session/call";
+import { buildRealtimeSessionConfig, getAudioFormatForSession } from "../../session/call";
 
 type NoiseMode = "normal" | "noisy";
 
@@ -161,10 +161,8 @@ export const setVoiceNoiseModeTool: FunctionHandler = {
 
     const canApplyToModel = isOpen(session.modelConn);
     if (canApplyToModel) {
-      // Determine audio format based on connection type
-      // Twilio uses g711_ulaw, browser uses pcm16
-      const audioFormat = session.twilioConn ? 'g711_ulaw' : 'pcm16';
-      // Send complete session config to avoid partial updates that might reset other fields
+      // Detect audio format based on connection type and send complete session config
+      const audioFormat = getAudioFormatForSession();
       const fullSessionConfig = buildRealtimeSessionConfig('voice', audioFormat);
       jsonSend(session.modelConn, {
         type: "session.update",
