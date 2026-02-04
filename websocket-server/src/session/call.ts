@@ -489,7 +489,9 @@ export function processRealtimeModelEvent(
       // for at least BARGE_IN_GRACE_MS. This reduces overly eager cutoffs.
       const startedAt = session.responseStartTimestamp;
       if (startedAt !== undefined) {
-        const elapsedMs = (session.latestMediaTimestamp || 0) - (startedAt || 0);
+        // Use wall-clock time to calculate elapsed duration, not media timestamps
+        // Media timestamps only update when user audio arrives, causing stale calculations
+        const elapsedMs = Date.now() - startedAt;
         const { bargeInGraceMs } = getVoiceTuningForCall();
         if (elapsedMs >= bargeInGraceMs) {
           handleTruncation();
@@ -503,7 +505,8 @@ export function processRealtimeModelEvent(
     case "response.audio.delta":
       if (session.twilioConn && session.streamSid) {
         if (session.responseStartTimestamp === undefined) {
-          session.responseStartTimestamp = session.latestMediaTimestamp || 0;
+          // Use wall-clock time for measuring agent speaking duration
+          session.responseStartTimestamp = Date.now();
         }
         if (event.item_id) session.lastAssistantItem = event.item_id;
         if (isOpen(session.twilioConn)) {
@@ -520,7 +523,8 @@ export function processRealtimeModelEvent(
       }
       if (session.browserConn) {
         if (session.responseStartTimestamp === undefined) {
-          session.responseStartTimestamp = session.latestMediaTimestamp || 0;
+          // Use wall-clock time for measuring agent speaking duration
+          session.responseStartTimestamp = Date.now();
         }
         if (event.item_id) session.lastAssistantItem = event.item_id;
         if (isOpen(session.browserConn)) {
@@ -720,8 +724,9 @@ function handleTruncation() {
     session.responseStartTimestamp === undefined
   )
     return;
-  const elapsedMs =
-    (session.latestMediaTimestamp || 0) - (session.responseStartTimestamp || 0);
+  // Calculate how long the assistant has been speaking (wall-clock time)
+  // This is used to tell OpenAI where to truncate the audio
+  const elapsedMs = Date.now() - session.responseStartTimestamp;
   const audio_end_ms = elapsedMs > 0 ? elapsedMs : 0;
   if (isOpen(session.modelConn)) {
     jsonSend(session.modelConn, {
