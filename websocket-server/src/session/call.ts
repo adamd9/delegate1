@@ -2,7 +2,7 @@ import { RawData, WebSocket } from "ws";
 import { getDefaultAgent } from "../agentConfigs";
 import { getAgent, FunctionHandler } from "../agentConfigs";
 import { runSingleToolCall } from "../tools/orchestrators/runToolCalls";
-import { contextInstructions, Context, getTimeContext } from "../agentConfigs/context";
+import { contextInstructions, Context, getTimeContext, type Channel } from "../agentConfigs/context";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 import { HOLD_MUSIC_ULAW_BASE64, HOLD_MUSIC_DURATION_MS } from "../assets/holdMusic";
 import { appendEvent, ThoughtFlowStepType, ensureSession, endSession } from "../observability/thoughtflow";
@@ -113,6 +113,39 @@ function getVoiceTuningForCall() {
   const bargeInGraceMs =
     typeof tuning?.bargeInGraceMs === 'number' ? tuning.bargeInGraceMs : BARGE_IN_GRACE_MS;
   return { turnDetection, bargeInGraceMs };
+}
+
+// Build complete session configuration for Realtime API
+// This should be used whenever sending session.update to ensure all required fields are included
+export function buildRealtimeSessionConfig(channel: Channel = 'voice', audioFormat: 'g711_ulaw' | 'pcm16' = 'g711_ulaw') {
+  const baseFunctions = getAgent('base').tools as FunctionHandler[];
+  const functionSchemas = baseFunctions.map((f: FunctionHandler) => f.schema);
+  const baseInstructions = getDefaultAgent().instructions;
+  const { currentTime, timeZone } = getTimeContext();
+  const context: Context = {
+    channel,
+    currentTime,
+    timeZone,
+  };
+  const agentInstructions = [contextInstructions(context), baseInstructions].join('\n');
+  const { turnDetection: runtimeTurnDetection } = getVoiceTuningForCall();
+  const turnDetection =
+    runtimeTurnDetection?.type === 'none'
+      ? { type: 'none' }
+      : (runtimeTurnDetection as any);
+  const voiceConfig = getChatVoiceConfig();
+  
+  return {
+    modalities: ["text", "audio"],
+    turn_detection: turnDetection,
+    voice: voiceConfig.voice,
+    speed: voiceConfig.speed,
+    input_audio_transcription: { model: "whisper-1" },
+    input_audio_format: audioFormat,
+    output_audio_format: audioFormat,
+    tools: functionSchemas,
+    instructions: agentInstructions,
+  };
 }
 
 function stopHoldMusicLoop() {
@@ -297,41 +330,10 @@ export function establishRealtimeModelConnection() {
   );
 
   session.modelConn.on("open", () => {
-    const config = {} as any;
-
-    // Voice channel: expose base agent tools only (supervisor/MCP excluded)
-    const baseFunctions = getAgent('base').tools as FunctionHandler[];
-    const functionSchemas = baseFunctions.map((f: FunctionHandler) => f.schema);
-    const baseInstructions = getDefaultAgent().instructions;
-    const { currentTime, timeZone } = getTimeContext();
-    const context: Context = {
-      channel: 'voice',
-      currentTime,
-      timeZone,
-    };
-    const agentInstructions = [contextInstructions(context), baseInstructions].join('\n');
-
-    // Build turn detection config from constants (can be overridden by saved_config)
-    const { turnDetection: runtimeTurnDetection } = getVoiceTuningForCall();
-    const turnDetection =
-      runtimeTurnDetection?.type === 'none'
-        ? { type: 'none' }
-        : (runtimeTurnDetection as any);
-    const voiceConfig = getChatVoiceConfig();
+    const sessionConfig = buildRealtimeSessionConfig('voice');
     jsonSend(session.modelConn, {
       type: "session.update",
-      session: {
-        modalities: ["text", "audio"],
-        turn_detection: turnDetection,
-        voice: voiceConfig.voice,
-        speed: voiceConfig.speed,
-        input_audio_transcription: { model: "whisper-1" },
-        input_audio_format: "g711_ulaw",
-        output_audio_format: "g711_ulaw",
-        tools: functionSchemas,
-        instructions: agentInstructions,
-        ...config,
-      },
+      session: sessionConfig,
     });
 
     // Send a friendly greeting when a Twilio caller connects

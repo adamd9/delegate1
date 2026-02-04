@@ -11,7 +11,7 @@ import {
   closeAllConnections,
   closeModel,
 } from "./state";
-import { processRealtimeModelEvent } from "./call";
+import { processRealtimeModelEvent, buildRealtimeSessionConfig } from "./call";
 import { getChatVoiceConfig } from "../voice/voiceConfig";
 
 function logDroppingAudioIfNeeded() {
@@ -134,37 +134,10 @@ function establishBrowserRealtimeModelConnection() {
   );
 
   session.modelConn.on("open", () => {
-    const baseFunctions = getAgent("base").tools as FunctionHandler[];
-    const functionSchemas = baseFunctions.map((f: FunctionHandler) => f.schema);
-    const baseInstructions = getDefaultAgent().instructions;
-    const { currentTime, timeZone } = getTimeContext();
-    const context: Context = {
-      channel: "voice",
-      currentTime,
-      timeZone,
-    };
-    const agentInstructions = [contextInstructions(context), baseInstructions].join("\n");
-
-    const runtimeTurnDetection = (session as any)?.voiceTuning?.turnDetection;
-    const turnDetection =
-      runtimeTurnDetection?.type === 'none'
-        ? { type: 'none' }
-        : (runtimeTurnDetection || { type: "server_vad" });
-
-    const voiceConfig = getChatVoiceConfig();
+    const sessionConfig = buildRealtimeSessionConfig('voice', 'pcm16');
     jsonSend(session.modelConn, {
       type: "session.update",
-      session: {
-        modalities: ["text", "audio"],
-        turn_detection: turnDetection,
-        voice: voiceConfig.voice,
-        speed: voiceConfig.speed,
-        input_audio_transcription: { model: "whisper-1" },
-        input_audio_format: "pcm16",
-        output_audio_format: "pcm16",
-        tools: functionSchemas,
-        instructions: agentInstructions,
-      },
+      session: sessionConfig,
     });
 
     if (session.browserConn) {
