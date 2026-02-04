@@ -2,7 +2,7 @@ import { RawData, WebSocket } from "ws";
 import { getDefaultAgent } from "../agentConfigs";
 import { getAgent, FunctionHandler } from "../agentConfigs";
 import { runSingleToolCall } from "../tools/orchestrators/runToolCalls";
-import { contextInstructions, Context, getTimeContext } from "../agentConfigs/context";
+import { contextInstructions, Context, getTimeContext, type Channel } from "../agentConfigs/context";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 import { HOLD_MUSIC_ULAW_BASE64, HOLD_MUSIC_DURATION_MS } from "../assets/holdMusic";
 import { appendEvent, ThoughtFlowStepType, ensureSession, endSession } from "../observability/thoughtflow";
@@ -113,6 +113,64 @@ function getVoiceTuningForCall() {
   const bargeInGraceMs =
     typeof tuning?.bargeInGraceMs === 'number' ? tuning.bargeInGraceMs : BARGE_IN_GRACE_MS;
   return { turnDetection, bargeInGraceMs };
+}
+
+/**
+ * Determines the correct audio format based on the active session connections.
+ * 
+ * @returns 'g711_ulaw' for Twilio connections, 'pcm16' for browser connections
+ */
+export function getAudioFormatForSession(): 'g711_ulaw' | 'pcm16' {
+  // Twilio uses g711_ulaw, browser uses pcm16
+  return session.twilioConn ? 'g711_ulaw' : 'pcm16';
+}
+
+/**
+ * Builds a complete session configuration for the OpenAI Realtime API.
+ * 
+ * This function ensures all required fields are included in session.update messages
+ * to prevent the API from resetting fields to defaults, which can break voice processing.
+ * 
+ * @param channel - The communication channel ('voice', 'text', 'sms', or 'email')
+ * @param audioFormat - The audio format to use ('g711_ulaw' for Twilio, 'pcm16' for browser)
+ * @returns A complete session configuration object ready to send to the Realtime API
+ */
+export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_ulaw' | 'pcm16') {
+  const baseFunctions = getAgent('base').tools as FunctionHandler[];
+  const functionSchemas = baseFunctions.map((f: FunctionHandler) => f.schema);
+  const baseInstructions = getDefaultAgent().instructions;
+  const { currentTime, timeZone } = getTimeContext();
+  const context: Context = {
+    channel,
+    currentTime,
+    timeZone,
+  };
+  const agentInstructions = [contextInstructions(context), baseInstructions].join('\n');
+  const { turnDetection: runtimeTurnDetection } = getVoiceTuningForCall();
+  
+  // Build turn detection config, falling back to server_vad if type is not 'none'
+  const turnDetection = runtimeTurnDetection?.type === 'none'
+    ? { type: 'none' as const }
+    : {
+        type: (runtimeTurnDetection?.type || 'server_vad') as 'server_vad' | 'semantic_vad',
+        threshold: runtimeTurnDetection?.threshold,
+        prefix_padding_ms: runtimeTurnDetection?.prefix_padding_ms,
+        silence_duration_ms: runtimeTurnDetection?.silence_duration_ms,
+      };
+  
+  const voiceConfig = getChatVoiceConfig();
+  
+  return {
+    modalities: ["text", "audio"] as const,
+    turn_detection: turnDetection,
+    voice: voiceConfig.voice,
+    speed: voiceConfig.speed,
+    input_audio_transcription: { model: "whisper-1" },
+    input_audio_format: audioFormat,
+    output_audio_format: audioFormat,
+    tools: functionSchemas,
+    instructions: agentInstructions,
+  };
 }
 
 function stopHoldMusicLoop() {
@@ -297,41 +355,10 @@ export function establishRealtimeModelConnection() {
   );
 
   session.modelConn.on("open", () => {
-    const config = {} as any;
-
-    // Voice channel: expose base agent tools only (supervisor/MCP excluded)
-    const baseFunctions = getAgent('base').tools as FunctionHandler[];
-    const functionSchemas = baseFunctions.map((f: FunctionHandler) => f.schema);
-    const baseInstructions = getDefaultAgent().instructions;
-    const { currentTime, timeZone } = getTimeContext();
-    const context: Context = {
-      channel: 'voice',
-      currentTime,
-      timeZone,
-    };
-    const agentInstructions = [contextInstructions(context), baseInstructions].join('\n');
-
-    // Build turn detection config from constants (can be overridden by saved_config)
-    const { turnDetection: runtimeTurnDetection } = getVoiceTuningForCall();
-    const turnDetection =
-      runtimeTurnDetection?.type === 'none'
-        ? { type: 'none' }
-        : (runtimeTurnDetection as any);
-    const voiceConfig = getChatVoiceConfig();
+    const sessionConfig = buildRealtimeSessionConfig('voice', 'g711_ulaw');
     jsonSend(session.modelConn, {
       type: "session.update",
-      session: {
-        modalities: ["text", "audio"],
-        turn_detection: turnDetection,
-        voice: voiceConfig.voice,
-        speed: voiceConfig.speed,
-        input_audio_transcription: { model: "whisper-1" },
-        input_audio_format: "g711_ulaw",
-        output_audio_format: "g711_ulaw",
-        tools: functionSchemas,
-        instructions: agentInstructions,
-        ...config,
-      },
+      session: sessionConfig,
     });
 
     // Send a friendly greeting when a Twilio caller connects
@@ -462,7 +489,9 @@ export function processRealtimeModelEvent(
       // for at least BARGE_IN_GRACE_MS. This reduces overly eager cutoffs.
       const startedAt = session.responseStartTimestamp;
       if (startedAt !== undefined) {
-        const elapsedMs = (session.latestMediaTimestamp || 0) - (startedAt || 0);
+        // Use wall-clock time to calculate elapsed duration, not media timestamps
+        // Media timestamps only update when user audio arrives, causing stale calculations
+        const elapsedMs = Date.now() - startedAt;
         const { bargeInGraceMs } = getVoiceTuningForCall();
         if (elapsedMs >= bargeInGraceMs) {
           handleTruncation();
@@ -476,7 +505,8 @@ export function processRealtimeModelEvent(
     case "response.audio.delta":
       if (session.twilioConn && session.streamSid) {
         if (session.responseStartTimestamp === undefined) {
-          session.responseStartTimestamp = session.latestMediaTimestamp || 0;
+          // Use wall-clock time for measuring agent speaking duration
+          session.responseStartTimestamp = Date.now();
         }
         if (event.item_id) session.lastAssistantItem = event.item_id;
         if (isOpen(session.twilioConn)) {
@@ -493,7 +523,8 @@ export function processRealtimeModelEvent(
       }
       if (session.browserConn) {
         if (session.responseStartTimestamp === undefined) {
-          session.responseStartTimestamp = session.latestMediaTimestamp || 0;
+          // Use wall-clock time for measuring agent speaking duration
+          session.responseStartTimestamp = Date.now();
         }
         if (event.item_id) session.lastAssistantItem = event.item_id;
         if (isOpen(session.browserConn)) {
@@ -693,8 +724,9 @@ function handleTruncation() {
     session.responseStartTimestamp === undefined
   )
     return;
-  const elapsedMs =
-    (session.latestMediaTimestamp || 0) - (session.responseStartTimestamp || 0);
+  // Calculate how long the assistant has been speaking (wall-clock time)
+  // This is used to tell OpenAI where to truncate the audio
+  const elapsedMs = Date.now() - session.responseStartTimestamp;
   const audio_end_ms = elapsedMs > 0 ? elapsedMs : 0;
   if (isOpen(session.modelConn)) {
     jsonSend(session.modelConn, {

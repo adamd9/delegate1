@@ -1,5 +1,6 @@
 import { FunctionHandler } from "../../agentConfigs/types";
 import { session, isOpen, jsonSend } from "../../session/state";
+import { buildRealtimeSessionConfig, getAudioFormatForSession } from "../../session/call";
 
 type NoiseMode = "normal" | "noisy";
 
@@ -160,11 +161,12 @@ export const setVoiceNoiseModeTool: FunctionHandler = {
 
     const canApplyToModel = isOpen(session.modelConn);
     if (canApplyToModel) {
+      // Detect audio format based on connection type and send complete session config
+      const audioFormat = getAudioFormatForSession();
+      const fullSessionConfig = buildRealtimeSessionConfig('voice', audioFormat);
       jsonSend(session.modelConn, {
         type: "session.update",
-        session: {
-          turn_detection: nextTurnDetection,
-        },
+        session: fullSessionConfig,
       });
     }
 
