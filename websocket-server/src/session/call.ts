@@ -84,6 +84,22 @@ function getHoldMusicPcm16Base64(): string {
   return holdMusicPcm16Base64;
 }
 
+// Helper function to calculate audio duration from base64 payload
+function calculateAudioDurationMs(base64Data: string, audioFormat: 'g711_ulaw' | 'pcm16'): number {
+  const base64Len = base64Data.length;
+  const audioBytes = Math.floor((base64Len * 3) / 4);
+  
+  if (audioFormat === 'g711_ulaw') {
+    // g711_ulaw @ 8kHz: 1 byte = 1 sample, 8000 samples/sec
+    // Duration (ms) = (bytes / 8000) * 1000 = bytes / 8
+    return audioBytes / 8;
+  } else {
+    // pcm16 @ 24kHz: 2 bytes = 1 sample, 24000 samples/sec
+    // Duration (ms) = (bytes / 2 / 24000) * 1000 = bytes / 48
+    return audioBytes / 48;
+  }
+}
+
 // ===== Voice Activity Detection (VAD) and Barge-in Configuration =====
 // Adjust these constants to tune sensitivity and interruption behavior for voice calls.
 // Note: These parameters are passed to the OpenAI Realtime session as part of `turn_detection`.
@@ -512,13 +528,8 @@ export function processRealtimeModelEvent(
         if (event.item_id) session.lastAssistantItem = event.item_id;
         
         // Track cumulative audio duration for accurate truncation
-        // g711_ulaw at 8kHz: 1 byte = 1 sample, 8000 samples/sec
-        // Base64 decoding: 4 chars = 3 bytes, so base64.length * 3/4 = bytes
-        // Duration (ms) = (bytes / 8000) * 1000 = bytes / 8
         if (event.delta && session.responseCumulativeAudioMs !== undefined) {
-          const base64Len = event.delta.length;
-          const audioBytes = Math.floor((base64Len * 3) / 4);
-          const durationMs = audioBytes / 8; // g711_ulaw @ 8kHz
+          const durationMs = calculateAudioDurationMs(event.delta, 'g711_ulaw');
           session.responseCumulativeAudioMs += durationMs;
         }
         
@@ -542,12 +553,8 @@ export function processRealtimeModelEvent(
         if (event.item_id) session.lastAssistantItem = event.item_id;
         
         // Track cumulative audio duration for browser (pcm16 @ 24kHz)
-        // pcm16: 2 bytes per sample, 24000 samples/sec
-        // Duration (ms) = (bytes / 2 / 24000) * 1000 = bytes / 48
         if (event.delta && session.responseCumulativeAudioMs !== undefined) {
-          const base64Len = event.delta.length;
-          const audioBytes = Math.floor((base64Len * 3) / 4);
-          const durationMs = audioBytes / 48; // pcm16 @ 24kHz
+          const durationMs = calculateAudioDurationMs(event.delta, 'pcm16');
           session.responseCumulativeAudioMs += durationMs;
         }
         
@@ -757,9 +764,8 @@ function handleTruncation() {
   const rawAudioMs = session.responseCumulativeAudioMs;
   const audio_end_ms = Math.max(0, rawAudioMs - BUFFER_LATENCY_MS);
   
-  try {
-    console.debug(`[TRUNCATE] Truncating assistant audio at ${audio_end_ms}ms (raw: ${rawAudioMs}ms, buffer: ${BUFFER_LATENCY_MS}ms)`);
-  } catch {}
+  // Log truncation for debugging (console.debug is safe and won't throw in Node.js)
+  console.debug(`[TRUNCATE] Truncating assistant audio at ${audio_end_ms}ms (raw: ${rawAudioMs}ms, buffer: ${BUFFER_LATENCY_MS}ms)`);
   
   if (isOpen(session.modelConn)) {
     jsonSend(session.modelConn, {
