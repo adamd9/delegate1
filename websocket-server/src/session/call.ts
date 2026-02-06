@@ -87,6 +87,7 @@ function getHoldMusicPcm16Base64(): string {
 // Helper function to calculate audio duration from base64 payload
 function calculateAudioDurationMs(base64Data: string, audioFormat: 'g711_ulaw' | 'pcm16'): number {
   const base64Len = base64Data.length;
+  // Base64 encoding: 4 chars = 3 bytes. Padding ('=') is handled by Math.floor.
   const audioBytes = Math.floor((base64Len * 3) / 4);
   
   if (audioFormat === 'g711_ulaw') {
@@ -117,6 +118,10 @@ const VAD_SILENCE_DURATION_MS: number = 300; // Require this much silence to fli
 // Barge-in grace period: minimum ms of assistant audio that must play before we allow interruption
 // Set to 0 to allow immediate interruption on speech_started.
 const BARGE_IN_GRACE_MS: number = 300;
+
+// Buffer latency estimate: typical client-side buffering before audio playback
+// Used to adjust truncation offset to match what the user actually heard
+const BUFFER_LATENCY_MS: number = 100;
 
 function getVoiceTuningForCall() {
   const tuning = (session as any)?.voiceTuning;
@@ -760,7 +765,6 @@ function handleTruncation() {
   // Use cumulative audio duration sent to client, accounting for buffering latency
   // Research shows Twilio buffers ~60-100ms before playback to the caller
   // We subtract this offset to avoid truncating audio the user actually heard
-  const BUFFER_LATENCY_MS = 100; // Conservative estimate for Twilio buffering
   const rawAudioMs = session.responseCumulativeAudioMs;
   const audio_end_ms = Math.max(0, rawAudioMs - BUFFER_LATENCY_MS);
   

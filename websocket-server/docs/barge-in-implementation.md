@@ -126,12 +126,17 @@ const audio_end_ms = Math.max(0, session.responseCumulativeAudioMs - BUFFER_LATE
 
 ### Voice Call Handling
 - `websocket-server/src/session/call.ts`:
-  - Line ~505: `response.audio.delta` handler (tracks audio duration)
-  - Line ~487: `input_audio_buffer.speech_started` handler (grace period check)
-  - Line ~721: `handleTruncation()` function (sends truncate event)
+  - `calculateAudioDurationMs()`: Helper function to calculate audio duration from base64 payloads
+  - `response.audio.delta` handler: Tracks cumulative audio duration
+  - `input_audio_buffer.speech_started` handler: Checks grace period before allowing barge-in
+  - `handleTruncation()`: Sends truncate event with correct audio offset
 
 ### Browser Call Handling  
-- `websocket-server/src/session/browserCall.ts`: Similar logic for browser voice
+- `websocket-server/src/session/browserCall.ts`: Similar initialization for browser voice
+
+### Constants
+- `BARGE_IN_GRACE_MS`: Grace period before allowing interruption (default: 300ms)
+- `BUFFER_LATENCY_MS`: Client buffering estimate for truncation offset (default: 100ms)
 
 ## References
 
