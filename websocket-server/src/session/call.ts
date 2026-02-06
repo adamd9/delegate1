@@ -292,6 +292,7 @@ export function processRealtimeCallEvent(data: RawData) {
       session.latestMediaTimestamp = 0;
       session.lastAssistantItem = undefined;
       session.responseStartTimestamp = undefined;
+      session.responseCumulativeAudioMs = undefined;
       // Establish a sticky conversation for the lifetime of the call
       try {
         ensureSession();
@@ -489,8 +490,8 @@ export function processRealtimeModelEvent(
       // for at least BARGE_IN_GRACE_MS. This reduces overly eager cutoffs.
       const startedAt = session.responseStartTimestamp;
       if (startedAt !== undefined) {
-        // Use wall-clock time to calculate elapsed duration, not media timestamps
-        // Media timestamps only update when user audio arrives, causing stale calculations
+        // Use wall-clock time to check if grace period has elapsed
+        // This prevents immediate interruption, giving the assistant time to speak
         const elapsedMs = Date.now() - startedAt;
         const { bargeInGraceMs } = getVoiceTuningForCall();
         if (elapsedMs >= bargeInGraceMs) {
@@ -505,10 +506,22 @@ export function processRealtimeModelEvent(
     case "response.audio.delta":
       if (session.twilioConn && session.streamSid) {
         if (session.responseStartTimestamp === undefined) {
-          // Use wall-clock time for measuring agent speaking duration
           session.responseStartTimestamp = Date.now();
+          session.responseCumulativeAudioMs = 0;
         }
         if (event.item_id) session.lastAssistantItem = event.item_id;
+        
+        // Track cumulative audio duration for accurate truncation
+        // g711_ulaw at 8kHz: 1 byte = 1 sample, 8000 samples/sec
+        // Base64 decoding: 4 chars = 3 bytes, so base64.length * 3/4 = bytes
+        // Duration (ms) = (bytes / 8000) * 1000 = bytes / 8
+        if (event.delta && session.responseCumulativeAudioMs !== undefined) {
+          const base64Len = event.delta.length;
+          const audioBytes = Math.floor((base64Len * 3) / 4);
+          const durationMs = audioBytes / 8; // g711_ulaw @ 8kHz
+          session.responseCumulativeAudioMs += durationMs;
+        }
+        
         if (isOpen(session.twilioConn)) {
           jsonSend(session.twilioConn, {
             event: "media",
@@ -523,10 +536,21 @@ export function processRealtimeModelEvent(
       }
       if (session.browserConn) {
         if (session.responseStartTimestamp === undefined) {
-          // Use wall-clock time for measuring agent speaking duration
           session.responseStartTimestamp = Date.now();
+          session.responseCumulativeAudioMs = 0;
         }
         if (event.item_id) session.lastAssistantItem = event.item_id;
+        
+        // Track cumulative audio duration for browser (pcm16 @ 24kHz)
+        // pcm16: 2 bytes per sample, 24000 samples/sec
+        // Duration (ms) = (bytes / 2 / 24000) * 1000 = bytes / 48
+        if (event.delta && session.responseCumulativeAudioMs !== undefined) {
+          const base64Len = event.delta.length;
+          const audioBytes = Math.floor((base64Len * 3) / 4);
+          const durationMs = audioBytes / 48; // pcm16 @ 24kHz
+          session.responseCumulativeAudioMs += durationMs;
+        }
+        
         if (isOpen(session.browserConn)) {
           jsonSend(session.browserConn, {
             event: "media",
@@ -662,6 +686,7 @@ export function processRealtimeModelEvent(
         // does not truncate an already-completed assistant response.
         session.lastAssistantItem = undefined;
         session.responseStartTimestamp = undefined;
+        session.responseCumulativeAudioMs = undefined;
 
         const convId = (session as any).currentConversationId as string | undefined;
         if (convId && session.currentRequest) {
@@ -721,13 +746,21 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
 function handleTruncation() {
   if (
     !session.lastAssistantItem ||
-    session.responseStartTimestamp === undefined
+    session.responseCumulativeAudioMs === undefined
   )
     return;
-  // Calculate how long the assistant has been speaking (wall-clock time)
-  // This is used to tell OpenAI where to truncate the audio
-  const elapsedMs = Date.now() - session.responseStartTimestamp;
-  const audio_end_ms = elapsedMs > 0 ? elapsedMs : 0;
+  
+  // Use cumulative audio duration sent to client, accounting for buffering latency
+  // Research shows Twilio buffers ~60-100ms before playback to the caller
+  // We subtract this offset to avoid truncating audio the user actually heard
+  const BUFFER_LATENCY_MS = 100; // Conservative estimate for Twilio buffering
+  const rawAudioMs = session.responseCumulativeAudioMs;
+  const audio_end_ms = Math.max(0, rawAudioMs - BUFFER_LATENCY_MS);
+  
+  try {
+    console.debug(`[TRUNCATE] Truncating assistant audio at ${audio_end_ms}ms (raw: ${rawAudioMs}ms, buffer: ${BUFFER_LATENCY_MS}ms)`);
+  } catch {}
+  
   if (isOpen(session.modelConn)) {
     jsonSend(session.modelConn, {
       type: "conversation.item.truncate",
@@ -747,4 +780,5 @@ function handleTruncation() {
   }
   session.lastAssistantItem = undefined;
   session.responseStartTimestamp = undefined;
+  session.responseCumulativeAudioMs = undefined;
 }

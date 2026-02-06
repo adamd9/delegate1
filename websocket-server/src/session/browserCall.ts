@@ -65,6 +65,7 @@ export function processBrowserCallEvent(data: RawData) {
       session.latestMediaTimestamp = 0;
       session.lastAssistantItem = undefined;
       session.responseStartTimestamp = undefined;
+      session.responseCumulativeAudioMs = undefined;
 
       try {
         ensureSession();

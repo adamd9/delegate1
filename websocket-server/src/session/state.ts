@@ -52,6 +52,7 @@ export interface Session {
   streamSid?: string;
   lastAssistantItem?: string;
   responseStartTimestamp?: number;
+  responseCumulativeAudioMs?: number; // Cumulative audio duration sent to client (for accurate truncation)
   latestMediaTimestamp?: number;
   openAIApiKey?: string;
   conversationHistory?: ConversationItem[];
@@ -128,5 +129,6 @@ export function closeAllConnections() {
   session.streamSid = undefined;
   session.lastAssistantItem = undefined;
   session.responseStartTimestamp = undefined;
+  session.responseCumulativeAudioMs = undefined;
   session.latestMediaTimestamp = undefined;
 }
