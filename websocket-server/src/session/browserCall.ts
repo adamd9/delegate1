@@ -103,6 +103,83 @@ export function processBrowserCallEvent(data: RawData) {
       }
       break;
     }
+    case "voice_settings": {
+      // Allow the browser UI to adjust voice tuning at runtime, using the same
+      // mechanism as the set_voice_noise_mode agent tool.
+      try {
+        const settings = msg.settings || {};
+        const mode = settings.mode === 'noisy' ? 'noisy' : 'normal';
+
+        const toNumber = (v: any): number | undefined => {
+          if (v === undefined || v === null || v === '') return undefined;
+          const n = Number(v);
+          return Number.isFinite(n) ? n : undefined;
+        };
+        const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+
+        // Build turn_detection from provided values (all optional, fall back to current/defaults)
+        const current = (session as any).voiceTuning?.turnDetection || {};
+        const defaults = mode === 'noisy'
+          ? { type: 'server_vad', threshold: 0.78, prefix_padding_ms: 220, silence_duration_ms: 650 }
+          : { type: 'server_vad', threshold: 0.6, prefix_padding_ms: 80, silence_duration_ms: 300 };
+        const defaultGrace = mode === 'noisy' ? 2000 : 300;
+
+        const vadType = settings.vad_type || current.type || defaults.type;
+
+        const thresholdVal = toNumber(settings.threshold);
+        const prefixVal = toNumber(settings.prefix_padding_ms);
+        const silenceVal = toNumber(settings.silence_duration_ms);
+        const graceVal = toNumber(settings.barge_in_grace_ms);
+
+        const nextTurnDetection: any = vadType === 'none'
+          ? { type: 'none' }
+          : {
+              type: vadType,
+              threshold: thresholdVal !== undefined ? clamp(thresholdVal, 0, 1) : (current.threshold ?? defaults.threshold),
+              prefix_padding_ms: prefixVal !== undefined ? clamp(prefixVal, 0, 2000) : (current.prefix_padding_ms ?? defaults.prefix_padding_ms),
+              silence_duration_ms: silenceVal !== undefined ? clamp(silenceVal, 0, 5000) : (current.silence_duration_ms ?? defaults.silence_duration_ms),
+            };
+
+        const nextGraceMs = graceVal !== undefined ? clamp(graceVal, 0, 10000) : ((session as any).voiceTuning?.bargeInGraceMs ?? defaultGrace);
+
+        (session as any).voiceTuning = {
+          mode,
+          turnDetection: nextTurnDetection,
+          bargeInGraceMs: nextGraceMs,
+          updatedAtMs: Date.now(),
+        };
+
+        // Push to OpenAI Realtime if connected
+        if (isOpen(session.modelConn)) {
+          jsonSend(session.modelConn, {
+            type: 'session.update',
+            session: { turn_detection: nextTurnDetection },
+          });
+        }
+
+        // Ack back to browser
+        if (isOpen(session.browserConn)) {
+          jsonSend(session.browserConn, {
+            event: 'voice_settings_ack',
+            settings: {
+              mode,
+              turn_detection: nextTurnDetection,
+              barge_in_grace_ms: nextGraceMs,
+              applied_to_model: isOpen(session.modelConn),
+            },
+          } as any);
+        }
+
+        console.info('[voice_settings] Updated from browser UI', {
+          mode,
+          turnDetection: nextTurnDetection,
+          bargeInGraceMs: nextGraceMs,
+        });
+      } catch (err) {
+        console.error('[voice_settings] Error applying settings', err);
+      }
+      break;
+    }
     case "close": {
       console.info("\ud83c\udf10 Browser call closed");
       closeAllConnections();
