@@ -16,6 +16,7 @@ import { registerMcpConfigRoutes } from './server/routes/mcpConfig';
 import { registerCanvasRoutes } from './server/routes/canvas';
 import { registerDeepgramRoutes } from './server/routes/deepgram';
 import { registerVoiceMessageRoutes } from './server/routes/voiceMessage';
+import { registerVoiceDefaultsRoutes } from './server/routes/voiceDefaults';
 import { getConfig } from './server/config/env';
 import { registerHealthRoutes, setReady } from './server/routes/health';
 import { chatClients, logsClients } from './ws/clients';
@@ -116,6 +117,8 @@ registerSessionRoutes(app, { chatClients, logsClients });
 registerAdaptationsRoutes(app);
 // MCP config management API
 registerMcpConfigRoutes(app);
+// Voice defaults management API
+registerVoiceDefaultsRoutes(app);
 
 // Access token handled in Twilio routes
 

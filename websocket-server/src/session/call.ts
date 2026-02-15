@@ -102,22 +102,9 @@ function calculateAudioDurationMs(base64Data: string, audioFormat: 'g711_ulaw' |
 }
 
 // ===== Voice Activity Detection (VAD) and Barge-in Configuration =====
-// Adjust these constants to tune sensitivity and interruption behavior for voice calls.
-// Note: These parameters are passed to the OpenAI Realtime session as part of `turn_detection`.
-// The supported fields can vary by model/version; consult the Realtime API docs for your model.
-// Common fields include:
-//  - threshold (0..1): higher = less sensitive; lower = more sensitive
-//  - prefix_padding_ms: speech required to start a chunk; helps avoid short blips
-//  - silence_duration_ms: required silence to end a chunk
-// If any of these are not supported by your model, they will be ignored safely by the API.
-const VAD_TYPE: 'server_vad' | 'semantic_vad' | 'none' = 'server_vad';
-const VAD_THRESHOLD: number = 0.6; // Increase to make VAD less sensitive (defaults are often ~0.5)
-const VAD_PREFIX_PADDING_MS: number = 80; // Require a bit of speech before declaring start
-const VAD_SILENCE_DURATION_MS: number = 300; // Require this much silence to flip turns
-
-// Barge-in grace period: minimum ms of assistant audio that must play before we allow interruption
-// Set to 0 to allow immediate interruption on speech_started.
-const BARGE_IN_GRACE_MS: number = 300;
+// Default values are now loaded from the persisted voice-defaults store so they
+// can be edited at runtime via the Settings > Voice UI.
+import { getVoiceModePreset } from '../voice/voiceDefaults';
 
 // Buffer latency estimate: typical client-side buffering before audio playback
 // Used to adjust truncation offset to match what the user actually heard
@@ -125,15 +112,24 @@ const BUFFER_LATENCY_MS: number = 100;
 
 function getVoiceTuningForCall() {
   const tuning = (session as any)?.voiceTuning;
-  const turnDetection = tuning?.turnDetection || {
-    type: VAD_TYPE,
-    threshold: VAD_THRESHOLD,
-    prefix_padding_ms: VAD_PREFIX_PADDING_MS,
-    silence_duration_ms: VAD_SILENCE_DURATION_MS,
+  if (tuning?.turnDetection) {
+    // Runtime override is active (set by agent tool or browser UI)
+    return {
+      turnDetection: tuning.turnDetection,
+      bargeInGraceMs: typeof tuning.bargeInGraceMs === 'number' ? tuning.bargeInGraceMs : getVoiceModePreset('normal').barge_in_grace_ms,
+    };
+  }
+  // Fall back to persisted defaults for "normal" mode
+  const preset = getVoiceModePreset('normal');
+  return {
+    turnDetection: {
+      type: preset.vad_type,
+      threshold: preset.threshold,
+      prefix_padding_ms: preset.prefix_padding_ms,
+      silence_duration_ms: preset.silence_duration_ms,
+    },
+    bargeInGraceMs: preset.barge_in_grace_ms,
   };
-  const bargeInGraceMs =
-    typeof tuning?.bargeInGraceMs === 'number' ? tuning.bargeInGraceMs : BARGE_IN_GRACE_MS;
-  return { turnDetection, bargeInGraceMs };
 }
 
 /**

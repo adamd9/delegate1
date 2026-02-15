@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Wrench, Info, BookOpen, Server, ChevronsLeft, Boxes } from "lucide-react";
+import { Wrench, Info, BookOpen, Server, ChevronsLeft, Boxes, Mic } from "lucide-react";
 import { getBackendUrl } from "@/lib/get-backend-url";
 
 type CatalogTool = {
@@ -49,6 +49,7 @@ type AgentToolSchema =
 // Simple vertical nav structure
 const SECTIONS = [
   { id: "logs", label: "Logs", icon: BookOpen },
+  { id: "voice", label: "Voice", icon: Mic },
   { id: "catalog", label: "Tools", icon: Boxes },
   { id: "adaptations", label: "Adaptations", icon: BookOpen },
   { id: "mcp", label: "MCP Servers", icon: Server },
@@ -473,6 +474,10 @@ export default function SettingsPage() {
             </Card>
           )}
 
+          {active === "voice" && (
+            <VoiceDefaultsSection backendUrl={backendUrl} />
+          )}
+
           {active === "catalog" && (
             <Card className="w-full">
               <CardHeader className="pb-2">
@@ -804,6 +809,445 @@ export default function SettingsPage() {
       </main>
 
       {/* Tools dialog removed */}
+    </div>
+  );
+}
+
+// ===== Voice Defaults Section =====
+
+interface VoiceModePreset {
+  vad_type: 'server_vad' | 'semantic_vad' | 'none';
+  threshold: number;
+  prefix_padding_ms: number;
+  silence_duration_ms: number;
+  barge_in_grace_ms: number;
+}
+
+interface VoiceDefaultsData {
+  normal: VoiceModePreset;
+  noisy: VoiceModePreset;
+}
+
+function VoiceDefaultsSection({ backendUrl }: { backendUrl: string }) {
+  const [defaults, setDefaults] = useState<VoiceDefaultsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [showGuide, setShowGuide] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${backendUrl}/voice-defaults`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setDefaults(data);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load voice defaults');
+    } finally {
+      setLoading(false);
+    }
+  }, [backendUrl]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const handleSave = async () => {
+    if (!defaults) return;
+    setSaveStatus('saving');
+    try {
+      const res = await fetch(`${backendUrl}/voice-defaults`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(defaults),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const result = await res.json();
+      setDefaults(result.defaults);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err: any) {
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    }
+  };
+
+  const handleReset = async () => {
+    if (!window.confirm('Reset voice defaults to hardcoded values?')) return;
+    setSaveStatus('saving');
+    try {
+      const res = await fetch(`${backendUrl}/voice-defaults/reset`, { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const result = await res.json();
+      setDefaults(result.defaults);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch {
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    }
+  };
+
+  const updateField = (mode: 'normal' | 'noisy', field: keyof VoiceModePreset, value: number | string) => {
+    setDefaults((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        [mode]: { ...prev[mode], [field]: value },
+      };
+    });
+    if (saveStatus === 'saved') setSaveStatus('idle');
+  };
+
+  if (loading) {
+    return (
+      <Card className="w-full">
+        <CardHeader className="pb-2"><CardTitle className="text-base">Voice Defaults</CardTitle></CardHeader>
+        <CardContent><p className="text-sm text-muted-foreground">Loading...</p></CardContent>
+      </Card>
+    );
+  }
+
+  if (error || !defaults) {
+    return (
+      <Card className="w-full">
+        <CardHeader className="pb-2"><CardTitle className="text-base">Voice Defaults</CardTitle></CardHeader>
+        <CardContent>
+          <p className="text-sm text-destructive">{error || 'No data'}</p>
+          <Button variant="outline" size="sm" className="mt-2" onClick={load}>Retry</Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4 w-full">
+      <Card className="w-full">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Voice Defaults</CardTitle>
+            <Button variant="ghost" size="sm" className="text-xs" onClick={() => setShowGuide(!showGuide)}>
+              {showGuide ? 'Hide' : 'Show'} Settings Guide
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            These settings control how the assistant listens for your voice and decides when you&apos;re speaking.
+            You can configure two presets — &quot;Normal&quot; for quiet rooms, and &quot;Noisy&quot; for louder environments.
+            The assistant (or its AI agent) can switch between them automatically during a call. Changes apply to the next voice session after saving.
+          </p>
+        </CardContent>
+      </Card>
+
+      {showGuide && <VoiceSettingsGuide />}
+
+      <Card className="w-full">
+        <CardContent className="pt-6 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <VoicePresetEditor
+              title="Normal Mode"
+              description="Default for regular environments"
+              preset={defaults.normal}
+              onChange={(field, value) => updateField('normal', field, value)}
+              accentColor="emerald"
+            />
+            <VoicePresetEditor
+              title="Noisy Mode"
+              description="For louder environments (cafés, outdoors, etc.)"
+              preset={defaults.noisy}
+              onChange={(field, value) => updateField('noisy', field, value)}
+              accentColor="amber"
+            />
+          </div>
+
+          <div className="flex items-center gap-3 pt-2">
+            <Button onClick={handleSave} disabled={saveStatus === 'saving'}>
+              {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? '✓ Saved' : saveStatus === 'error' ? 'Save Failed' : 'Save Defaults'}
+            </Button>
+            <Button variant="outline" onClick={handleReset} disabled={saveStatus === 'saving'}>
+              Reset to Hardcoded
+            </Button>
+            {saveStatus === 'saved' && (
+              <span className="text-xs text-green-600">Changes will apply to new voice sessions</span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function VoiceSettingsGuide() {
+  return (
+    <Card className="w-full">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Settings Reference</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        {/* VAD Type */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h4 className="font-semibold text-sm">Detection Mode</h4>
+            <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">OpenAI Realtime API</span>
+          </div>
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            How the system detects that you&apos;ve started or stopped talking.
+            <strong> &quot;Server VAD&quot;</strong> uses volume levels — simple and fast, but can be triggered by loud background noise like a TV.
+            <strong> &quot;Semantic VAD&quot;</strong> uses AI to understand whether a sound is actually speech — smarter, but slightly slower to react.
+            <strong> &quot;None&quot;</strong> disables automatic detection entirely (you&apos;d need to manually signal when you&apos;re done speaking).
+          </p>
+          <p className="text-muted-foreground text-[11px] italic">
+            Example: In a quiet office, &quot;Server VAD&quot; works well. If the assistant keeps interrupting because of your TV, try &quot;Semantic VAD&quot;.
+          </p>
+        </div>
+
+        <hr className="border-muted" />
+
+        {/* Threshold */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h4 className="font-semibold text-sm">Sensitivity</h4>
+            <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">OpenAI Realtime API</span>
+          </div>
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            How loud a sound needs to be before the system considers it &quot;speech.&quot;
+            A <strong>low value</strong> (e.g. 0.3) means very sensitive — even quiet talking will be picked up, but so might background noise.
+            A <strong>high value</strong> (e.g. 0.9) means only loud, clear speech is detected.
+          </p>
+          <p className="text-muted-foreground text-[11px] italic">
+            Example: You&apos;re in a café and the assistant keeps reacting to other people&apos;s conversations — raise this to 0.7 or higher so only your voice (close to the mic) triggers it.
+          </p>
+        </div>
+
+        <hr className="border-muted" />
+
+        {/* Prefix Padding */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h4 className="font-semibold text-sm">Lead-in Buffer</h4>
+            <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">OpenAI Realtime API</span>
+          </div>
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            How much audio (in milliseconds) to keep from <em>before</em> speech was detected.
+            This prevents clipping the start of your words. A higher value preserves more of the beginning of your sentence,
+            but may also capture background noise just before you spoke.
+          </p>
+          <p className="text-muted-foreground text-[11px] italic">
+            Example: If the assistant seems to miss the first word you say (like &quot;Hey&quot; gets cut to &quot;ey&quot;), increase this to 400–500ms.
+          </p>
+        </div>
+
+        <hr className="border-muted" />
+
+        {/* Silence Duration */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h4 className="font-semibold text-sm">Pause Before Response</h4>
+            <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">OpenAI Realtime API</span>
+          </div>
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            How long you need to be silent (in milliseconds) before the assistant decides you&apos;re done talking and starts responding.
+            A <strong>short value</strong> (e.g. 200ms) makes the assistant very quick to jump in — good for fast back-and-forth,
+            but it may cut you off mid-thought.
+            A <strong>long value</strong> (e.g. 1500ms) gives you more time to pause and think without being interrupted.
+          </p>
+          <p className="text-muted-foreground text-[11px] italic">
+            Example: The assistant keeps responding while you&apos;re still thinking mid-sentence — increase this to 1000ms or more.
+          </p>
+        </div>
+
+        <hr className="border-muted" />
+
+        {/* Barge-in Grace */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h4 className="font-semibold text-sm">Barge-in Grace Period</h4>
+            <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-medium">App Logic</span>
+          </div>
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            After the assistant starts speaking, how long (in milliseconds) it should <strong>ignore</strong> any sound from your mic before allowing you to interrupt (&quot;barge in&quot;).
+            This prevents the assistant&apos;s own voice — echoing back through your speakers/mic — from accidentally cutting it off.
+            A higher value makes the assistant harder to interrupt at the start of its response.
+            You can <strong>disable</strong> this entirely if you&apos;re using headphones or don&apos;t experience echo issues — the API&apos;s own VAD will handle interruptions natively.
+          </p>
+          <p className="text-muted-foreground text-[11px] italic">
+            Example: The assistant says &quot;Sure, I can help with—&quot; and immediately stops because it heard its own voice through your speakers. Set this to 2000ms so it ignores the first 2 seconds of echo.
+          </p>
+          <p className="text-muted-foreground text-[11px] mt-1">
+            <strong>Note:</strong> This setting is implemented in our app, not by OpenAI. The API&apos;s built-in VAD doesn&apos;t distinguish between your voice and its own echo, so we add this grace window ourselves.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function VoicePresetEditor({
+  title,
+  description,
+  preset,
+  onChange,
+  accentColor,
+}: {
+  title: string;
+  description: string;
+  preset: VoiceModePreset;
+  onChange: (field: keyof VoiceModePreset, value: number | string) => void;
+  accentColor: 'emerald' | 'amber';
+}) {
+  const borderClass = accentColor === 'emerald' ? 'border-emerald-200' : 'border-amber-200';
+  const headerClass = accentColor === 'emerald' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800';
+
+  return (
+    <div className={`rounded-lg border ${borderClass} overflow-hidden`}>
+      <div className={`px-4 py-2 ${headerClass}`}>
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <p className="text-xs opacity-75">{description}</p>
+      </div>
+      <div className="p-4 space-y-4">
+        {/* VAD Type */}
+        <div>
+          <div className="flex items-center gap-1.5 mb-1">
+            <label className="text-xs font-semibold">Detection Mode</label>
+            <SourceBadge source="api" />
+          </div>
+          <select
+            value={preset.vad_type}
+            onChange={(e) => onChange('vad_type', e.target.value)}
+            className="w-full rounded-md border px-2 py-1 text-sm bg-background"
+          >
+            <option value="server_vad">Server VAD (volume-based)</option>
+            <option value="semantic_vad">Semantic VAD (AI-based)</option>
+            <option value="none">None (manual)</option>
+          </select>
+        </div>
+
+        {preset.vad_type !== 'none' && (
+          <>
+            <VoiceSlider
+              label="Sensitivity"
+              source="api"
+              hint="Lower = picks up quieter sounds"
+              value={preset.threshold}
+              min={0} max={1} step={0.01}
+              displayValue={preset.threshold.toFixed(2)}
+              onChange={(v) => onChange('threshold', v)}
+            />
+            <VoiceSlider
+              label="Lead-in Buffer"
+              source="api"
+              hint="Audio kept before speech detected"
+              value={preset.prefix_padding_ms}
+              min={0} max={2000} step={10}
+              displayValue={`${preset.prefix_padding_ms}ms`}
+              onChange={(v) => onChange('prefix_padding_ms', v)}
+            />
+            <VoiceSlider
+              label="Pause Before Response"
+              source="api"
+              hint="Silence needed before assistant replies"
+              value={preset.silence_duration_ms}
+              min={0} max={5000} step={10}
+              displayValue={`${preset.silence_duration_ms}ms`}
+              onChange={(v) => onChange('silence_duration_ms', v)}
+            />
+          </>
+        )}
+
+        {/* Barge-in Grace — with disable toggle */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs font-semibold">Barge-in Grace Period</label>
+              <SourceBadge source="app" />
+            </div>
+            <button
+              type="button"
+              onClick={() => onChange('barge_in_grace_ms', preset.barge_in_grace_ms === 0 ? 300 : 0)}
+              className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors ${
+                preset.barge_in_grace_ms === 0
+                  ? 'bg-muted text-muted-foreground'
+                  : 'bg-purple-100 text-purple-700'
+              }`}
+            >
+              {preset.barge_in_grace_ms === 0 ? 'Disabled' : 'Enabled'}
+            </button>
+          </div>
+          {preset.barge_in_grace_ms === 0 ? (
+            <p className="text-[11px] text-muted-foreground">
+              App-level barge-in protection is off. The API&apos;s own VAD decides when to interrupt — no grace window.
+            </p>
+          ) : (
+            <>
+              <div className="flex justify-between items-baseline mb-1">
+                <span className="text-[11px] text-muted-foreground">Ignore mic input at start of assistant speech</span>
+                <span className="text-xs text-muted-foreground font-mono">{preset.barge_in_grace_ms}ms</span>
+              </div>
+              <input
+                type="range"
+                min={50}
+                max={10000}
+                step={50}
+                value={preset.barge_in_grace_ms}
+                onChange={(e) => onChange('barge_in_grace_ms', Number(e.target.value))}
+                className="w-full accent-primary"
+              />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SourceBadge({ source }: { source: 'api' | 'app' }) {
+  if (source === 'api') {
+    return <span className="text-[9px] bg-blue-100 text-blue-600 px-1 py-0.5 rounded font-medium leading-none">API</span>;
+  }
+  return <span className="text-[9px] bg-purple-100 text-purple-600 px-1 py-0.5 rounded font-medium leading-none">APP</span>;
+}
+
+function VoiceSlider({
+  label,
+  source,
+  hint,
+  value,
+  min,
+  max,
+  step,
+  displayValue,
+  onChange,
+}: {
+  label: string;
+  source: 'api' | 'app';
+  hint: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  displayValue: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div>
+      <div className="flex justify-between items-baseline mb-1">
+        <div className="flex items-center gap-1.5">
+          <label className="text-xs font-semibold">{label}</label>
+          <SourceBadge source={source} />
+        </div>
+        <span className="text-xs text-muted-foreground font-mono">{displayValue}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-primary"
+      />
+      <div className="text-[11px] text-muted-foreground mt-0.5">{hint}</div>
     </div>
   );
 }

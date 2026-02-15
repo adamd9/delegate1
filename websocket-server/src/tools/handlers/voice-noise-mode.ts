@@ -63,27 +63,18 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
-function preset(mode: NoiseMode) {
-  if (mode === "noisy") {
-    return {
-      turnDetection: {
-        type: "server_vad",
-        threshold: 0.78,
-        prefix_padding_ms: 220,
-        silence_duration_ms: 650,
-      },
-      bargeInGraceMs: 2000,
-    };
-  }
+import { getVoiceModePreset } from '../../voice/voiceDefaults';
 
+function preset(mode: NoiseMode) {
+  const p = getVoiceModePreset(mode);
   return {
     turnDetection: {
-      type: "server_vad",
-      threshold: 0.6,
-      prefix_padding_ms: 80,
-      silence_duration_ms: 300,
+      type: p.vad_type,
+      threshold: p.threshold,
+      prefix_padding_ms: p.prefix_padding_ms,
+      silence_duration_ms: p.silence_duration_ms,
     },
-    bargeInGraceMs: 300,
+    bargeInGraceMs: p.barge_in_grace_ms,
   };
 }
 

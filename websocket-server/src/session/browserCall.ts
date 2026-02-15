@@ -13,6 +13,7 @@ import {
 } from "./state";
 import { processRealtimeModelEvent, buildRealtimeSessionConfig } from "./call";
 import { getChatVoiceConfig } from "../voice/voiceConfig";
+import { getVoiceModePreset } from "../voice/voiceDefaults";
 
 function logDroppingAudioIfNeeded() {
   const now = Date.now();
@@ -119,10 +120,14 @@ export function processBrowserCallEvent(data: RawData) {
 
         // Build turn_detection from provided values (all optional, fall back to current/defaults)
         const current = (session as any).voiceTuning?.turnDetection || {};
-        const defaults = mode === 'noisy'
-          ? { type: 'server_vad', threshold: 0.78, prefix_padding_ms: 220, silence_duration_ms: 650 }
-          : { type: 'server_vad', threshold: 0.6, prefix_padding_ms: 80, silence_duration_ms: 300 };
-        const defaultGrace = mode === 'noisy' ? 2000 : 300;
+        const persistedPreset = getVoiceModePreset(mode);
+        const defaults = {
+          type: persistedPreset.vad_type,
+          threshold: persistedPreset.threshold,
+          prefix_padding_ms: persistedPreset.prefix_padding_ms,
+          silence_duration_ms: persistedPreset.silence_duration_ms,
+        };
+        const defaultGrace = persistedPreset.barge_in_grace_ms;
 
         const vadType = settings.vad_type || current.type || defaults.type;
 
