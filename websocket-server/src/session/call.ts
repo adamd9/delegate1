@@ -419,9 +419,11 @@ export function establishRealtimeModelConnection() {
 }
 
 function shouldForwardToFrontend(event: any): boolean {
-  // Forward ALL realtime events to the observability stream (`/logs`).
-  // This improves visibility into the model's behavior during calls.
-  // If you need to hide specific events in the future, add filtering here.
+  // Suppress harmless "no active response" cancel errors — these occur in the
+  // race window between audio finishing and speech_started firing.
+  if (event?.type === 'error' && event?.error?.code === 'response_cancel_not_active') {
+    return false;
+  }
   return true;
 }
 
@@ -524,10 +526,16 @@ export function processRealtimeModelEvent(
       break;
     }
     case "response.audio.delta":
+      // Drop audio deltas for a cancelled/truncated response (race window after response.cancel)
+      if (event.item_id && event.item_id === (session as any)._cancelledItemId) {
+        break;
+      }
       if (session.twilioConn && session.streamSid) {
         if (session.responseStartTimestamp === undefined) {
           session.responseStartTimestamp = Date.now();
           session.responseCumulativeAudioMs = 0;
+          // New response started — clear any stale cancelled-item guard
+          (session as any)._cancelledItemId = undefined;
         }
         if (event.item_id) session.lastAssistantItem = event.item_id;
         
@@ -553,6 +561,7 @@ export function processRealtimeModelEvent(
         if (session.responseStartTimestamp === undefined) {
           session.responseStartTimestamp = Date.now();
           session.responseCumulativeAudioMs = 0;
+          (session as any)._cancelledItemId = undefined;
         }
         if (event.item_id) session.lastAssistantItem = event.item_id;
         
@@ -569,6 +578,12 @@ export function processRealtimeModelEvent(
           });
         }
       }
+      break;
+    case "response.audio.done":
+      // Audio generation for this response is complete. Clear the response-active
+      // tracking so that speech_started after this point doesn't try response.cancel.
+      // (response.output_item.done arrives later and clears lastAssistantItem too.)
+      session.responseStartTimestamp = undefined;
       break;
     case "response.output_item.done": {
       console.log("[VOICE][ASSISTANT][FINAL-VOICE]", event);
@@ -769,8 +784,21 @@ function handleTruncation() {
   
   // Log truncation for debugging (console.debug is safe and won't throw in Node.js)
   console.debug(`[TRUNCATE] Truncating assistant audio at ${audio_end_ms}ms (raw: ${rawAudioMs}ms, buffer: ${BUFFER_LATENCY_MS}ms)`);
+
+  // Track the cancelled item so late-arriving audio deltas for it are dropped
+  (session as any)._cancelledItemId = session.lastAssistantItem;
   
   if (isOpen(session.modelConn)) {
+    // Cancel the in-flight response to stop OpenAI from generating more audio.
+    // Only send if we believe a response is actively streaming (responseStartTimestamp is set
+    // when audio deltas begin and cleared when the response completes or is truncated).
+    if (session.responseStartTimestamp !== undefined) {
+      jsonSend(session.modelConn, {
+        type: "response.cancel",
+      } as any);
+    }
+
+    // Truncate the stored conversation item to the point the user actually heard
     jsonSend(session.modelConn, {
       type: "conversation.item.truncate",
       item_id: session.lastAssistantItem,
