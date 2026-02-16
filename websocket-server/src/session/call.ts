@@ -389,7 +389,7 @@ export function establishRealtimeModelConnection() {
       jsonSend(session.modelConn, {
         type: "response.create",
         response: {
-          instructions: "Greet the caller briefly in a style that aligns with your given personality before awaiting input.",
+          instructions: "Greet the caller briefly in English, in a style that aligns with your given personality, before awaiting input.",
         },
       });
     }

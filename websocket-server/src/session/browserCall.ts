@@ -232,7 +232,7 @@ function establishBrowserRealtimeModelConnection() {
         type: "response.create",
         response: {
           instructions:
-            "Greet briefly in a style that aligns with your given personality before awaiting input.",
+            "Greet briefly in English, in a style that aligns with your given personality, before awaiting input.",
         },
       });
     }
