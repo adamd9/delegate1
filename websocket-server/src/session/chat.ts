@@ -3,6 +3,7 @@ import { ResponsesTextInput } from "../types";
 import { getAgent, getDefaultAgent, FunctionHandler } from "../agentConfigs";
 import { executeFunctionCalls, executeFunctionCall } from "../tools/orchestrators/functionCallExecutor";
 import { contextInstructions, Context, Channel, getTimeContext } from "../agentConfigs/context";
+import { getSchemasForAgent } from "../tools/registry";
 import { isSmsWindowOpen, getNumbers } from "../smsState";
 import { sendSms } from "../sms";
 import { getReplyTo } from "../emailState";
@@ -342,11 +343,8 @@ export async function handleTextChatMessage(
           });
       }
     } catch {}
-    // Text channel: expose only base agent tools (supervisor MCP tools are used internally by supervisor flow)
-    const baseFunctions = (getAgent('base').tools as FunctionHandler[])
-      .filter(Boolean)
-      .filter((f: any) => f && f.schema);
-    const functionSchemas = baseFunctions.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
+    // Text channel: use registry-based tool resolution so allowNames/allowTags from agent-policies.json are respected
+    const functionSchemas = getSchemasForAgent('base');
     console.log("🤖 Calling OpenAI Responses API for text response...");
     // Define system instructions (context, prompt adaptations, base policy)
     const baseInstructions = getDefaultAgent().instructions;
@@ -481,11 +479,8 @@ export async function handleTextChatMessage(
         sendSms("...", smsTwilioNumber, smsUserNumber).catch((e) => console.error("sendSms error", e));
       }
       try {
-        const allFns = getAgent('base').tools as FunctionHandler[];
-        const functionHandler = allFns.find((f: FunctionHandler) => f.schema.name === functionCall.name);
-        if (functionHandler) {
-          const args = JSON.parse(functionCall.arguments);
-          // Execute via orchestrator to standardize breadcrumbs and completion
+        {
+          // Execute via orchestrator (handles both static + registry-based tools like MCP)
           appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: toolStepId, label: ThoughtFlowStepType.ToolCall, payload: { name: functionCall.name, arguments: functionCall.arguments }, depends_on: llmStepId, timestamp: Date.now() });
           const functionResult = await executeFunctionCall(
             { name: functionCall.name, arguments: functionCall.arguments, call_id: functionCall.call_id },
@@ -504,8 +499,6 @@ export async function handleTextChatMessage(
             appendEvent({ type: 'conversation.aborted', conversation_id: conversationId, request_id: requestId, timestamp: Date.now() });
             return;
           }
-          // Orchestrator prints the standard result log
-          const fnSchemas = allFns.map((f: FunctionHandler) => ({ ...f.schema, strict: false }));
           const followUpBody = {
             model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
             reasoning: {
@@ -521,7 +514,7 @@ export async function handleTextChatMessage(
                 output: typeof functionResult === "string" ? functionResult : JSON.stringify(functionResult),
               },
             ],
-            tools: fnSchemas,
+            tools: functionSchemas,
           };
           console.log("[DEBUG] Follow-up Responses API request:", JSON.stringify(followUpBody, null, 2));
           const followUpResponse = await session.openaiClient.responses.create(followUpBody);

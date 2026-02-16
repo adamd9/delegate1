@@ -3,6 +3,7 @@ import { getDefaultAgent } from "../agentConfigs";
 import { getAgent, FunctionHandler } from "../agentConfigs";
 import { runSingleToolCall } from "../tools/orchestrators/runToolCalls";
 import { contextInstructions, Context, getTimeContext, type Channel } from "../agentConfigs/context";
+import { getSchemasForAgent } from "../tools/registry";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 import { HOLD_MUSIC_ULAW_BASE64, HOLD_MUSIC_DURATION_MS } from "../assets/holdMusic";
 import { appendEvent, ThoughtFlowStepType, ensureSession, endSession } from "../observability/thoughtflow";
@@ -152,8 +153,7 @@ export function getAudioFormatForSession(): 'g711_ulaw' | 'pcm16' {
  * @returns A complete session configuration object ready to send to the Realtime API
  */
 export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_ulaw' | 'pcm16') {
-  const baseFunctions = getAgent('base').tools as FunctionHandler[];
-  const functionSchemas = baseFunctions.map((f: FunctionHandler) => f.schema);
+  const functionSchemas = getSchemasForAgent('base');
   const baseInstructions = getDefaultAgent().instructions;
   const { currentTime, timeZone } = getTimeContext();
   const context: Context = {

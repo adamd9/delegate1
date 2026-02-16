@@ -5,6 +5,7 @@ import { ensureSession, appendEvent, ThoughtFlowStepType } from "../../observabi
 import { addConversationEvent } from "../../db/sqlite";
 import { session } from "../../session/state";
 import { jsonSend, isOpen } from "../../session/state";
+import { executeBySanitizedName } from "../registry";
 
 export type OrchestratorMode = "chat" | "voice";
 
@@ -86,7 +87,8 @@ function emitDone(logsClients: Set<WebSocket>, name: string, originalArgs: any, 
 export async function executeFunctionCall(call: FunctionCallItem, ctx: OrchestratorContext): Promise<any> {
   const allFns = getAgent('base').tools as FunctionHandler[];
   const handler = allFns.find((f: FunctionHandler) => f.schema.name === call.name);
-  if (!handler) throw new Error(`No handler found for function: ${call.name}`);
+  // If not found in static base agent tools, try the centralized registry (handles MCP tools etc.)
+  const useRegistry = !handler;
   let parsed = safeParseArgs(call.arguments);
   if (ctx.announce !== false) {
     console.log(`🔧 Function call detected: ${call.name}`);
@@ -126,11 +128,17 @@ export async function executeFunctionCall(call: FunctionCallItem, ctx: Orchestra
   // Emit delta using the model-provided call_id to avoid duplicate-looking entries
   emitDelta(ctx.logsClients, call.name, parsed, call.call_id);
   try {
-    const result = await (handler as any).handler(parsed, (title: string, data?: any) => {
-      const name = title.includes("function call:") ? title.split("function call: ")[1] : title;
-      // Breadcrumbs from inside handlers don't map to the original call_id; generate ephemeral ids
-      emitDelta(ctx.logsClients, name, data);
-    });
+    let result: any;
+    if (useRegistry) {
+      // Execute via centralized registry (MCP tools, etc.)
+      result = await executeBySanitizedName(call.name, parsed);
+    } else {
+      result = await (handler as any).handler(parsed, (title: string, data?: any) => {
+        const name = title.includes("function call:") ? title.split("function call: ")[1] : title;
+        // Breadcrumbs from inside handlers don't map to the original call_id; generate ephemeral ids
+        emitDelta(ctx.logsClients, name, data);
+      });
+    }
     emitDone(ctx.logsClients, call.name, call.arguments, call.call_id, result);
     // ThoughtFlow: complete the tool call step in chat mode
     if (ctx.mode === 'chat' && ctx.dependsOnStepId && tfConversationId && tfStepId) {
