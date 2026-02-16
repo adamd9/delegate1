@@ -1,10 +1,13 @@
 import { registerTools, ToolOrigin } from "../registry";
 import { sendCanvas } from "../handlers/canvas";
 import { sendSmsTool } from "../handlers/sms";
+import { sendEmailTool } from "../handlers/email";
 import { getNextResponseFromSupervisorFunction } from "../handlers/supervisor-escalation";
 import { memAddFunction, memSearchFunction } from "../handlers/mem0";
-import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction } from "../handlers/notes";
+import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction, getNoteFunction } from "../handlers/notes";
 import { setVoiceNoiseModeTool } from "../handlers/voice-noise-mode";
+import { listAdaptationsFunction, getAdaptationFunction, updateAdaptationFunction, reloadAdaptationsFunction } from "../handlers/adaptations";
+import { hangupCallTool } from "../handlers/hangup";
 
 function wrap(name: string, description: string, parameters: any, origin: ToolOrigin, tags: string[], handler: (args: any) => Promise<any>) {
   return {
@@ -94,6 +97,62 @@ export function registerLocalTools() {
       'local',
       ['local', 'base-default'],
       (args) => setVoiceNoiseModeTool.handler(args)
+    ),
+    wrap(
+      sendEmailTool.schema.name,
+      sendEmailTool.schema.description,
+      sendEmailTool.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => sendEmailTool.handler(args)
+    ),
+    wrap(
+      getNoteFunction.schema.name,
+      getNoteFunction.schema.description,
+      getNoteFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => getNoteFunction.handler(args)
+    ),
+    wrap(
+      listAdaptationsFunction.schema.name,
+      listAdaptationsFunction.schema.description,
+      listAdaptationsFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => listAdaptationsFunction.handler(args)
+    ),
+    wrap(
+      getAdaptationFunction.schema.name,
+      getAdaptationFunction.schema.description,
+      getAdaptationFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => getAdaptationFunction.handler(args)
+    ),
+    wrap(
+      updateAdaptationFunction.schema.name,
+      updateAdaptationFunction.schema.description,
+      updateAdaptationFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => updateAdaptationFunction.handler(args)
+    ),
+    wrap(
+      reloadAdaptationsFunction.schema.name,
+      reloadAdaptationsFunction.schema.description,
+      reloadAdaptationsFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => reloadAdaptationsFunction.handler(args)
+    ),
+    wrap(
+      hangupCallTool.schema.name,
+      hangupCallTool.schema.description,
+      hangupCallTool.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => hangupCallTool.handler(args)
     ),
   ];
 
