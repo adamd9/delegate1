@@ -153,7 +153,14 @@ export function getAudioFormatForSession(): 'g711_ulaw' | 'pcm16' {
  * @returns A complete session configuration object ready to send to the Realtime API
  */
 export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_ulaw' | 'pcm16') {
-  const functionSchemas = getSchemasForAgent('base');
+  // Strip 'strict' from tool schemas — valid for Responses API but rejected by Realtime API
+  const functionSchemas = getSchemasForAgent('base').map((t: any) => {
+    if (t.type === 'function') {
+      const { strict, ...rest } = t;
+      return rest;
+    }
+    return t;
+  });
   const baseInstructions = getDefaultAgent().instructions;
   const { currentTime, timeZone } = getTimeContext();
   const context: Context = {
@@ -446,6 +453,25 @@ export function processRealtimeModelEvent(
 
   try {
     switch (event.type) {
+    case "error": {
+      const errMsg = event.error?.message || JSON.stringify(event.error) || 'Unknown error';
+      console.error(`❌ Realtime API error: ${errMsg}`);
+
+      // If the error is about an invalid session parameter (e.g. tools), retry
+      // session.update without tools so voice/instructions still get applied.
+      if (errMsg.includes('session.tools') || errMsg.includes('Unknown parameter')) {
+        console.warn('⚠️ Retrying session.update without tools to preserve voice config');
+        if (isOpen(session.modelConn)) {
+          const audioFormat = getAudioFormatForSession();
+          const { tools, ...configWithoutTools } = buildRealtimeSessionConfig('voice', audioFormat);
+          jsonSend(session.modelConn, {
+            type: 'session.update',
+            session: configWithoutTools,
+          });
+        }
+      }
+      break;
+    }
     case "conversation.item.input_audio_transcription.completed": {
       // Final user ASR transcript (voice) — log once to server console
       const transcript: string = (event.transcript || event.text || "").toString();
