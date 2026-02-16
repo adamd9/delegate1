@@ -3,6 +3,7 @@ import { supervisorAgentConfig } from '../../agentConfigs/supervisorAgentConfig'
 import { ResponsesTextInput } from '../../types';
 import { handleSupervisorToolCalls } from '../orchestrators/supervisor';
 import { getSchemasForAgent } from '../registry';
+import { contextInstructions, getTimeContext, type Channel } from '../../agentConfigs/context';
 
 export const getNextResponseFromSupervisorFunction: FunctionHandler = {
   schema: {
@@ -31,7 +32,15 @@ export const getNextResponseFromSupervisorFunction: FunctionHandler = {
   },
   handler: async (args: { query: string; context?: string; reasoning_type: string }, addBreadcrumb?: (title: string, data?: any) => void) => {
     try {
-      const supervisorAgentInstructions = supervisorAgentConfig.instructions
+      // Extract channel from escalation context (best-effort parse)
+      const channelMatch = (args.context || '').match(/\bchannel:\s*(voice|text|sms|email)\b/i);
+      const channel: Channel = (channelMatch ? channelMatch[1].toLowerCase() : 'text') as Channel;
+      const { currentTime, timeZone } = getTimeContext();
+      const contextPreamble = contextInstructions({ channel, currentTime, timeZone });
+
+      const supervisorAgentInstructions = [contextPreamble, supervisorAgentConfig.instructions]
+        .filter(Boolean)
+        .join('\n')
         .replace("{{query}}", args.query)
         .replace("{{context}}", args.context || "")
         .replace("{{reasoning_type}}", args.reasoning_type);

@@ -7,7 +7,7 @@ export interface Context {
 }
 
 export function contextInstructions(context: Context): string {
-  let base = `Current communication channel: ${context.channel}. The current time is ${context.currentTime} (${context.timeZone}).`;
+  let base = `Current communication channel: ${context.channel}. The current time is ${context.currentTime}. The current timezone is ${context.timeZone}.`;
   if (context.channel === 'voice') {
     base += ' When the conversation is over or the caller says goodbye, use the hang_up tool to end the call.';
   }
