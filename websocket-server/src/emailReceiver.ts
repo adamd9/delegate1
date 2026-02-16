@@ -84,10 +84,10 @@ export async function checkInbox() {
     return validEmails;
 
   } catch (err) {
-    const error = err as { code?: string };
-    const isTimeout = error?.code === 'ETIMEDOUT';
+    const error = err as { code?: string; message?: string };
+    const isTimeout = error?.code === 'ETIMEDOUT' || (error?.message && error.message.includes('timed out'));
     const level = isTimeout ? console.warn : console.error;
-    level('[checkInbox] IMAP check failed', { err });
+    level(`[checkInbox] IMAP check failed: ${error?.message || err}`);
     return [];
   } finally {
     if (connection) {
