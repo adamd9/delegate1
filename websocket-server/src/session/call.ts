@@ -790,6 +790,18 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
 }
 
 /**
+ * Checks if a response is currently streaming audio to the client.
+ * 
+ * This is used to determine if response.cancel should be sent. A response is considered
+ * actively streaming if responseStartTimestamp is set (audio deltas are being sent).
+ * 
+ * @returns true if audio is actively streaming, false otherwise
+ */
+function isResponseActivelyStreaming(): boolean {
+  return session.responseStartTimestamp !== undefined;
+}
+
+/**
  * Handles barge-in by truncating the assistant's audio response.
  * 
  * This function is called when the user starts speaking (input_audio_buffer.speech_started)
@@ -833,7 +845,7 @@ function handleTruncation() {
     // responseStartTimestamp is set when audio deltas begin and cleared when the response
     // completes or is truncated. Without this guard, we get "response_cancel_not_active"
     // errors when the user speaks after the assistant finishes (common race condition).
-    if (session.responseStartTimestamp !== undefined) {
+    if (isResponseActivelyStreaming()) {
       jsonSend(session.modelConn, {
         type: "response.cancel",
       } as any);
