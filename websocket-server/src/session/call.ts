@@ -126,6 +126,7 @@ function getVoiceTuningForCall() {
       threshold: preset.threshold,
       prefix_padding_ms: preset.prefix_padding_ms,
       silence_duration_ms: preset.silence_duration_ms,
+      eagerness: preset.eagerness,
     },
   };
 }
@@ -168,7 +169,10 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
   const turnDetection = runtimeTurnDetection?.type === 'none'
     ? { type: 'none' as const }
     : vadType === 'semantic_vad'
-      ? { type: 'semantic_vad' as const }
+      ? {
+          type: 'semantic_vad' as const,
+          ...(runtimeTurnDetection?.eagerness ? { eagerness: runtimeTurnDetection.eagerness } : {}),
+        }
       : {
           type: 'server_vad' as const,
           threshold: runtimeTurnDetection?.threshold,
@@ -780,13 +784,9 @@ function handleTruncation() {
   
   if (isOpen(session.modelConn)) {
     // Cancel the in-flight response to stop OpenAI from generating more audio.
-    // Only send if we believe a response is actively streaming (responseStartTimestamp is set
-    // when audio deltas begin and cleared when the response completes or is truncated).
-    if (session.responseStartTimestamp !== undefined) {
-      jsonSend(session.modelConn, {
-        type: "response.cancel",
-      } as any);
-    }
+    jsonSend(session.modelConn, {
+      type: "response.cancel",
+    } as any);
 
     // Truncate the stored conversation item to the point the user actually heard
     jsonSend(session.modelConn, {

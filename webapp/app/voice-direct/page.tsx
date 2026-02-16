@@ -1,31 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getBackendUrl } from '@/lib/get-backend-url';
-
-// ===== Voice Settings Types =====
-interface VoiceSettings {
-  mode: 'normal' | 'noisy';
-  vad_type: 'server_vad' | 'semantic_vad' | 'none';
-  threshold: number;
-  prefix_padding_ms: number;
-  silence_duration_ms: number;
-}
-
-const FALLBACK_PRESETS: Record<'normal' | 'noisy', Omit<VoiceSettings, 'mode'>> = {
-  normal: {
-    vad_type: 'server_vad',
-    threshold: 0.6,
-    prefix_padding_ms: 80,
-    silence_duration_ms: 300,
-  },
-  noisy: {
-    vad_type: 'server_vad',
-    threshold: 0.78,
-    prefix_padding_ms: 220,
-    silence_duration_ms: 650,
-  },
-};
 
 interface LogEntry {
   timestamp: string;
@@ -75,45 +51,6 @@ export default function VoiceDirectPage() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
-    mode: 'normal',
-    ...FALLBACK_PRESETS.normal,
-  });
-  const [settingsApplied, setSettingsApplied] = useState(false);
-
-  // Fetched presets from the backend (persisted voice defaults)
-  const presetsRef = useRef<Record<'normal' | 'noisy', Omit<VoiceSettings, 'mode'>>>(FALLBACK_PRESETS);
-
-  // Fetch persisted voice defaults on mount
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`${backendUrl}/voice-defaults`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const fetched: Record<'normal' | 'noisy', Omit<VoiceSettings, 'mode'>> = {
-          normal: {
-            vad_type: data.normal?.vad_type ?? FALLBACK_PRESETS.normal.vad_type,
-            threshold: data.normal?.threshold ?? FALLBACK_PRESETS.normal.threshold,
-            prefix_padding_ms: data.normal?.prefix_padding_ms ?? FALLBACK_PRESETS.normal.prefix_padding_ms,
-            silence_duration_ms: data.normal?.silence_duration_ms ?? FALLBACK_PRESETS.normal.silence_duration_ms,
-          },
-          noisy: {
-            vad_type: data.noisy?.vad_type ?? FALLBACK_PRESETS.noisy.vad_type,
-            threshold: data.noisy?.threshold ?? FALLBACK_PRESETS.noisy.threshold,
-            prefix_padding_ms: data.noisy?.prefix_padding_ms ?? FALLBACK_PRESETS.noisy.prefix_padding_ms,
-            silence_duration_ms: data.noisy?.silence_duration_ms ?? FALLBACK_PRESETS.noisy.silence_duration_ms,
-          },
-        };
-        presetsRef.current = fetched;
-        // Update current settings to match fetched normal preset
-        setVoiceSettings((prev) => ({ ...prev, ...fetched[prev.mode] }));
-      } catch {
-        // silently fall back to hardcoded
-      }
-    })();
-  }, [backendUrl]);
 
   const wsUrl = useMemo(() => {
     const wsProtocol = backendUrl.startsWith('https://') ? 'wss://' : 'ws://';
@@ -136,43 +73,6 @@ export default function VoiceDirectPage() {
     const timestamp = new Date().toLocaleTimeString();
     setLogs((prev) => [...prev, { timestamp, message, type }].slice(-50));
   };
-
-  const sendVoiceSettings = useCallback((settings: VoiceSettings) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({
-      event: 'voice_settings',
-      settings: {
-        mode: settings.mode,
-        vad_type: settings.vad_type,
-        threshold: settings.threshold,
-        prefix_padding_ms: settings.prefix_padding_ms,
-        silence_duration_ms: settings.silence_duration_ms,
-      },
-    }));
-    setSettingsApplied(false);
-    addLog(`Voice settings sent: ${settings.mode} (threshold=${settings.threshold}, silence=${settings.silence_duration_ms}ms)`, 'info');
-  }, []);
-
-  // Debounce slider changes to avoid flooding the WebSocket
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sendDebounced = useCallback((settings: VoiceSettings) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => sendVoiceSettings(settings), 200);
-  }, [sendVoiceSettings]);
-
-  const applyPreset = useCallback((mode: 'normal' | 'noisy') => {
-    const next: VoiceSettings = { mode, ...presetsRef.current[mode] };
-    setVoiceSettings(next);
-    sendVoiceSettings(next); // presets send immediately (no debounce)
-  }, [sendVoiceSettings]);
-
-  const updateSetting = useCallback(<K extends keyof VoiceSettings>(key: K, value: VoiceSettings[K]) => {
-    setVoiceSettings((prev) => {
-      const next = { ...prev, [key]: value };
-      sendDebounced(next);
-      return next;
-    });
-  }, [sendDebounced]);
 
   const playHoldPcm16 = async (base64: string, sampleRate = 24000) => {
     const ctx = await ensureAudioContext();
@@ -372,8 +272,6 @@ export default function VoiceDirectPage() {
         try {
           const msg = JSON.parse(evt.data);
           if (msg?.event === 'voice_settings_ack') {
-            setSettingsApplied(true);
-            addLog(`Voice settings applied (model=${msg.settings?.applied_to_model ? 'yes' : 'no'})`, 'success');
             return;
           }
           if (msg?.event === 'clear') {
@@ -505,15 +403,6 @@ export default function VoiceDirectPage() {
               >
                 {isConnecting ? 'Connecting…' : isConnected ? 'Disconnect' : 'Connect & Stream Mic'}
               </button>
-              <button
-                onClick={() => setShowSettings((v) => !v)}
-                className={`p-3 rounded-xl font-semibold transition-all ${
-                  showSettings ? 'bg-white/30' : 'bg-white/10 hover:bg-white/20'
-                }`}
-                title="Voice Settings"
-              >
-                ⚙️
-              </button>
             </div>
 
             <div className="text-xs text-white/70 text-left">
@@ -545,148 +434,7 @@ export default function VoiceDirectPage() {
           </div>
         </div>
 
-        {/* Voice Settings Panel */}
-        {showSettings && (
-          <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 shadow-2xl lg:w-80 w-full">
-            <h2 className="text-xl font-bold mb-4">Voice Settings</h2>
-            <p className="text-xs text-white/60 mb-4">
-              Adjust VAD &amp; barge-in in real time. Changes are sent immediately to the backend and applied to the active OpenAI Realtime session.
-            </p>
-
-            {/* Preset toggle */}
-            <div className="mb-5">
-              <label className="block text-sm font-semibold mb-2">Preset</label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => applyPreset('normal')}
-                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${
-                    voiceSettings.mode === 'normal'
-                      ? 'bg-emerald-500 text-white'
-                      : 'bg-white/10 hover:bg-white/20 text-white/80'
-                  }`}
-                >
-                  Normal
-                </button>
-                <button
-                  onClick={() => applyPreset('noisy')}
-                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${
-                    voiceSettings.mode === 'noisy'
-                      ? 'bg-amber-500 text-white'
-                      : 'bg-white/10 hover:bg-white/20 text-white/80'
-                  }`}
-                >
-                  Noisy
-                </button>
-              </div>
-            </div>
-
-            {/* VAD Type */}
-            <div className="mb-4">
-              <label className="block text-sm font-semibold mb-1">VAD Type</label>
-              <select
-                value={voiceSettings.vad_type}
-                onChange={(e) => updateSetting('vad_type', e.target.value as VoiceSettings['vad_type'])}
-                className="w-full p-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm focus:outline-none focus:ring-2 focus:ring-white/30"
-              >
-                <option value="server_vad" className="text-gray-900">server_vad</option>
-                <option value="semantic_vad" className="text-gray-900">semantic_vad</option>
-                <option value="none" className="text-gray-900">none (manual)</option>
-              </select>
-            </div>
-
-            {voiceSettings.vad_type !== 'none' && (
-              <>
-                {/* Threshold */}
-                <SliderSetting
-                  label="Threshold"
-                  description="Higher = less sensitive to speech"
-                  value={voiceSettings.threshold}
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  displayValue={voiceSettings.threshold.toFixed(2)}
-                  onChange={(v) => updateSetting('threshold', v)}
-                />
-
-                {/* Prefix Padding */}
-                <SliderSetting
-                  label="Prefix Padding"
-                  description="Min ms of speech before start"
-                  value={voiceSettings.prefix_padding_ms}
-                  min={0}
-                  max={1000}
-                  step={10}
-                  displayValue={`${voiceSettings.prefix_padding_ms}ms`}
-                  onChange={(v) => updateSetting('prefix_padding_ms', v)}
-                />
-
-                {/* Silence Duration */}
-                <SliderSetting
-                  label="Silence Duration"
-                  description="Ms of silence before turn ends"
-                  value={voiceSettings.silence_duration_ms}
-                  min={50}
-                  max={2000}
-                  step={10}
-                  displayValue={`${voiceSettings.silence_duration_ms}ms`}
-                  onChange={(v) => updateSetting('silence_duration_ms', v)}
-                />
-              </>
-            )}
-
-            {settingsApplied && (
-              <div className="mt-3 text-xs text-green-300 bg-green-500/10 rounded-lg p-2 text-center">
-                Settings applied to active session
-              </div>
-            )}
-            {!isConnected && (
-              <div className="mt-3 text-xs text-yellow-300 bg-yellow-500/10 rounded-lg p-2 text-center">
-                Connect first — settings will be sent on change
-              </div>
-            )}
-          </div>
-        )}
       </div>
-    </div>
-  );
-}
-
-// ===== Slider Setting Component =====
-function SliderSetting({
-  label,
-  description,
-  value,
-  min,
-  max,
-  step,
-  displayValue,
-  onChange,
-}: {
-  label: string;
-  description: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  displayValue: string;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div className="mb-4">
-      <div className="flex justify-between items-baseline mb-1">
-        <label className="text-sm font-semibold">{label}</label>
-        <span className="text-xs text-white/80 font-mono">{displayValue}</span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-emerald-300"
-      />
-      <div className="text-xs text-white/50 mt-0.5">{description}</div>
     </div>
   );
 }

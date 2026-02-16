@@ -51,12 +51,17 @@ import { getVoiceModePreset } from '../../voice/voiceDefaults';
 function preset(mode: NoiseMode) {
   const p = getVoiceModePreset(mode);
   return {
-    turnDetection: {
-      type: p.vad_type,
-      threshold: p.threshold,
-      prefix_padding_ms: p.prefix_padding_ms,
-      silence_duration_ms: p.silence_duration_ms,
-    },
+    turnDetection: p.vad_type === 'semantic_vad'
+      ? {
+          type: p.vad_type,
+          ...(p.eagerness ? { eagerness: p.eagerness } : {}),
+        }
+      : {
+          type: p.vad_type,
+          threshold: p.threshold,
+          prefix_padding_ms: p.prefix_padding_ms,
+          silence_duration_ms: p.silence_duration_ms,
+        },
   };
 }
 
@@ -89,6 +94,12 @@ export const setVoiceNoiseModeTool: FunctionHandler = {
           description:
             "Optional override: ms of silence required before ending a user turn.",
         },
+        eagerness: {
+          type: "string",
+          enum: ["low", "medium", "high", "auto"],
+          description:
+            "Optional: eagerness level for semantic_vad mode. Controls how quickly the model responds.",
+        },
       },
       required: ["mode"],
       additionalProperties: false,
@@ -102,19 +113,35 @@ export const setVoiceNoiseModeTool: FunctionHandler = {
     const thresholdRaw = toNumber(args?.threshold);
     const prefixRaw = toNumber(args?.prefix_padding_ms);
     const silenceRaw = toNumber(args?.silence_duration_ms);
+    const eagernessRaw = args?.eagerness as string | undefined;
+    const validEagerness = eagernessRaw && ['low', 'medium', 'high', 'auto'].includes(eagernessRaw)
+      ? eagernessRaw : undefined;
 
-    const nextTurnDetection: any = {
-      ...base.turnDetection,
-      ...(thresholdRaw !== undefined
-        ? { threshold: clamp(thresholdRaw, 0.0, 1.0) }
-        : {}),
-      ...(prefixRaw !== undefined
-        ? { prefix_padding_ms: clamp(prefixRaw, 0, 2000) }
-        : {}),
-      ...(silenceRaw !== undefined
-        ? { silence_duration_ms: clamp(silenceRaw, 0, 5000) }
-        : {}),
-    };
+    // Build turn_detection based on the VAD type from the preset
+    const vadType = base.turnDetection.type;
+    let nextTurnDetection: any;
+    if (vadType === 'none') {
+      nextTurnDetection = { type: 'none' };
+    } else if (vadType === 'semantic_vad') {
+      nextTurnDetection = {
+        type: 'semantic_vad',
+        ...(validEagerness ? { eagerness: validEagerness }
+          : base.turnDetection.eagerness ? { eagerness: base.turnDetection.eagerness } : {}),
+      };
+    } else {
+      nextTurnDetection = {
+        ...base.turnDetection,
+        ...(thresholdRaw !== undefined
+          ? { threshold: clamp(thresholdRaw, 0.0, 1.0) }
+          : {}),
+        ...(prefixRaw !== undefined
+          ? { prefix_padding_ms: clamp(prefixRaw, 0, 2000) }
+          : {}),
+        ...(silenceRaw !== undefined
+          ? { silence_duration_ms: clamp(silenceRaw, 0, 5000) }
+          : {}),
+      };
+    }
 
     (session as any).voiceTuning = {
       mode,

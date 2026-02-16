@@ -820,6 +820,7 @@ interface VoiceModePreset {
   threshold: number;
   prefix_padding_ms: number;
   silence_duration_ms: number;
+  eagerness?: 'low' | 'medium' | 'high' | 'auto';
 }
 
 interface VoiceDefaultsData {
@@ -1003,11 +1004,32 @@ function VoiceSettingsGuide() {
 
         <hr className="border-muted" />
 
-        {/* Threshold */}
+        {/* Eagerness (semantic_vad only) */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h4 className="font-semibold text-sm">Eagerness</h4>
+            <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">OpenAI Realtime API</span>
+            <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">Semantic VAD only</span>
+          </div>
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            Controls how quickly the assistant jumps in after you stop talking when using Semantic VAD.
+            <strong> &quot;low&quot;</strong> waits longer, giving you more time to pause and continue.
+            <strong> &quot;high&quot;</strong> responds quickly, ideal for rapid conversation.
+            <strong> &quot;auto&quot;</strong> lets the model decide based on context.
+          </p>
+          <p className="text-muted-foreground text-[11px] italic">
+            Example: The assistant keeps cutting you off when you pause to think — set this to &quot;low&quot;.
+          </p>
+        </div>
+
+        <hr className="border-muted" />
+
+        {/* Threshold (server_vad only) */}
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <h4 className="font-semibold text-sm">Sensitivity</h4>
             <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">OpenAI Realtime API</span>
+            <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-medium">Server VAD only</span>
           </div>
           <p className="text-muted-foreground text-xs leading-relaxed">
             How loud a sound needs to be before the system considers it &quot;speech.&quot;
@@ -1026,6 +1048,7 @@ function VoiceSettingsGuide() {
           <div className="flex items-center gap-2">
             <h4 className="font-semibold text-sm">Lead-in Buffer</h4>
             <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">OpenAI Realtime API</span>
+            <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-medium">Server VAD only</span>
           </div>
           <p className="text-muted-foreground text-xs leading-relaxed">
             How much audio (in milliseconds) to keep from <em>before</em> speech was detected.
@@ -1044,6 +1067,7 @@ function VoiceSettingsGuide() {
           <div className="flex items-center gap-2">
             <h4 className="font-semibold text-sm">Pause Before Response</h4>
             <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">OpenAI Realtime API</span>
+            <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-medium">Server VAD only</span>
           </div>
           <p className="text-muted-foreground text-xs leading-relaxed">
             How long you need to be silent (in milliseconds) before the assistant decides you&apos;re done talking and starts responding.
@@ -1101,7 +1125,32 @@ function VoicePresetEditor({
           </select>
         </div>
 
-        {preset.vad_type !== 'none' && (
+        {preset.vad_type === 'semantic_vad' && (
+          <div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <label className="text-xs font-semibold">Eagerness</label>
+              <SourceBadge source="api" />
+            </div>
+            <p className="text-[11px] text-muted-foreground mb-2">How quickly the model responds after you stop speaking</p>
+            <div className="flex gap-1">
+              {(['low', 'medium', 'high', 'auto'] as const).map((level) => (
+                <button
+                  key={level}
+                  onClick={() => onChange('eagerness', level)}
+                  className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    (preset.eagerness ?? 'auto') === level
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  }`}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {preset.vad_type === 'server_vad' && (
           <>
             <VoiceSlider
               label="Sensitivity"

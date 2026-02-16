@@ -14,6 +14,7 @@ export interface VoiceModePreset {
   threshold: number;
   prefix_padding_ms: number;
   silence_duration_ms: number;
+  eagerness?: 'low' | 'medium' | 'high' | 'auto';
 }
 
 export interface VoiceDefaultsConfig {
@@ -24,15 +25,17 @@ export interface VoiceDefaultsConfig {
 const HARDCODED_DEFAULTS: VoiceDefaultsConfig = {
   normal: {
     vad_type: 'server_vad',
-    threshold: 0.6,
-    prefix_padding_ms: 80,
-    silence_duration_ms: 300,
+    threshold: 0.97,
+    prefix_padding_ms: 290,
+    silence_duration_ms: 1330,
+    eagerness: 'auto',
   },
   noisy: {
     vad_type: 'server_vad',
-    threshold: 0.78,
+    threshold: 0.99,
     prefix_padding_ms: 220,
-    silence_duration_ms: 650,
+    silence_duration_ms: 1310,
+    eagerness: 'low',
   },
 };
 
@@ -100,11 +103,13 @@ function clamp(n: number, min: number, max: number): number {
 
 function validatePreset(input: Partial<VoiceModePreset>, fallback: VoiceModePreset): VoiceModePreset {
   const vadType = input.vad_type ?? fallback.vad_type;
+  const eagerness = input.eagerness ?? fallback.eagerness;
   return {
     vad_type: ['server_vad', 'semantic_vad', 'none'].includes(vadType) ? vadType : fallback.vad_type,
     threshold: clamp(input.threshold ?? fallback.threshold, 0, 1),
     prefix_padding_ms: clamp(input.prefix_padding_ms ?? fallback.prefix_padding_ms, 0, 2000),
     silence_duration_ms: clamp(input.silence_duration_ms ?? fallback.silence_duration_ms, 0, 5000),
+    eagerness: eagerness && ['low', 'medium', 'high', 'auto'].includes(eagerness) ? eagerness : fallback.eagerness,
   };
 }
 

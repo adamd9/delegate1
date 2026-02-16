@@ -126,6 +126,7 @@ export function processBrowserCallEvent(data: RawData) {
           threshold: persistedPreset.threshold,
           prefix_padding_ms: persistedPreset.prefix_padding_ms,
           silence_duration_ms: persistedPreset.silence_duration_ms,
+          eagerness: persistedPreset.eagerness,
         };
 
         const vadType = settings.vad_type || current.type || defaults.type;
@@ -133,12 +134,19 @@ export function processBrowserCallEvent(data: RawData) {
         const thresholdVal = toNumber(settings.threshold);
         const prefixVal = toNumber(settings.prefix_padding_ms);
         const silenceVal = toNumber(settings.silence_duration_ms);
+        const eagernessVal = settings.eagerness as string | undefined;
+        const validEagerness = eagernessVal && ['low', 'medium', 'high', 'auto'].includes(eagernessVal)
+          ? eagernessVal : undefined;
 
         // semantic_vad only accepts { type, eagerness? }; server_vad accepts { type, threshold, prefix_padding_ms, silence_duration_ms }
         const nextTurnDetection: any = vadType === 'none'
           ? { type: 'none' }
           : vadType === 'semantic_vad'
-            ? { type: 'semantic_vad' }
+            ? {
+                type: 'semantic_vad',
+                ...(validEagerness ? { eagerness: validEagerness }
+                  : (current.eagerness || defaults.eagerness) ? { eagerness: current.eagerness ?? defaults.eagerness } : {}),
+              }
             : {
                 type: 'server_vad',
                 threshold: thresholdVal !== undefined ? clamp(thresholdVal, 0, 1) : (current.threshold ?? defaults.threshold),
