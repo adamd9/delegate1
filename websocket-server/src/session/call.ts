@@ -165,15 +165,18 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
   const agentInstructions = [contextInstructions(context), baseInstructions].join('\n');
   const { turnDetection: runtimeTurnDetection } = getVoiceTuningForCall();
   
-  // Build turn detection config, falling back to server_vad if type is not 'none'
+  // semantic_vad only accepts { type, eagerness? }; server_vad accepts { type, threshold, prefix_padding_ms, silence_duration_ms }
+  const vadType = (runtimeTurnDetection?.type || 'server_vad') as 'server_vad' | 'semantic_vad';
   const turnDetection = runtimeTurnDetection?.type === 'none'
     ? { type: 'none' as const }
-    : {
-        type: (runtimeTurnDetection?.type || 'server_vad') as 'server_vad' | 'semantic_vad',
-        threshold: runtimeTurnDetection?.threshold,
-        prefix_padding_ms: runtimeTurnDetection?.prefix_padding_ms,
-        silence_duration_ms: runtimeTurnDetection?.silence_duration_ms,
-      };
+    : vadType === 'semantic_vad'
+      ? { type: 'semantic_vad' as const }
+      : {
+          type: 'server_vad' as const,
+          threshold: runtimeTurnDetection?.threshold,
+          prefix_padding_ms: runtimeTurnDetection?.prefix_padding_ms,
+          silence_duration_ms: runtimeTurnDetection?.silence_duration_ms,
+        };
   
   const voiceConfig = getChatVoiceConfig();
   
@@ -762,7 +765,7 @@ function handleTruncation() {
   // Research shows Twilio buffers ~60-100ms before playback to the caller
   // We subtract this offset to avoid truncating audio the user actually heard
   const rawAudioMs = session.responseCumulativeAudioMs;
-  const audio_end_ms = Math.max(0, rawAudioMs - BUFFER_LATENCY_MS);
+  const audio_end_ms = Math.floor(Math.max(0, rawAudioMs - BUFFER_LATENCY_MS));
   
   // Log truncation for debugging (console.debug is safe and won't throw in Node.js)
   console.debug(`[TRUNCATE] Truncating assistant audio at ${audio_end_ms}ms (raw: ${rawAudioMs}ms, buffer: ${BUFFER_LATENCY_MS}ms)`);

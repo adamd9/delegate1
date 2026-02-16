@@ -136,14 +136,17 @@ export function processBrowserCallEvent(data: RawData) {
         const silenceVal = toNumber(settings.silence_duration_ms);
         const graceVal = toNumber(settings.barge_in_grace_ms);
 
+        // semantic_vad only accepts { type, eagerness? }; server_vad accepts { type, threshold, prefix_padding_ms, silence_duration_ms }
         const nextTurnDetection: any = vadType === 'none'
           ? { type: 'none' }
-          : {
-              type: vadType,
-              threshold: thresholdVal !== undefined ? clamp(thresholdVal, 0, 1) : (current.threshold ?? defaults.threshold),
-              prefix_padding_ms: prefixVal !== undefined ? clamp(prefixVal, 0, 2000) : (current.prefix_padding_ms ?? defaults.prefix_padding_ms),
-              silence_duration_ms: silenceVal !== undefined ? clamp(silenceVal, 0, 5000) : (current.silence_duration_ms ?? defaults.silence_duration_ms),
-            };
+          : vadType === 'semantic_vad'
+            ? { type: 'semantic_vad' }
+            : {
+                type: 'server_vad',
+                threshold: thresholdVal !== undefined ? clamp(thresholdVal, 0, 1) : (current.threshold ?? defaults.threshold),
+                prefix_padding_ms: prefixVal !== undefined ? clamp(prefixVal, 0, 2000) : (current.prefix_padding_ms ?? defaults.prefix_padding_ms),
+                silence_duration_ms: silenceVal !== undefined ? clamp(silenceVal, 0, 5000) : (current.silence_duration_ms ?? defaults.silence_duration_ms),
+              };
 
         const nextGraceMs = graceVal !== undefined ? clamp(graceVal, 0, 10000) : ((session as any).voiceTuning?.bargeInGraceMs ?? defaultGrace);
 

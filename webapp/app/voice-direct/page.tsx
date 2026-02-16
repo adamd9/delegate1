@@ -13,7 +13,7 @@ interface VoiceSettings {
   barge_in_grace_ms: number;
 }
 
-const PRESETS: Record<'normal' | 'noisy', Omit<VoiceSettings, 'mode'>> = {
+const FALLBACK_PRESETS: Record<'normal' | 'noisy', Omit<VoiceSettings, 'mode'>> = {
   normal: {
     vad_type: 'server_vad',
     threshold: 0.6,
@@ -81,9 +81,44 @@ export default function VoiceDirectPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
     mode: 'normal',
-    ...PRESETS.normal,
+    ...FALLBACK_PRESETS.normal,
   });
   const [settingsApplied, setSettingsApplied] = useState(false);
+
+  // Fetched presets from the backend (persisted voice defaults)
+  const presetsRef = useRef<Record<'normal' | 'noisy', Omit<VoiceSettings, 'mode'>>>(FALLBACK_PRESETS);
+
+  // Fetch persisted voice defaults on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${backendUrl}/voice-defaults`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const fetched: Record<'normal' | 'noisy', Omit<VoiceSettings, 'mode'>> = {
+          normal: {
+            vad_type: data.normal?.vad_type ?? FALLBACK_PRESETS.normal.vad_type,
+            threshold: data.normal?.threshold ?? FALLBACK_PRESETS.normal.threshold,
+            prefix_padding_ms: data.normal?.prefix_padding_ms ?? FALLBACK_PRESETS.normal.prefix_padding_ms,
+            silence_duration_ms: data.normal?.silence_duration_ms ?? FALLBACK_PRESETS.normal.silence_duration_ms,
+            barge_in_grace_ms: data.normal?.barge_in_grace_ms ?? FALLBACK_PRESETS.normal.barge_in_grace_ms,
+          },
+          noisy: {
+            vad_type: data.noisy?.vad_type ?? FALLBACK_PRESETS.noisy.vad_type,
+            threshold: data.noisy?.threshold ?? FALLBACK_PRESETS.noisy.threshold,
+            prefix_padding_ms: data.noisy?.prefix_padding_ms ?? FALLBACK_PRESETS.noisy.prefix_padding_ms,
+            silence_duration_ms: data.noisy?.silence_duration_ms ?? FALLBACK_PRESETS.noisy.silence_duration_ms,
+            barge_in_grace_ms: data.noisy?.barge_in_grace_ms ?? FALLBACK_PRESETS.noisy.barge_in_grace_ms,
+          },
+        };
+        presetsRef.current = fetched;
+        // Update current settings to match fetched normal preset
+        setVoiceSettings((prev) => ({ ...prev, ...fetched[prev.mode] }));
+      } catch {
+        // silently fall back to hardcoded
+      }
+    })();
+  }, [backendUrl]);
 
   const wsUrl = useMemo(() => {
     const wsProtocol = backendUrl.startsWith('https://') ? 'wss://' : 'ws://';
@@ -132,7 +167,7 @@ export default function VoiceDirectPage() {
   }, [sendVoiceSettings]);
 
   const applyPreset = useCallback((mode: 'normal' | 'noisy') => {
-    const next: VoiceSettings = { mode, ...PRESETS[mode] };
+    const next: VoiceSettings = { mode, ...presetsRef.current[mode] };
     setVoiceSettings(next);
     sendVoiceSettings(next); // presets send immediately (no debounce)
   }, [sendVoiceSettings]);
@@ -605,17 +640,39 @@ export default function VoiceDirectPage() {
               </>
             )}
 
-            {/* Barge-in Grace */}
-            <SliderSetting
-              label="Barge-in Grace"
-              description="Min ms of assistant audio before allowing interruption"
-              value={voiceSettings.barge_in_grace_ms}
-              min={0}
-              max={5000}
-              step={50}
-              displayValue={`${voiceSettings.barge_in_grace_ms}ms`}
-              onChange={(v) => updateSetting('barge_in_grace_ms', v)}
-            />
+            {/* Barge-in Grace — with disable toggle */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-semibold text-white/80">Barge-in Grace</label>
+                <button
+                  type="button"
+                  onClick={() => updateSetting('barge_in_grace_ms', voiceSettings.barge_in_grace_ms === 0 ? 300 : 0)}
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors ${
+                    voiceSettings.barge_in_grace_ms === 0
+                      ? 'bg-white/10 text-white/50'
+                      : 'bg-purple-500/30 text-purple-300'
+                  }`}
+                >
+                  {voiceSettings.barge_in_grace_ms === 0 ? 'Disabled' : 'Enabled'}
+                </button>
+              </div>
+              {voiceSettings.barge_in_grace_ms === 0 ? (
+                <p className="text-xs text-white/40">
+                  App-level barge-in protection is off — the API&apos;s own VAD handles interruptions.
+                </p>
+              ) : (
+                <SliderSetting
+                  label=""
+                  description="Min ms of assistant audio before allowing interruption"
+                  value={voiceSettings.barge_in_grace_ms}
+                  min={50}
+                  max={5000}
+                  step={50}
+                  displayValue={`${voiceSettings.barge_in_grace_ms}ms`}
+                  onChange={(v) => updateSetting('barge_in_grace_ms', v)}
+                />
+              )}
+            </div>
 
             {settingsApplied && (
               <div className="mt-3 text-xs text-green-300 bg-green-500/10 rounded-lg p-2 text-center">
