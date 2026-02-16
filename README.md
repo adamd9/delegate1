@@ -434,12 +434,11 @@ The phone/voice experience uses OpenAI Realtime with server-side voice activity 
   - Constants near the top of the file control sensitivity and interruption behavior:
 
 ```ts
-// Voice Activity Detection (VAD) and Barge-in Configuration
+// Voice Activity Detection (VAD) Configuration
 const VAD_TYPE: 'server_vad' | 'semantic_vad' | 'none' = 'server_vad';
 const VAD_THRESHOLD: number = 0.6;           // higher = less sensitive
 const VAD_PREFIX_PADDING_MS: number = 80;    // speech required before start
 const VAD_SILENCE_DURATION_MS: number = 300; // silence required to end
-const BARGE_IN_GRACE_MS: number = 300;       // ms of assistant audio before interruption allowed
 ```
 
 - How it’s applied
@@ -462,17 +461,13 @@ jsonSend(session.modelConn, {
 });
 ```
 
-- Barge-in grace period
-
-  - In `processRealtimeModelEvent()` we only truncate assistant speech on `input_audio_buffer.speech_started` after at least `BARGE_IN_GRACE_MS` of assistant audio has played. Increase this to reduce abrupt cutoffs; set to `0` for immediate barge-in.
 - Runtime overrides via UI (optional)
 
-  - The web UI “Session Settings” dialog sends a `session.update` via the chat WebSocket (`/chat`). The server stores this in `session.saved_config` and merges it into the model session on connect. If you include a `turn_detection` object there, it overrides the constants at runtime.
+  - The web UI "Session Settings" dialog sends a `session.update` via the chat WebSocket (`/chat`). The server stores this in `session.saved_config` and merges it into the model session on connect. If you include a `turn_detection` object there, it overrides the constants at runtime.
 - Tuning tips
 
   - Make it less sensitive to background noise: increase `VAD_THRESHOLD` (e.g., 0.7–0.8) and/or `VAD_PREFIX_PADDING_MS` (e.g., 120–200ms).
   - Reduce premature turn endings: increase `VAD_SILENCE_DURATION_MS` (e.g., 400–600ms).
-  - Avoid instant barge-in: increase `BARGE_IN_GRACE_MS` (e.g., 500–800ms).
   - If your model version ignores a field, it will be safely ignored by the API.
 
 ## Remote MCP servers (Model Context Protocol)

@@ -93,22 +93,9 @@ We subtract a **100ms buffer offset** to account for client-side buffering befor
 
 Research shows that **not accounting for buffering** causes truncation to happen too early, cutting off audio the user actually heard.
 
-## Two-Part Barge-in Logic
+## Barge-in Logic
 
-### 1. Grace Period Check (Wall-Clock Time)
-
-**Purpose**: Prevent immediate interruption to give the assistant time to speak
-
-```typescript
-const elapsedMs = Date.now() - session.responseStartTimestamp;
-if (elapsedMs >= bargeInGraceMs) {
-  handleTruncation();
-}
-```
-
-**Why wall-clock time is OK here**: We only need to know if enough real-world time has passed since the assistant started speaking. This prevents overly eager interruptions from brief noise.
-
-### 2. Truncation Offset (Cumulative Audio)
+### Truncation Offset (Cumulative Audio)
 
 **Purpose**: Tell OpenAI exactly where to truncate based on what the user heard
 
@@ -135,7 +122,6 @@ const audio_end_ms = Math.max(0, session.responseCumulativeAudioMs - BUFFER_LATE
 - `websocket-server/src/session/browserCall.ts`: Similar initialization for browser voice
 
 ### Constants
-- `BARGE_IN_GRACE_MS`: Grace period before allowing interruption (default: 300ms)
 - `BUFFER_LATENCY_MS`: Client buffering estimate for truncation offset (default: 100ms)
 
 ## References
@@ -147,14 +133,9 @@ const audio_end_ms = Math.max(0, session.responseCumulativeAudioMs - BUFFER_LATE
 
 ## Tuning
 
-### Adjusting Grace Period
-Modify `BARGE_IN_GRACE_MS` in `call.ts` (default: 300ms) or use the `set_voice_noise_mode` tool at runtime.
-
 ### Adjusting Buffer Offset
 Modify `BUFFER_LATENCY_MS` in `handleTruncation()` (default: 100ms). Increase if users report hearing more than expected before truncation, decrease if truncation happens too early.
 
 ### Testing
 To verify correct behavior:
-1. Set `bargeInGraceMs` very high (e.g., 5000ms) - assistant should not be interrupted for ~5 seconds
-2. Set `bargeInGraceMs` to 0 - assistant should be interrupted immediately
-3. Monitor logs: `[TRUNCATE] Truncating assistant audio at Xms` shows the actual offset sent
+1. Monitor logs: `[TRUNCATE] Truncating assistant audio at Xms` shows the actual offset sent

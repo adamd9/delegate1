@@ -14,7 +14,6 @@ export interface VoiceModePreset {
   threshold: number;
   prefix_padding_ms: number;
   silence_duration_ms: number;
-  barge_in_grace_ms: number;
 }
 
 export interface VoiceDefaultsConfig {
@@ -28,14 +27,12 @@ const HARDCODED_DEFAULTS: VoiceDefaultsConfig = {
     threshold: 0.6,
     prefix_padding_ms: 80,
     silence_duration_ms: 300,
-    barge_in_grace_ms: 300,
   },
   noisy: {
     vad_type: 'server_vad',
     threshold: 0.78,
     prefix_padding_ms: 220,
     silence_duration_ms: 650,
-    barge_in_grace_ms: 2000,
   },
 };
 
@@ -108,7 +105,6 @@ function validatePreset(input: Partial<VoiceModePreset>, fallback: VoiceModePres
     threshold: clamp(input.threshold ?? fallback.threshold, 0, 1),
     prefix_padding_ms: clamp(input.prefix_padding_ms ?? fallback.prefix_padding_ms, 0, 2000),
     silence_duration_ms: clamp(input.silence_duration_ms ?? fallback.silence_duration_ms, 0, 5000),
-    barge_in_grace_ms: clamp(input.barge_in_grace_ms ?? fallback.barge_in_grace_ms, 0, 10000),
   };
 }
 

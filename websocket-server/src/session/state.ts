@@ -46,7 +46,7 @@ export interface Session {
       silence_duration_ms?: number;
       [key: string]: any;
     };
-    bargeInGraceMs?: number;
+    bargeInGraceMs?: number; // DEPRECATED — barge-in grace removed
     updatedAtMs?: number;
   };
   streamSid?: string;

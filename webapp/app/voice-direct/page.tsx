@@ -10,7 +10,6 @@ interface VoiceSettings {
   threshold: number;
   prefix_padding_ms: number;
   silence_duration_ms: number;
-  barge_in_grace_ms: number;
 }
 
 const FALLBACK_PRESETS: Record<'normal' | 'noisy', Omit<VoiceSettings, 'mode'>> = {
@@ -19,14 +18,12 @@ const FALLBACK_PRESETS: Record<'normal' | 'noisy', Omit<VoiceSettings, 'mode'>> 
     threshold: 0.6,
     prefix_padding_ms: 80,
     silence_duration_ms: 300,
-    barge_in_grace_ms: 300,
   },
   noisy: {
     vad_type: 'server_vad',
     threshold: 0.78,
     prefix_padding_ms: 220,
     silence_duration_ms: 650,
-    barge_in_grace_ms: 2000,
   },
 };
 
@@ -101,14 +98,12 @@ export default function VoiceDirectPage() {
             threshold: data.normal?.threshold ?? FALLBACK_PRESETS.normal.threshold,
             prefix_padding_ms: data.normal?.prefix_padding_ms ?? FALLBACK_PRESETS.normal.prefix_padding_ms,
             silence_duration_ms: data.normal?.silence_duration_ms ?? FALLBACK_PRESETS.normal.silence_duration_ms,
-            barge_in_grace_ms: data.normal?.barge_in_grace_ms ?? FALLBACK_PRESETS.normal.barge_in_grace_ms,
           },
           noisy: {
             vad_type: data.noisy?.vad_type ?? FALLBACK_PRESETS.noisy.vad_type,
             threshold: data.noisy?.threshold ?? FALLBACK_PRESETS.noisy.threshold,
             prefix_padding_ms: data.noisy?.prefix_padding_ms ?? FALLBACK_PRESETS.noisy.prefix_padding_ms,
             silence_duration_ms: data.noisy?.silence_duration_ms ?? FALLBACK_PRESETS.noisy.silence_duration_ms,
-            barge_in_grace_ms: data.noisy?.barge_in_grace_ms ?? FALLBACK_PRESETS.noisy.barge_in_grace_ms,
           },
         };
         presetsRef.current = fetched;
@@ -152,11 +147,10 @@ export default function VoiceDirectPage() {
         threshold: settings.threshold,
         prefix_padding_ms: settings.prefix_padding_ms,
         silence_duration_ms: settings.silence_duration_ms,
-        barge_in_grace_ms: settings.barge_in_grace_ms,
       },
     }));
     setSettingsApplied(false);
-    addLog(`Voice settings sent: ${settings.mode} (threshold=${settings.threshold}, silence=${settings.silence_duration_ms}ms, barge-in=${settings.barge_in_grace_ms}ms)`, 'info');
+    addLog(`Voice settings sent: ${settings.mode} (threshold=${settings.threshold}, silence=${settings.silence_duration_ms}ms)`, 'info');
   }, []);
 
   // Debounce slider changes to avoid flooding the WebSocket
@@ -639,40 +633,6 @@ export default function VoiceDirectPage() {
                 />
               </>
             )}
-
-            {/* Barge-in Grace — with disable toggle */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-sm font-semibold text-white/80">Barge-in Grace</label>
-                <button
-                  type="button"
-                  onClick={() => updateSetting('barge_in_grace_ms', voiceSettings.barge_in_grace_ms === 0 ? 300 : 0)}
-                  className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors ${
-                    voiceSettings.barge_in_grace_ms === 0
-                      ? 'bg-white/10 text-white/50'
-                      : 'bg-purple-500/30 text-purple-300'
-                  }`}
-                >
-                  {voiceSettings.barge_in_grace_ms === 0 ? 'Disabled' : 'Enabled'}
-                </button>
-              </div>
-              {voiceSettings.barge_in_grace_ms === 0 ? (
-                <p className="text-xs text-white/40">
-                  App-level barge-in protection is off — the API&apos;s own VAD handles interruptions.
-                </p>
-              ) : (
-                <SliderSetting
-                  label=""
-                  description="Min ms of assistant audio before allowing interruption"
-                  value={voiceSettings.barge_in_grace_ms}
-                  min={50}
-                  max={5000}
-                  step={50}
-                  displayValue={`${voiceSettings.barge_in_grace_ms}ms`}
-                  onChange={(v) => updateSetting('barge_in_grace_ms', v)}
-                />
-              )}
-            </div>
 
             {settingsApplied && (
               <div className="mt-3 text-xs text-green-300 bg-green-500/10 rounded-lg p-2 text-center">

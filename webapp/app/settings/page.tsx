@@ -820,7 +820,6 @@ interface VoiceModePreset {
   threshold: number;
   prefix_padding_ms: number;
   silence_duration_ms: number;
-  barge_in_grace_ms: number;
 }
 
 interface VoiceDefaultsData {
@@ -1057,27 +1056,6 @@ function VoiceSettingsGuide() {
           </p>
         </div>
 
-        <hr className="border-muted" />
-
-        {/* Barge-in Grace */}
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <h4 className="font-semibold text-sm">Barge-in Grace Period</h4>
-            <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-medium">App Logic</span>
-          </div>
-          <p className="text-muted-foreground text-xs leading-relaxed">
-            After the assistant starts speaking, how long (in milliseconds) it should <strong>ignore</strong> any sound from your mic before allowing you to interrupt (&quot;barge in&quot;).
-            This prevents the assistant&apos;s own voice — echoing back through your speakers/mic — from accidentally cutting it off.
-            A higher value makes the assistant harder to interrupt at the start of its response.
-            You can <strong>disable</strong> this entirely if you&apos;re using headphones or don&apos;t experience echo issues — the API&apos;s own VAD will handle interruptions natively.
-          </p>
-          <p className="text-muted-foreground text-[11px] italic">
-            Example: The assistant says &quot;Sure, I can help with—&quot; and immediately stops because it heard its own voice through your speakers. Set this to 2000ms so it ignores the first 2 seconds of echo.
-          </p>
-          <p className="text-muted-foreground text-[11px] mt-1">
-            <strong>Note:</strong> This setting is implemented in our app, not by OpenAI. The API&apos;s built-in VAD doesn&apos;t distinguish between your voice and its own echo, so we add this grace window ourselves.
-          </p>
-        </div>
       </CardContent>
     </Card>
   );
@@ -1155,47 +1133,6 @@ function VoicePresetEditor({
           </>
         )}
 
-        {/* Barge-in Grace — with disable toggle */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-1.5">
-              <label className="text-xs font-semibold">Barge-in Grace Period</label>
-              <SourceBadge source="app" />
-            </div>
-            <button
-              type="button"
-              onClick={() => onChange('barge_in_grace_ms', preset.barge_in_grace_ms === 0 ? 300 : 0)}
-              className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors ${
-                preset.barge_in_grace_ms === 0
-                  ? 'bg-muted text-muted-foreground'
-                  : 'bg-purple-100 text-purple-700'
-              }`}
-            >
-              {preset.barge_in_grace_ms === 0 ? 'Disabled' : 'Enabled'}
-            </button>
-          </div>
-          {preset.barge_in_grace_ms === 0 ? (
-            <p className="text-[11px] text-muted-foreground">
-              App-level barge-in protection is off. The API&apos;s own VAD decides when to interrupt — no grace window.
-            </p>
-          ) : (
-            <>
-              <div className="flex justify-between items-baseline mb-1">
-                <span className="text-[11px] text-muted-foreground">Ignore mic input at start of assistant speech</span>
-                <span className="text-xs text-muted-foreground font-mono">{preset.barge_in_grace_ms}ms</span>
-              </div>
-              <input
-                type="range"
-                min={50}
-                max={10000}
-                step={50}
-                value={preset.barge_in_grace_ms}
-                onChange={(e) => onChange('barge_in_grace_ms', Number(e.target.value))}
-                className="w-full accent-primary"
-              />
-            </>
-          )}
-        </div>
       </div>
     </div>
   );

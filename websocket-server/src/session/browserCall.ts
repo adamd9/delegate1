@@ -127,14 +127,12 @@ export function processBrowserCallEvent(data: RawData) {
           prefix_padding_ms: persistedPreset.prefix_padding_ms,
           silence_duration_ms: persistedPreset.silence_duration_ms,
         };
-        const defaultGrace = persistedPreset.barge_in_grace_ms;
 
         const vadType = settings.vad_type || current.type || defaults.type;
 
         const thresholdVal = toNumber(settings.threshold);
         const prefixVal = toNumber(settings.prefix_padding_ms);
         const silenceVal = toNumber(settings.silence_duration_ms);
-        const graceVal = toNumber(settings.barge_in_grace_ms);
 
         // semantic_vad only accepts { type, eagerness? }; server_vad accepts { type, threshold, prefix_padding_ms, silence_duration_ms }
         const nextTurnDetection: any = vadType === 'none'
@@ -148,12 +146,9 @@ export function processBrowserCallEvent(data: RawData) {
                 silence_duration_ms: silenceVal !== undefined ? clamp(silenceVal, 0, 5000) : (current.silence_duration_ms ?? defaults.silence_duration_ms),
               };
 
-        const nextGraceMs = graceVal !== undefined ? clamp(graceVal, 0, 10000) : ((session as any).voiceTuning?.bargeInGraceMs ?? defaultGrace);
-
         (session as any).voiceTuning = {
           mode,
           turnDetection: nextTurnDetection,
-          bargeInGraceMs: nextGraceMs,
           updatedAtMs: Date.now(),
         };
 
@@ -172,7 +167,6 @@ export function processBrowserCallEvent(data: RawData) {
             settings: {
               mode,
               turn_detection: nextTurnDetection,
-              barge_in_grace_ms: nextGraceMs,
               applied_to_model: isOpen(session.modelConn),
             },
           } as any);
@@ -181,7 +175,6 @@ export function processBrowserCallEvent(data: RawData) {
         console.info('[voice_settings] Updated from browser UI', {
           mode,
           turnDetection: nextTurnDetection,
-          bargeInGraceMs: nextGraceMs,
         });
       } catch (err) {
         console.error('[voice_settings] Error applying settings', err);

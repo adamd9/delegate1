@@ -5,18 +5,13 @@ import { buildRealtimeSessionConfig, getAudioFormatForSession } from "../../sess
 type NoiseMode = "normal" | "noisy";
 
 // ===== Voice Noise Mode (runtime tuning) =====
-// This tool is intended to be used mid-call to change how sensitive turn detection and
-// barge-in (assistant interruption) are, especially in noisy environments.
+// This tool is intended to be used mid-call to change how sensitive turn detection
+// is, especially in noisy environments.
 //
 // What this tool changes at runtime:
-// - **Server-side barge-in logic** (authoritative in this repo):
-//   We store `session.voiceTuning.bargeInGraceMs`, and `session/call.ts` reads it on each
-//   `input_audio_buffer.speech_started` event to decide whether to truncate assistant audio.
-//
-// - **OpenAI Realtime turn detection** (best-effort):
+// - **OpenAI Realtime turn detection**:
 //   If `session.modelConn` is open, we send a Realtime `session.update` with
-//   `turn_detection` = `session.voiceTuning.turnDetection`. Most models apply this live,
-//   but exact supported fields can vary; unsupported fields should be ignored safely.
+//   `turn_detection` = `session.voiceTuning.turnDetection`.
 //
 // Adjustable settings (presets + per-call overrides):
 // - **mode**: "normal" | "noisy"
@@ -38,20 +33,8 @@ type NoiseMode = "normal" | "noisy";
 //   - Higher reduces choppy turn-taking; too high increases latency.
 //   - Typical range: ~250 to ~1000.
 //
-// - **barge_in_grace_ms** (ms)
-//   - Server-side grace period before we allow barge-in truncation after assistant audio starts.
-//   - Higher = assistant is harder to interrupt (useful in noisy rooms).
-//   - 0 = allow immediate interruption.
-//   - Typical range: ~0 to ~1500.
-//
-// Quick validation (no noisy environment needed):
-// - Set `barge_in_grace_ms` very high (e.g., 10000) and try speaking over the assistant.
-//   The assistant should NOT be cut off for ~10 seconds.
-// - Then set `barge_in_grace_ms` to 0 and repeat; it should cut off quickly.
-//
 // Notes:
 // - This tool returns `applied_to_model` to indicate whether it sent a Realtime `session.update`.
-// - The server-side barge-in change applies even if `applied_to_model` is false.
 
 function toNumber(value: any): number | undefined {
   if (value === undefined || value === null || value === "") return undefined;
@@ -74,7 +57,6 @@ function preset(mode: NoiseMode) {
       prefix_padding_ms: p.prefix_padding_ms,
       silence_duration_ms: p.silence_duration_ms,
     },
-    bargeInGraceMs: p.barge_in_grace_ms,
   };
 }
 
@@ -83,7 +65,7 @@ export const setVoiceNoiseModeTool: FunctionHandler = {
     name: "set_voice_noise_mode",
     type: "function",
     description:
-      "Adjust voice turn-detection/barge-in behavior for noisy environments during an active call. Use mode='noisy' to reduce false interruptions from background noise, or mode='normal' to restore defaults.",
+      "Adjust voice turn-detection behavior for noisy environments during an active call. Use mode='noisy' to reduce false interruptions from background noise, or mode='normal' to restore defaults.",
     parameters: {
       type: "object",
       properties: {
@@ -107,11 +89,6 @@ export const setVoiceNoiseModeTool: FunctionHandler = {
           description:
             "Optional override: ms of silence required before ending a user turn.",
         },
-        barge_in_grace_ms: {
-          type: "number",
-          description:
-            "Optional override: minimum assistant audio ms that must play before we allow truncation on speech_started.",
-        },
       },
       required: ["mode"],
       additionalProperties: false,
@@ -125,7 +102,6 @@ export const setVoiceNoiseModeTool: FunctionHandler = {
     const thresholdRaw = toNumber(args?.threshold);
     const prefixRaw = toNumber(args?.prefix_padding_ms);
     const silenceRaw = toNumber(args?.silence_duration_ms);
-    const graceRaw = toNumber(args?.barge_in_grace_ms);
 
     const nextTurnDetection: any = {
       ...base.turnDetection,
@@ -140,13 +116,9 @@ export const setVoiceNoiseModeTool: FunctionHandler = {
         : {}),
     };
 
-    const nextGraceMs =
-      graceRaw !== undefined ? clamp(graceRaw, 0, 5000) : base.bargeInGraceMs;
-
     (session as any).voiceTuning = {
       mode,
       turnDetection: nextTurnDetection,
-      bargeInGraceMs: nextGraceMs,
       updatedAtMs: Date.now(),
     };
 
@@ -166,7 +138,6 @@ export const setVoiceNoiseModeTool: FunctionHandler = {
       mode,
       applied_to_model: canApplyToModel,
       turn_detection: nextTurnDetection,
-      barge_in_grace_ms: nextGraceMs,
     };
   },
 };

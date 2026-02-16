@@ -116,7 +116,6 @@ function getVoiceTuningForCall() {
     // Runtime override is active (set by agent tool or browser UI)
     return {
       turnDetection: tuning.turnDetection,
-      bargeInGraceMs: typeof tuning.bargeInGraceMs === 'number' ? tuning.bargeInGraceMs : getVoiceModePreset('normal').barge_in_grace_ms,
     };
   }
   // Fall back to persisted defaults for "normal" mode
@@ -128,7 +127,6 @@ function getVoiceTuningForCall() {
       prefix_padding_ms: preset.prefix_padding_ms,
       silence_duration_ms: preset.silence_duration_ms,
     },
-    bargeInGraceMs: preset.barge_in_grace_ms,
   };
 }
 
@@ -508,20 +506,12 @@ export function processRealtimeModelEvent(
       break;
     }
     case "input_audio_buffer.speech_started": {
-      // Only allow truncation (barge-in) if the assistant has been speaking
-      // for at least BARGE_IN_GRACE_MS. This reduces overly eager cutoffs.
-      const startedAt = session.responseStartTimestamp;
-      if (startedAt !== undefined) {
-        // Use wall-clock time to check if grace period has elapsed
-        // This prevents immediate interruption, giving the assistant time to speak
-        const elapsedMs = Date.now() - startedAt;
-        const { bargeInGraceMs } = getVoiceTuningForCall();
-        if (elapsedMs >= bargeInGraceMs) {
-          handleTruncation();
-        } else {
-          // Ignore early speech_started signals to avoid abrupt interruption
-          try { console.debug(`[VAD] speech_started ignored due to grace period: ${elapsedMs}ms < ${bargeInGraceMs}ms`); } catch {}
-        }
+      // If there is assistant audio that the client may still be playing, truncate (barge-in).
+      // We gate on lastAssistantItem (cleared in response.output_item.done) rather than
+      // responseStartTimestamp (cleared earlier in response.audio.done) so that barge-in
+      // still works while buffered audio is playing after generation finishes.
+      if (session.lastAssistantItem) {
+        handleTruncation();
       }
       break;
     }
