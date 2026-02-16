@@ -27,6 +27,8 @@ export interface AgentConfig {
   // Model to use for voice (Realtime API/websocket) interactions
   voiceModel?: string;
   temperature?: number;
+  // Reasoning effort for text (Responses API) calls: 'minimal', 'low', 'medium', 'high'
+  reasoning?: { effort: 'minimal' | 'low' | 'medium' | 'high' };
 }
 
 // Removed AgentSet interface - not needed for single agent configuration

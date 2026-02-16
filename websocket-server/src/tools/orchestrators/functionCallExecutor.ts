@@ -224,7 +224,7 @@ export async function executeFunctionCalls(
     }
     const confirmBody: any = {
       model: getAgent('base').textModel || getAgent('base').model || 'gpt-5-mini',
-      reasoning: { effort: 'minimal' as const },
+      reasoning: getAgent('base').reasoning || { effort: 'low' },
       previous_response_id: ctx.previousResponseId,
       input: [
         { type: 'function_call', call_id: next.call_id, name: next.name, arguments: typeof next.arguments === 'string' ? next.arguments : JSON.stringify(next.arguments || {}) },

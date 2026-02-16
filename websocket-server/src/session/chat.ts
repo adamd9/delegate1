@@ -389,9 +389,7 @@ export async function handleTextChatMessage(
     // Prepare request body for Responses API
     const requestBody: any = {
       model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
-      reasoning: {
-        effort: 'minimal' as const,
-      },
+      reasoning: getAgent('base').reasoning || { effort: 'low' },
       instructions: instructions,
       tools: functionSchemas,
       store: true,
@@ -501,9 +499,7 @@ export async function handleTextChatMessage(
           }
           const followUpBody = {
             model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
-            reasoning: {
-              effort: 'minimal' as const,
-            },
+            reasoning: getAgent('base').reasoning || { effort: 'low' },
             previous_response_id: response.id,
             instructions:
               "Using the supervisor's result, provide a concise plain-text answer in two or three sentences. If important details would be lost, use the sendCanvas tool to deliver the full response.",
