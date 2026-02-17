@@ -95,6 +95,31 @@ Research shows that **not accounting for buffering** causes truncation to happen
 
 ## Barge-in Logic
 
+### Response Cancellation State Machine
+
+**CRITICAL**: The `response.cancel` operation must ONLY be sent when a response is actively streaming audio. This is tracked by the `responseStartTimestamp` state variable:
+
+- **Set** when first audio delta arrives (`response.audio.delta` handler)
+- **Cleared** when audio generation completes (`response.audio.done` event)
+- **Cleared** when response is truncated (`handleTruncation()`)
+
+**Common Bug**: Sending `response.cancel` when `responseStartTimestamp === undefined` causes `response_cancel_not_active` errors. This happens in the race condition where:
+1. Audio generation completes (`response.audio.done` clears `responseStartTimestamp`)
+2. Audio is still playing in client buffer (`lastAssistantItem` still set)
+3. User speaks, triggering `handleTruncation()`
+
+**Solution**: Always check `isResponseActivelyStreaming()` before calling `response.cancel`.
+
+```typescript
+// CORRECT - with guard
+if (isResponseActivelyStreaming()) {
+  jsonSend(session.modelConn, { type: "response.cancel" });
+}
+
+// WRONG - unconditional (will cause errors)
+jsonSend(session.modelConn, { type: "response.cancel" });
+```
+
 ### Truncation Offset (Cumulative Audio)
 
 **Purpose**: Tell OpenAI exactly where to truncate based on what the user heard
@@ -113,10 +138,11 @@ const audio_end_ms = Math.max(0, session.responseCumulativeAudioMs - BUFFER_LATE
 
 ### Voice Call Handling
 - `websocket-server/src/session/call.ts`:
+  - `isResponseActivelyStreaming()`: Helper to check if response is actively streaming (guards response.cancel)
   - `calculateAudioDurationMs()`: Helper function to calculate audio duration from base64 payloads
   - `response.audio.delta` handler: Tracks cumulative audio duration
-  - `input_audio_buffer.speech_started` handler: Checks grace period before allowing barge-in
-  - `handleTruncation()`: Sends truncate event with correct audio offset
+  - `input_audio_buffer.speech_started` handler: Triggers barge-in when user speaks
+  - `handleTruncation()`: Sends truncate event with correct audio offset and conditionally cancels response
 
 ### Browser Call Handling  
 - `websocket-server/src/session/browserCall.ts`: Similar initialization for browser voice

@@ -789,6 +789,37 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
   }
 }
 
+/**
+ * Checks if a response is currently streaming audio to the client.
+ * 
+ * This is used to determine if response.cancel should be sent. A response is considered
+ * actively streaming if responseStartTimestamp is set (audio deltas are being sent).
+ * 
+ * @returns true if audio is actively streaming, false otherwise
+ */
+function isResponseActivelyStreaming(): boolean {
+  return session.responseStartTimestamp !== undefined;
+}
+
+/**
+ * Handles barge-in by truncating the assistant's audio response.
+ * 
+ * This function is called when the user starts speaking (input_audio_buffer.speech_started)
+ * while the assistant's audio may still be playing in the client's buffer.
+ * 
+ * State Machine:
+ * - lastAssistantItem: Set when audio deltas arrive, cleared in response.output_item.done
+ * - responseStartTimestamp: Set when audio deltas start, cleared in response.audio.done
+ * - responseCumulativeAudioMs: Tracks total audio duration sent to client
+ * 
+ * Critical: We must check responseStartTimestamp before calling response.cancel to avoid
+ * "response_cancel_not_active" errors. This happens when:
+ * 1. Audio generation completes (response.audio.done clears responseStartTimestamp)
+ * 2. Audio is still playing in client buffer (lastAssistantItem still set)
+ * 3. User speaks, triggering this function
+ * 
+ * In this case, we only need to truncate the conversation item, not cancel an active response.
+ */
 function handleTruncation() {
   if (
     !session.lastAssistantItem ||
@@ -810,9 +841,15 @@ function handleTruncation() {
   
   if (isOpen(session.modelConn)) {
     // Cancel the in-flight response to stop OpenAI from generating more audio.
-    jsonSend(session.modelConn, {
-      type: "response.cancel",
-    } as any);
+    // CRITICAL: Only send response.cancel if a response is actively streaming audio.
+    // responseStartTimestamp is set when audio deltas begin and cleared when the response
+    // completes or is truncated. Without this guard, we get "response_cancel_not_active"
+    // errors when the user speaks after the assistant finishes (common race condition).
+    if (isResponseActivelyStreaming()) {
+      jsonSend(session.modelConn, {
+        type: "response.cancel",
+      } as any);
+    }
 
     // Truncate the stored conversation item to the point the user actually heard
     jsonSend(session.modelConn, {
