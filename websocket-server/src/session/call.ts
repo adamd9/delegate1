@@ -445,6 +445,13 @@ function shouldForwardToFrontend(event: any): boolean {
   // Suppress harmless "no active response" cancel errors — these occur in the
   // race window between audio finishing and speech_started firing.
   if (event?.type === 'error' && event?.error?.code === 'response_cancel_not_active') {
+    try {
+      console.debug('[BARGE-IN][FORWARDING] Suppressing response_cancel_not_active event to frontend', {
+        lastAssistantItem: session.lastAssistantItem,
+        responseStartTimestamp: session.responseStartTimestamp,
+        responseCumulativeAudioMs: session.responseCumulativeAudioMs,
+      });
+    } catch {}
     return false;
   }
   return true;
@@ -563,12 +570,36 @@ export function processRealtimeModelEvent(
       break;
     }
     case "input_audio_buffer.speech_started": {
+      try {
+        console.debug('[BARGE-IN] input_audio_buffer.speech_started received', {
+          lastAssistantItem: session.lastAssistantItem,
+          responseStartTimestamp: session.responseStartTimestamp,
+          responseCumulativeAudioMs: session.responseCumulativeAudioMs,
+          hasModelConn: !!session.modelConn,
+          modelConnOpen: isOpen(session.modelConn),
+          hasTwilioConn: !!session.twilioConn,
+          hasBrowserConn: !!session.browserConn,
+          streamSid: session.streamSid,
+        });
+      } catch {}
       // If there is assistant audio that the client may still be playing, truncate (barge-in).
       // We gate on lastAssistantItem (cleared in response.output_item.done) rather than
       // responseStartTimestamp (cleared earlier in response.audio.done) so that barge-in
       // still works while buffered audio is playing after generation finishes.
       if (session.lastAssistantItem) {
+        try {
+          console.debug('[BARGE-IN] Truncation path selected because lastAssistantItem is present', {
+            lastAssistantItem: session.lastAssistantItem,
+          });
+        } catch {}
         handleTruncation();
+      } else {
+        try {
+          console.debug('[BARGE-IN] Truncation skipped: no lastAssistantItem set at speech_started', {
+            responseStartTimestamp: session.responseStartTimestamp,
+            responseCumulativeAudioMs: session.responseCumulativeAudioMs,
+          });
+        } catch {}
       }
       break;
     }
@@ -630,6 +661,13 @@ export function processRealtimeModelEvent(
       // Audio generation for this response is complete. Clear the response-active
       // tracking so that speech_started after this point doesn't try response.cancel.
       // (response.output_item.done arrives later and clears lastAssistantItem too.)
+      try {
+        console.debug('[BARGE-IN] response.audio.done received; clearing responseStartTimestamp', {
+          previousResponseStartTimestamp: session.responseStartTimestamp,
+          lastAssistantItem: session.lastAssistantItem,
+          responseCumulativeAudioMs: session.responseCumulativeAudioMs,
+        });
+      } catch {}
       session.responseStartTimestamp = undefined;
       break;
     case "response.output_item.done": {
@@ -757,6 +795,15 @@ export function processRealtimeModelEvent(
 
         // Response finished; clear truncation tracking so subsequent speech_started
         // does not truncate an already-completed assistant response.
+        try {
+          console.debug('[BARGE-IN] response.output_item.done clearing barge-in tracking state', {
+            itemId: item.id,
+            itemStatus: item.status,
+            previousLastAssistantItem: session.lastAssistantItem,
+            previousResponseStartTimestamp: session.responseStartTimestamp,
+            previousResponseCumulativeAudioMs: session.responseCumulativeAudioMs,
+          });
+        } catch {}
         session.lastAssistantItem = undefined;
         session.responseStartTimestamp = undefined;
         session.responseCumulativeAudioMs = undefined;
@@ -848,11 +895,32 @@ function isResponseActivelyStreaming(): boolean {
  * In this case, we only need to truncate the conversation item, not cancel an active response.
  */
 function handleTruncation() {
+  try {
+    console.debug('[BARGE-IN] handleTruncation invoked', {
+      lastAssistantItem: session.lastAssistantItem,
+      responseStartTimestamp: session.responseStartTimestamp,
+      responseCumulativeAudioMs: session.responseCumulativeAudioMs,
+      hasModelConn: !!session.modelConn,
+      modelConnOpen: isOpen(session.modelConn),
+      hasTwilioConn: !!session.twilioConn,
+      hasBrowserConn: !!session.browserConn,
+      streamSid: session.streamSid,
+    });
+  } catch {}
+
   if (
     !session.lastAssistantItem ||
     session.responseCumulativeAudioMs === undefined
   )
+  {
+    try {
+      console.debug('[BARGE-IN] handleTruncation early return (missing required state)', {
+        hasLastAssistantItem: !!session.lastAssistantItem,
+        responseCumulativeAudioMs: session.responseCumulativeAudioMs,
+      });
+    } catch {}
     return;
+  }
   
   // Use cumulative audio duration sent to client, accounting for buffering latency
   // Research shows Twilio buffers ~60-100ms before playback to the caller
@@ -865,37 +933,101 @@ function handleTruncation() {
 
   // Track the cancelled item so late-arriving audio deltas for it are dropped
   (session as any)._cancelledItemId = session.lastAssistantItem;
+  try {
+    console.debug('[BARGE-IN] Marked item as cancelled for late-delta guard', {
+      cancelledItemId: (session as any)._cancelledItemId,
+    });
+  } catch {}
   
-  if (isOpen(session.modelConn)) {
+  const modelConn = session.modelConn;
+  if (isOpen(modelConn)) {
     // Cancel the in-flight response to stop OpenAI from generating more audio.
     // CRITICAL: Only send response.cancel if a response is actively streaming audio.
     // responseStartTimestamp is set when audio deltas begin and cleared when the response
     // completes or is truncated. Without this guard, we get "response_cancel_not_active"
     // errors when the user speaks after the assistant finishes (common race condition).
     if (isResponseActivelyStreaming()) {
-      jsonSend(session.modelConn, {
+      try {
+        console.debug('[BARGE-IN] Sending response.cancel', {
+          itemId: session.lastAssistantItem,
+          responseStartTimestamp: session.responseStartTimestamp,
+        });
+      } catch {}
+      jsonSend(modelConn, {
         type: "response.cancel",
       } as any);
+    } else {
+      try {
+        console.debug('[BARGE-IN] Skipping response.cancel (response not actively streaming)', {
+          itemId: session.lastAssistantItem,
+          responseStartTimestamp: session.responseStartTimestamp,
+          responseCumulativeAudioMs: session.responseCumulativeAudioMs,
+        });
+      } catch {}
     }
 
     // Truncate the stored conversation item to the point the user actually heard
-    jsonSend(session.modelConn, {
+    try {
+      console.debug('[BARGE-IN] Sending conversation.item.truncate', {
+        itemId: session.lastAssistantItem,
+        audio_end_ms,
+      });
+    } catch {}
+    jsonSend(modelConn, {
       type: "conversation.item.truncate",
       item_id: session.lastAssistantItem,
       content_index: 0,
       audio_end_ms,
     } as any);
+  } else {
+    try {
+      console.debug('[BARGE-IN] Model connection not open; skipping response.cancel and conversation.item.truncate', {
+        hasModelConn: !!modelConn,
+        modelReadyState: (modelConn as WebSocket | undefined)?.readyState,
+      });
+    } catch {}
   }
   if (session.twilioConn && session.streamSid) {
+    try {
+      console.debug('[BARGE-IN] Sending Twilio clear event', {
+        streamSid: session.streamSid,
+      });
+    } catch {}
     jsonSend(session.twilioConn, {
       event: "clear",
       streamSid: session.streamSid,
     } as any);
+  } else {
+    try {
+      console.debug('[BARGE-IN] Twilio clear skipped (no active twilioConn/streamSid)', {
+        hasTwilioConn: !!session.twilioConn,
+        streamSid: session.streamSid,
+      });
+    } catch {}
   }
   if (session.browserConn) {
+    try {
+      console.debug('[BARGE-IN] Sending browser clear event');
+    } catch {}
     jsonSend(session.browserConn, { event: "clear" } as any);
+  } else {
+    try {
+      console.debug('[BARGE-IN] Browser clear skipped (no browserConn)');
+    } catch {}
   }
+
+  const previousState = {
+    lastAssistantItem: session.lastAssistantItem,
+    responseStartTimestamp: session.responseStartTimestamp,
+    responseCumulativeAudioMs: session.responseCumulativeAudioMs,
+  };
   session.lastAssistantItem = undefined;
   session.responseStartTimestamp = undefined;
   session.responseCumulativeAudioMs = undefined;
+  try {
+    console.debug('[BARGE-IN] Cleared truncation state after handleTruncation', {
+      previousState,
+      cancelledItemId: (session as any)._cancelledItemId,
+    });
+  } catch {}
 }
