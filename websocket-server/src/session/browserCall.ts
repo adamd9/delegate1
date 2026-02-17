@@ -13,6 +13,7 @@ import {
 } from "./state";
 import { processRealtimeModelEvent, buildRealtimeSessionConfig } from "./call";
 import { getChatVoiceConfig } from "../voice/voiceConfig";
+import { classifyOpenAIError } from "../services/openaiErrors";
 import { getVoiceModePreset } from "../voice/voiceDefaults";
 
 function logDroppingAudioIfNeeded() {
@@ -243,7 +244,21 @@ function establishBrowserRealtimeModelConnection() {
   );
   session.modelConn.on("error", (err) => {
     try {
-      console.error('[ws][openai-realtime] websocket error (browser-call)', err);
+      const errInfo = classifyOpenAIError(err);
+      if (errInfo.isQuotaOrRateLimit) {
+        console.error(`🚫 OpenAI quota/rate-limit error on browser-call realtime (code=${errInfo.code}, type=${errInfo.errorType}): ${errInfo.message}`);
+        // Notify connected chat clients so the UI shows the issue
+        for (const ws of chatClients) {
+          if (isOpen(ws)) jsonSend(ws, {
+            type: 'chat.error',
+            error: errInfo.userMessage,
+            code: errInfo.code || 'rate_limit',
+            timestamp: Date.now(),
+          });
+        }
+      } else {
+        console.error('[ws][openai-realtime] websocket error (browser-call)', err);
+      }
       (session as any).lastModelErrorAtMs = Date.now();
     } catch {}
     closeModel();

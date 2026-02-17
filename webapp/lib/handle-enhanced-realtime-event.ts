@@ -613,10 +613,20 @@ export default function handleEnhancedRealtimeEvent(
       break;
 
     case "chat.error":
+      // Show as a visible assistant-level message so the user can't miss it
+      addTranscriptMessage(
+        `error_${event.timestamp || Date.now()}`,
+        "assistant",
+        `❌ ${event.error || 'An error occurred'}`,
+        "text",
+        false,
+        false
+      );
       addTranscriptBreadcrumb(
         `❌ Chat error: ${event.error}`,
         {
           error: event.error,
+          code: event.code,
           timestamp: event.timestamp
         }
       );

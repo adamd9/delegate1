@@ -15,6 +15,7 @@ import { addConversationEvent } from "../db/sqlite";
 import { replayHistoryOnConnect } from './history';
 import { getAdaptationTextById } from '../adaptations';
 import { createOpenAIClient } from "../services/openaiClient";
+import { classifyOpenAIError } from "../services/openaiErrors";
 
 export function establishChatSocket(
   ws: WebSocket,
@@ -722,11 +723,27 @@ export async function handleTextChatMessage(
     appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_fallback, timestamp: Date.now() });
     return { conversationId, sessionId, requestId, assistantText, supervisor: false };
   } catch (err) {
-    console.error("❌ Error handling text chat message:", err);
+    const errInfo = classifyOpenAIError(err);
+    if (errInfo.isQuotaOrRateLimit) {
+      console.error(`🚫 OpenAI quota/rate-limit error (status=${errInfo.status}, code=${errInfo.code}, type=${errInfo.errorType}): ${errInfo.message}`);
+    } else {
+      console.error("❌ Error handling text chat message:", err);
+    }
     // Ensure clients are unblocked on error
     if (session.currentRequest) {
+      // Send a chat.error so the UI can display a meaningful message
       for (const ws of chatClients) {
-        if (isOpen(ws)) jsonSend(ws, { type: "chat.canceled", request_id: session.currentRequest.id, error: "server_error", timestamp: Date.now() });
+        if (isOpen(ws)) jsonSend(ws, {
+          type: 'chat.error',
+          error: errInfo.userMessage,
+          code: errInfo.isQuotaOrRateLimit ? (errInfo.code || 'rate_limit') : 'server_error',
+          request_id: session.currentRequest.id,
+          timestamp: Date.now(),
+        });
+      }
+      // Also send chat.done so the UI clears the in-flight / working state
+      for (const ws of chatClients) {
+        if (isOpen(ws)) jsonSend(ws, { type: "chat.done", request_id: session.currentRequest.id, timestamp: Date.now() });
       }
       session.currentRequest = undefined;
     }

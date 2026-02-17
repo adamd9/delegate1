@@ -10,6 +10,7 @@ import { appendEvent, ThoughtFlowStepType, ensureSession, endSession } from "../
 import { addConversationEvent } from "../db/sqlite";
 import { chatClients, logsClients } from "../ws/clients";
 import { getChatVoiceConfig } from "../voice/voiceConfig";
+import { classifyOpenAIError } from "../services/openaiErrors";
 
 
 // Accumulator for assistant voice transcript text by item id (server logs only)
@@ -405,7 +406,20 @@ export function establishRealtimeModelConnection() {
   session.modelConn.on("message", (data: RawData) => processRealtimeModelEvent(data, logsClients, chatClients));
   session.modelConn.on("error", (err) => {
     try {
-      console.error('[ws][openai-realtime] websocket error', err);
+      const errInfo = classifyOpenAIError(err);
+      if (errInfo.isQuotaOrRateLimit) {
+        console.error(`🚫 OpenAI quota/rate-limit error on voice realtime (code=${errInfo.code}, type=${errInfo.errorType}): ${errInfo.message}`);
+        for (const ws of chatClients) {
+          if (isOpen(ws)) jsonSend(ws, {
+            type: 'chat.error',
+            error: errInfo.userMessage,
+            code: errInfo.code || 'rate_limit',
+            timestamp: Date.now(),
+          });
+        }
+      } else {
+        console.error('[ws][openai-realtime] websocket error', err);
+      }
       (session as any).lastModelErrorAtMs = Date.now();
     } catch {}
     finalizeRun('error');
@@ -455,6 +469,19 @@ export function processRealtimeModelEvent(
     switch (event.type) {
     case "error": {
       const errMsg = event.error?.message || JSON.stringify(event.error) || 'Unknown error';
+      const errInfo = classifyOpenAIError(event);
+      if (errInfo.isQuotaOrRateLimit) {
+        console.error(`🚫 OpenAI quota/rate-limit error on realtime channel (code=${errInfo.code}, type=${errInfo.errorType}): ${errInfo.message}`);
+        // Notify connected chat clients so the UI can surface the issue
+        for (const ws of chatClients) {
+          if (isOpen(ws)) jsonSend(ws, {
+            type: 'chat.error',
+            error: errInfo.userMessage,
+            code: errInfo.code || 'rate_limit',
+            timestamp: Date.now(),
+          });
+        }
+      }
       console.error(`❌ Realtime API error: ${errMsg}`);
 
       // If the error is about an invalid session parameter (e.g. tools), retry
