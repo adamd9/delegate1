@@ -445,13 +445,6 @@ function shouldForwardToFrontend(event: any): boolean {
   // Suppress harmless "no active response" cancel errors — these occur in the
   // race window between audio finishing and speech_started firing.
   if (event?.type === 'error' && event?.error?.code === 'response_cancel_not_active') {
-    try {
-      console.debug('[BARGE-IN][FORWARDING] Suppressing response_cancel_not_active event to frontend', {
-        lastAssistantItem: session.lastAssistantItem,
-        responseStartTimestamp: session.responseStartTimestamp,
-        responseCumulativeAudioMs: session.responseCumulativeAudioMs,
-      });
-    } catch {}
     return false;
   }
   return true;
@@ -475,6 +468,10 @@ export function processRealtimeModelEvent(
   try {
     switch (event.type) {
     case "error": {
+      if (event?.error?.code === 'response_cancel_not_active') {
+        break;
+      }
+
       const errMsg = event.error?.message || JSON.stringify(event.error) || 'Unknown error';
       const errInfo = classifyOpenAIError(event);
       if (errInfo.isQuotaOrRateLimit) {
@@ -582,10 +579,27 @@ export function processRealtimeModelEvent(
           streamSid: session.streamSid,
         });
       } catch {}
-      // If there is assistant audio that the client may still be playing, truncate (barge-in).
-      // We gate on lastAssistantItem (cleared in response.output_item.done) rather than
-      // responseStartTimestamp (cleared earlier in response.audio.done) so that barge-in
-      // still works while buffered audio is playing after generation finishes.
+      // On any interruption signal, send response.cancel immediately.
+      // We intentionally do this unconditionally for simpler, more reliable barge-in behavior.
+      // If no response is active, the backend suppresses the harmless
+      // response_cancel_not_active error.
+      const modelConn = session.modelConn;
+      if (isOpen(modelConn)) {
+        try {
+          console.debug('[BARGE-IN] Sending unconditional response.cancel on speech_started');
+        } catch {}
+        jsonSend(modelConn, {
+          type: "response.cancel",
+        } as any);
+      } else {
+        try {
+          console.debug('[BARGE-IN] response.cancel skipped on speech_started (model connection not open)', {
+            hasModelConn: !!modelConn,
+            modelReadyState: (modelConn as WebSocket | undefined)?.readyState,
+          });
+        } catch {}
+      }
+
       if (session.lastAssistantItem) {
         try {
           console.debug('[BARGE-IN] Truncation path selected because lastAssistantItem is present', {
@@ -864,18 +878,6 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
 }
 
 /**
- * Checks if a response is currently streaming audio to the client.
- * 
- * This is used to determine if response.cancel should be sent. A response is considered
- * actively streaming if responseStartTimestamp is set (audio deltas are being sent).
- * 
- * @returns true if audio is actively streaming, false otherwise
- */
-function isResponseActivelyStreaming(): boolean {
-  return session.responseStartTimestamp !== undefined;
-}
-
-/**
  * Handles barge-in by truncating the assistant's audio response.
  * 
  * This function is called when the user starts speaking (input_audio_buffer.speech_started)
@@ -886,13 +888,9 @@ function isResponseActivelyStreaming(): boolean {
  * - responseStartTimestamp: Set when audio deltas start, cleared in response.audio.done
  * - responseCumulativeAudioMs: Tracks total audio duration sent to client
  * 
- * Critical: We must check responseStartTimestamp before calling response.cancel to avoid
- * "response_cancel_not_active" errors. This happens when:
- * 1. Audio generation completes (response.audio.done clears responseStartTimestamp)
- * 2. Audio is still playing in client buffer (lastAssistantItem still set)
- * 3. User speaks, triggering this function
- * 
- * In this case, we only need to truncate the conversation item, not cancel an active response.
+ * response.cancel is sent unconditionally in the speech_started event handler.
+ * This function is only responsible for truncating the item to the best known
+ * playback offset and clearing client playback buffers/state.
  */
 function handleTruncation() {
   try {
@@ -941,31 +939,6 @@ function handleTruncation() {
   
   const modelConn = session.modelConn;
   if (isOpen(modelConn)) {
-    // Cancel the in-flight response to stop OpenAI from generating more audio.
-    // CRITICAL: Only send response.cancel if a response is actively streaming audio.
-    // responseStartTimestamp is set when audio deltas begin and cleared when the response
-    // completes or is truncated. Without this guard, we get "response_cancel_not_active"
-    // errors when the user speaks after the assistant finishes (common race condition).
-    if (isResponseActivelyStreaming()) {
-      try {
-        console.debug('[BARGE-IN] Sending response.cancel', {
-          itemId: session.lastAssistantItem,
-          responseStartTimestamp: session.responseStartTimestamp,
-        });
-      } catch {}
-      jsonSend(modelConn, {
-        type: "response.cancel",
-      } as any);
-    } else {
-      try {
-        console.debug('[BARGE-IN] Skipping response.cancel (response not actively streaming)', {
-          itemId: session.lastAssistantItem,
-          responseStartTimestamp: session.responseStartTimestamp,
-          responseCumulativeAudioMs: session.responseCumulativeAudioMs,
-        });
-      } catch {}
-    }
-
     // Truncate the stored conversation item to the point the user actually heard
     try {
       console.debug('[BARGE-IN] Sending conversation.item.truncate', {
@@ -981,7 +954,7 @@ function handleTruncation() {
     } as any);
   } else {
     try {
-      console.debug('[BARGE-IN] Model connection not open; skipping response.cancel and conversation.item.truncate', {
+      console.debug('[BARGE-IN] Model connection not open; skipping conversation.item.truncate', {
         hasModelConn: !!modelConn,
         modelReadyState: (modelConn as WebSocket | undefined)?.readyState,
       });
