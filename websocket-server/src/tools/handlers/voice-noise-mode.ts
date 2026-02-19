@@ -2,7 +2,7 @@ import { FunctionHandler } from "../../agentConfigs/types";
 import { session, isOpen, jsonSend } from "../../session/state";
 import { buildRealtimeSessionConfig, getAudioFormatForSession } from "../../session/call";
 
-type NoiseMode = "normal" | "noisy";
+type NoiseMode = "normal" | "noisy" | "semantic_high" | "semantic_medium";
 
 // ===== Voice Noise Mode (runtime tuning) =====
 // This tool is intended to be used mid-call to change how sensitive turn detection
@@ -70,14 +70,21 @@ export const setVoiceNoiseModeTool: FunctionHandler = {
     name: "set_voice_noise_mode",
     type: "function",
     description:
-      "Adjust voice turn-detection behavior for noisy environments during an active call. Use mode='noisy' to reduce false interruptions from background noise, or mode='normal' to restore defaults.",
+      "Adjust voice turn-detection behavior during an active call. Four modes are available:\n" +
+      "- 'normal': Standard server VAD for quiet environments. Good default sensitivity.\n" +
+      "- 'noisy': High-threshold server VAD to reduce false interruptions from background noise.\n" +
+      "- 'semantic_high': Semantic VAD with high eagerness — responds very quickly to the end of speech; minimal hesitation tolerance. Best when you want snappy, responsive turn-taking.\n" +
+      "- 'semantic_medium': Semantic VAD with medium (auto) eagerness — balanced turn detection that waits a little longer before cutting in. Good all-round semantic mode.",
     parameters: {
       type: "object",
       properties: {
         mode: {
           type: "string",
-          enum: ["normal", "noisy"],
-          description: "Target mode for voice turn detection.",
+          enum: ["normal", "noisy", "semantic_high", "semantic_medium"],
+          description:
+            "Target voice detection mode. 'normal' and 'noisy' use server VAD (threshold-based). " +
+            "'semantic_high' and 'semantic_medium' use semantic VAD (model-based turn detection) " +
+            "with high or medium/auto eagerness respectively.",
         },
         threshold: {
           type: "number",
@@ -107,7 +114,8 @@ export const setVoiceNoiseModeTool: FunctionHandler = {
   },
 
   handler: async (args: any) => {
-    const mode = (args?.mode === "noisy" ? "noisy" : "normal") as NoiseMode;
+    const validModes: NoiseMode[] = ["normal", "noisy", "semantic_high", "semantic_medium"];
+    const mode: NoiseMode = validModes.includes(args?.mode) ? args.mode : "normal";
     const base = preset(mode);
 
     const thresholdRaw = toNumber(args?.threshold);
