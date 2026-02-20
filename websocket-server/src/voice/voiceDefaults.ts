@@ -20,6 +20,8 @@ export interface VoiceModePreset {
 export interface VoiceDefaultsConfig {
   normal: VoiceModePreset;
   noisy: VoiceModePreset;
+  semantic_high: VoiceModePreset;
+  semantic_medium: VoiceModePreset;
 }
 
 const HARDCODED_DEFAULTS: VoiceDefaultsConfig = {
@@ -36,6 +38,20 @@ const HARDCODED_DEFAULTS: VoiceDefaultsConfig = {
     prefix_padding_ms: 220,
     silence_duration_ms: 1310,
     eagerness: 'low',
+  },
+  semantic_high: {
+    vad_type: 'semantic_vad',
+    threshold: 0.5,
+    prefix_padding_ms: 300,
+    silence_duration_ms: 500,
+    eagerness: 'high',
+  },
+  semantic_medium: {
+    vad_type: 'semantic_vad',
+    threshold: 0.5,
+    prefix_padding_ms: 300,
+    silence_duration_ms: 500,
+    eagerness: 'auto',
   },
 };
 
@@ -63,6 +79,8 @@ function loadFromDisk(): VoiceDefaultsConfig {
       return {
         normal: { ...HARDCODED_DEFAULTS.normal, ...parsed.normal },
         noisy: { ...HARDCODED_DEFAULTS.noisy, ...parsed.noisy },
+        semantic_high: { ...HARDCODED_DEFAULTS.semantic_high, ...parsed.semantic_high },
+        semantic_medium: { ...HARDCODED_DEFAULTS.semantic_medium, ...parsed.semantic_medium },
       };
     }
   } catch (err) {
@@ -80,7 +98,7 @@ export function getVoiceDefaults(): VoiceDefaultsConfig {
 }
 
 /** Get the preset for a specific mode. */
-export function getVoiceModePreset(mode: 'normal' | 'noisy'): VoiceModePreset {
+export function getVoiceModePreset(mode: 'normal' | 'noisy' | 'semantic_high' | 'semantic_medium'): VoiceModePreset {
   return getVoiceDefaults()[mode];
 }
 
@@ -91,6 +109,8 @@ export function saveVoiceDefaults(config: VoiceDefaultsConfig): void {
   const validated: VoiceDefaultsConfig = {
     normal: validatePreset(config.normal, HARDCODED_DEFAULTS.normal),
     noisy: validatePreset(config.noisy, HARDCODED_DEFAULTS.noisy),
+    semantic_high: validatePreset(config.semantic_high, HARDCODED_DEFAULTS.semantic_high),
+    semantic_medium: validatePreset(config.semantic_medium, HARDCODED_DEFAULTS.semantic_medium),
   };
   fs.writeFileSync(DEFAULTS_FILE, JSON.stringify(validated, null, 2), 'utf-8');
   cached = validated;
