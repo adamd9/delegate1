@@ -23,11 +23,21 @@ jobs:
         with:
           node-version: '22.x'
 
+      - name: Install dependencies and build frontend
+        run: |
+          cd webapp
+          npm install
+          npm run build
+
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: .
+          path: |
+            webapp/.next
+            webapp/public
+            webapp/package.json
+            webapp/next.config.mjs
 
   deploy:
     runs-on: ubuntu-latest
@@ -55,5 +65,5 @@ jobs:
         with:
           app-name: 'hk-drop37'
           slot-name: 'Production'
-          package: .
+          package: webapp
           
