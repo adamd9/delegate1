@@ -51,6 +51,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: node-app
+          path: ${{ github.workspace }}/deploy
       
       - name: Login to Azure
         uses: azure/login@v2
@@ -65,5 +66,5 @@ jobs:
         with:
           app-name: 'hk-drop37'
           slot-name: 'Production'
-          package: webapp
+          package: ${{ github.workspace }}/deploy
           
