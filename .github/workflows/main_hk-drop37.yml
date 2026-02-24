@@ -67,4 +67,5 @@ jobs:
           app-name: 'hk-drop37'
           slot-name: 'Production'
           package: ${{ github.workspace }}/deploy
+          startup-command: 'npm start'
           

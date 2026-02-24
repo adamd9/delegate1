@@ -65,4 +65,5 @@ jobs:
           app-name: 'hk-api-drop37'
           slot-name: 'Production'
           package: ${{ github.workspace }}/deploy
+          startup-command: 'node dist/server.js'
           
