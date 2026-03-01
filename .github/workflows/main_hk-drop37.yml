@@ -28,6 +28,7 @@ jobs:
           cd webapp
           npm install
           npm run build
+          npm prune --omit=dev
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -38,6 +39,7 @@ jobs:
             webapp/public
             webapp/package.json
             webapp/next.config.mjs
+            webapp/node_modules
 
   deploy:
     runs-on: ubuntu-latest

@@ -28,6 +28,7 @@ jobs:
           cd websocket-server
           npm install
           npm run build
+          npm prune --omit=dev
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -36,6 +37,7 @@ jobs:
           path: |
             websocket-server/dist
             websocket-server/package.json
+            websocket-server/node_modules
 
   deploy:
     runs-on: ubuntu-latest
