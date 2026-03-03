@@ -21,7 +21,7 @@ jobs:
       - name: Set up Node.js version
         uses: actions/setup-node@v3
         with:
-          node-version: '22.x'
+          node-version: '24.x'
 
       - name: Install dependencies and build frontend
         run: |          
@@ -34,7 +34,8 @@ jobs:
           cp -r webapp/public deploy-frontend/
           cp webapp/package.json deploy-frontend/
           cp webapp/next.config.mjs deploy-frontend/
-          cd deploy-frontend && npm install --omit=dev
+          cp -r webapp/node_modules deploy-frontend/
+          cd deploy-frontend
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4

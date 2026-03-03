@@ -21,7 +21,7 @@ jobs:
       - name: Set up Node.js version
         uses: actions/setup-node@v3
         with:
-          node-version: '22.x'
+          node-version: '24.x'
 
       - name: Install dependencies and build backend
         run: |          
@@ -32,7 +32,8 @@ jobs:
           mkdir -p deploy-backend
           cp -r websocket-server/dist deploy-backend/
           cp websocket-server/package.json deploy-backend/
-          cd deploy-backend && npm install --omit=dev
+          cp -r websocket-server/node_modules deploy-backend/
+          cd deploy-backend && npm prune --omit=dev
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
