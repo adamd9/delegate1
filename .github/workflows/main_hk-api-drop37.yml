@@ -24,9 +24,8 @@ jobs:
           node-version: '22.x'
 
       - name: Install dependencies and build backend
-        run: |
-          npm install
-          cd websocket-server && npm run build
+        run: |          
+          cd websocket-server && npm install && npm run build
 
       - name: Prepare deployment package
         run: |
