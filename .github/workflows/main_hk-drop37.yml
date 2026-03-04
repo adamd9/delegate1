@@ -34,8 +34,7 @@ jobs:
           cp -r webapp/public deploy-frontend/
           cp webapp/package.json deploy-frontend/
           cp webapp/next.config.mjs deploy-frontend/
-          cp -r webapp/node_modules deploy-frontend/
-          cd deploy-frontend
+          cp -r node_modules deploy-frontend/
 
       - name: Verify next is in deploy package
         run: |
