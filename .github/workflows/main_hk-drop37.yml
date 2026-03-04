@@ -24,23 +24,23 @@ jobs:
           node-version: '24.x'
 
       - name: Install dependencies and build frontend
+        env:
+          NEXT_PUBLIC_REMOTE_BACKEND: ${{ vars.NEXT_PUBLIC_REMOTE_BACKEND }}
         run: |          
           cd webapp && npm install && npm run build
 
       - name: Prepare deployment package
         run: |
-          mkdir -p deploy-frontend
-          cp -r webapp/.next deploy-frontend/
-          cp -r webapp/public deploy-frontend/
-          cp webapp/package.json deploy-frontend/
-          cp webapp/next.config.mjs deploy-frontend/
-          cp -r node_modules deploy-frontend/
+          cp -r webapp/public webapp/.next/standalone/webapp/
+          cp -r webapp/.next/static webapp/.next/standalone/webapp/.next/
+          # Merge root standalone node_modules into webapp dir so server.js finds them without the parent directory
+          cp -rn webapp/.next/standalone/node_modules/. webapp/.next/standalone/webapp/node_modules/
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: deploy-frontend
+          path: webapp/.next/standalone/webapp
 
   deploy:
     runs-on: ubuntu-latest
