@@ -36,14 +36,28 @@ jobs:
           npm install
           # Run next build directly - build-info.json already generated above
           npx next build
-          cp -r public .next/standalone/
-          cp -r .next/static .next/standalone/.next/
+          # Assemble flat deploy package
+          mkdir -p /tmp/deploy-frontend
+          cp .next/standalone/server.js .next/standalone/package.json /tmp/deploy-frontend/
+          cp -r public /tmp/deploy-frontend/
+          cp -r .next/standalone/.next /tmp/deploy-frontend/.next
+          cp -r .next/static /tmp/deploy-frontend/.next/
+          # Create node_modules.tar.gz from standalone's self-contained node_modules
+          # (overwrites any stale Oryx tar.gz; Azure startup extracts this to /node_modules)
+          tar -czf /tmp/deploy-frontend/node_modules.tar.gz -C .next/standalone/node_modules .
+          echo "Deploy package contents (including hidden):"
+          ls -la /tmp/deploy-frontend/
+          echo "Deploy .next contents:"
+          ls /tmp/deploy-frontend/.next/
+          echo "next in standalone node_modules?"
+          ls .next/standalone/node_modules/next/package.json
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: /tmp/webapp-build/.next/standalone
+          path: /tmp/deploy-frontend
+          include-hidden-files: true
 
   deploy:
     runs-on: ubuntu-latest
