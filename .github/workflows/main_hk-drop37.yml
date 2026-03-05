@@ -26,21 +26,24 @@ jobs:
       - name: Install dependencies and build frontend
         env:
           NEXT_PUBLIC_REMOTE_BACKEND: ${{ vars.NEXT_PUBLIC_REMOTE_BACKEND }}
-        run: |          
-          cd webapp && npm install && npm run build
-
-      - name: Prepare deployment package
         run: |
-          cp -r webapp/public webapp/.next/standalone/webapp/
-          cp -r webapp/.next/static webapp/.next/standalone/webapp/.next/
-          # Merge root standalone node_modules into webapp dir so server.js finds them without the parent directory
-          cp -rn webapp/.next/standalone/node_modules/. webapp/.next/standalone/webapp/node_modules/
+          # Generate build info while still in the git repo
+          node webapp/scripts/write-build-info.js
+          # Build in a clean temp directory with no parent workspace package.json
+          # so npm installs all deps locally (no hoisting to monorepo root)
+          cp -r webapp /tmp/webapp-build
+          cd /tmp/webapp-build
+          npm install
+          # Run next build directly - build-info.json already generated above
+          npx next build
+          cp -r public .next/standalone/
+          cp -r .next/static .next/standalone/.next/
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: webapp/.next/standalone/webapp
+          path: /tmp/webapp-build/.next/standalone
 
   deploy:
     runs-on: ubuntu-latest
