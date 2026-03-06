@@ -15,6 +15,15 @@ const discoveredHandlers: FunctionHandler[] = [];
 // map namespaced name -> { serverId, toolName }
 const nameToRoute = new Map<string, { serverId: string; toolName: string }>();
 
+export type ServerDiscoveryStatus = {
+  status: 'ok' | 'error';
+  toolCount: number;
+  error?: string;
+};
+
+// Per-server discovery outcomes from the last performDiscovery() run
+const discoveryStatus = new Map<string, ServerDiscoveryStatus>();
+
 function toSchema(tool: DiscoveredTool, serverName: string) {
   const name = `mcp.${serverName}.${tool.name}`;
   const inputSchema = tool.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : { type: 'object', properties: {}, required: [] };
@@ -30,6 +39,7 @@ function toSchema(tool: DiscoveredTool, serverName: string) {
 async function performDiscovery() {
   discoveredHandlers.length = 0;
   nameToRoute.clear();
+  discoveryStatus.clear();
   mcpClient.reset();
 
   try {
@@ -56,10 +66,12 @@ async function performDiscovery() {
     const conn = await mcpClient.connectRemoteHttpServer(s);
     if (conn.status !== 'success') {
       log.error('Failed to connect to MCP server', s.name, conn.error);
+      discoveryStatus.set(s.name, { status: 'error', toolCount: 0, error: conn.error || 'Connection failed' });
       continue;
     }
     const serverId = conn.serverId;
     const tools = conn.tools || [];
+    discoveryStatus.set(s.name, { status: 'ok', toolCount: tools.length });
     for (const t of tools) {
       const schema = toSchema(t, s.name);
       const handler: FunctionHandler = {
@@ -112,6 +124,10 @@ export async function initMCPDiscovery(options?: { force?: boolean }) {
 
 export function getDiscoveredMcpHandlers(): FunctionHandler[] {
   return discoveredHandlers;
+}
+
+export function getDiscoveryStatus(): Record<string, ServerDiscoveryStatus> {
+  return Object.fromEntries(discoveryStatus.entries());
 }
 
 export function getDiscoveredMcpFunctionSchemas(): any[] {

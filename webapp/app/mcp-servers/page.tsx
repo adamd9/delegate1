@@ -1,13 +1,14 @@
 "use client";
 
 import React from 'react';
-import { fetchMcpConfig, updateMcpConfig, McpServerConfig } from '@/lib/mcp-config-client';
+import { fetchMcpConfig, updateMcpConfig, McpServerConfig, McpServerStatus } from '@/lib/mcp-config-client';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 
 export default function McpServersPage() {
   const [text, setText] = React.useState('');
   const [servers, setServers] = React.useState<McpServerConfig[]>([]);
+  const [discoveryStatus, setDiscoveryStatus] = React.useState<Record<string, McpServerStatus>>({});
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -23,6 +24,7 @@ export default function McpServersPage() {
       setText(data.text);
       setOriginalText(data.text);
       setServers(data.servers);
+      setDiscoveryStatus(data.discoveryStatus);
     } catch (err: any) {
       setError(err?.message || String(err));
     } finally {
@@ -41,6 +43,7 @@ export default function McpServersPage() {
     try {
       const result = await updateMcpConfig(text);
       setServers(result.servers);
+      setDiscoveryStatus(result.discoveryStatus);
       setOriginalText(text);
       setStatus('Configuration saved and MCP discovery reloaded.');
     } catch (err: any) {
@@ -79,17 +82,33 @@ export default function McpServersPage() {
             {servers.length === 0 && (
               <div className="text-sm text-gray-500 border rounded p-3">No MCP servers configured.</div>
             )}
-            {servers.map((server) => (
+            {servers.map((server) => {
+              const st = discoveryStatus[server.name];
+              return (
               <div key={`${server.name}-${server.url}`} className="border rounded p-3 space-y-1">
                 <div className="flex items-center justify-between">
                   <div className="font-medium">{server.name}</div>
-                  <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">{server.type}</span>
+                  <div className="flex items-center gap-2">
+                    {st ? (
+                      st.status === 'ok' ? (
+                        <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 font-medium">
+                          ✓ {st.toolCount} {st.toolCount === 1 ? 'tool' : 'tools'}
+                        </span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium" title={st.error}>
+                          ✗ {st.error || 'error'}
+                        </span>
+                      )
+                    ) : null}
+                    <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">{server.type}</span>
+                  </div>
                 </div>
                 <div className="text-sm text-gray-600 break-all">{server.url}</div>
                 {server.description && <div className="text-xs text-gray-500">{server.description}</div>}
                 {server.note && <div className="text-xs text-gray-400">{server.note}</div>}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
         <div className="space-y-2">

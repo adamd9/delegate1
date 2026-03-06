@@ -8,6 +8,12 @@ export type McpServerConfig = {
   note?: string;
 };
 
+export type McpServerStatus = {
+  status: 'ok' | 'error';
+  toolCount: number;
+  error?: string;
+};
+
 export async function fetchMcpConfig() {
   const res = await fetch(`${getBackendUrl()}/api/mcp/config`, { cache: 'no-store' });
   if (!res.ok) {
@@ -17,6 +23,7 @@ export async function fetchMcpConfig() {
   return {
     text: String(data.text ?? ''),
     servers: Array.isArray(data.servers) ? (data.servers as McpServerConfig[]) : [],
+    discoveryStatus: (data.discoveryStatus ?? {}) as Record<string, McpServerStatus>,
   };
 }
 
@@ -38,5 +45,6 @@ export async function updateMcpConfig(text: string) {
   return {
     status: data.status as string,
     servers: Array.isArray(data.servers) ? (data.servers as McpServerConfig[]) : [],
+    discoveryStatus: (data.discoveryStatus ?? {}) as Record<string, McpServerStatus>,
   };
 }

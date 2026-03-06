@@ -249,6 +249,19 @@ export default function SettingsPage() {
     };
   }, [loadCatalog, loadAgents]);
 
+  // Re-fetch catalog data whenever the user navigates to the Tools tab so
+  // newly-discovered MCP tools (registered after saving on the MCP page) are
+  // visible immediately without requiring a full page reload.
+  const prevActiveRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (active === 'catalog' && prevActiveRef.current !== 'catalog') {
+      cancelRef.current = false;
+      void loadCatalog();
+      void loadAgents();
+    }
+    prevActiveRef.current = active;
+  }, [active, loadCatalog, loadAgents]);
+
   const modifyAllowNames = useCallback(
     (agentId: string, updater: (current: string[]) => string[]) => {
       setAllowNameDrafts((prev) => {
