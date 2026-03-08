@@ -71,6 +71,11 @@ jobs:
         working-directory: websocket-server
         run: npm run build
 
+      - name: Write build info
+        run: |
+          echo "{\"commitId\":\"$(git rev-parse --short HEAD)\",\"commitMessage\":$(git log -1 --pretty=%s | jq -Rs .)}" \
+            > websocket-server/client/build-info.json
+
       - name: List build outputs
         run: ls -la websocket-server/dist && ls -la websocket-server/webapp-out
 
@@ -85,6 +90,7 @@ jobs:
             websocket-server/package.json
             websocket-server/scripts
             websocket-server/webapp-out
+            websocket-server/client
 
   trigger-dockerserver-deploy:
     needs: [precheck, build]
