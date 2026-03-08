@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ThoughtFlow Viewer · HK</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #f9fafb; display: flex; flex-direction: column; height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; font-size: 13px; }
+    header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px; border-bottom: 1px solid #e5e7eb;
+      background: #fff; flex-shrink: 0; overflow-x: auto;
+    }
+    .hdr-title { font-weight: 600; white-space: nowrap; font-size: 13px; }
+    .hdr-id { color: #6b7280; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+    .spacer { flex: 1; min-width: 8px; }
+    .ctrl-group { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+    label.ctrl { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #374151; white-space: nowrap; cursor: pointer; }
+    input[type="range"] { width: 80px; }
+    .scale-val { font-size: 12px; color: #374151; width: 36px; text-align: right; }
+    .hdr-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 12px; padding: 4px 10px; border-radius: 5px;
+      border: 1px solid #d1d5db; background: #fff; color: #374151;
+      cursor: pointer; white-space: nowrap;
+    }
+    .hdr-btn:hover { background: #f9fafb; }
+    main { flex: 1; overflow: auto; padding: 16px; background: #f9fafb; }
+    .svg-wrap { transform-origin: top left; display: inline-block; }
+    .svg-wrap svg { max-width: none !important; }
+    .status { padding: 32px; text-align: center; color: #9ca3af; font-size: 13px; }
+    .error { color: #dc2626; }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="hdr-btn" href="/" style="text-decoration:none;">← back</a>
+    <div class="hdr-title">ThoughtFlow D2 Viewer</div>
+    <div class="hdr-id" id="id-label"></div>
+    <div class="spacer"></div>
+    <div class="ctrl-group">
+      <label class="ctrl">
+        Scale
+        <input type="range" id="scale-range" min="0.25" max="2" step="0.05" value="0.6" />
+        <span class="scale-val" id="scale-val">60%</span>
+      </label>
+      <label class="ctrl">
+        <input type="checkbox" id="sketch-chk" /> Sketch
+      </label>
+      <label class="ctrl">
+        <input type="checkbox" id="dark-chk" /> Dark
+      </label>
+      <button class="hdr-btn" id="copy-d2-btn">Copy D2</button>
+      <button class="hdr-btn" id="copy-json-btn">Copy JSON</button>
+      <a class="hdr-btn" id="open-d2-link" href="#" target="_blank" rel="noopener">Open .d2</a>
+      <a class="hdr-btn" id="open-json-link" href="#" target="_blank" rel="noopener">Open JSON</a>
+    </div>
+  </header>
+  <main id="main-content">
+    <div class="status" id="status-msg">No ID specified. Append ?id=… to the address.</div>
+    <div class="svg-wrap" id="svg-wrap" style="display:none;"></div>
+  </main>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const id = params.get('id') || '';
+  const backendBase = '';  // same-origin
+
+  document.getElementById('id-label').textContent = id ? `${id}.d2` : '';
+
+  const d2Url = `${backendBase}/thoughtflow/raw/${id}.d2`;
+  const jsonUrl = `${backendBase}/thoughtflow/${id}.json`;
+
+  document.getElementById('open-d2-link').href = d2Url;
+  document.getElementById('open-json-link').href = jsonUrl;
+
+  let d2Module = null;
+  let d2Instance = null;
+  let d2Text = '';
+  let rendering = false;
+
+  async function loadD2Module() {
+    if (d2Module) return;
+    const mod = await import('https://cdn.jsdelivr.net/npm/@terrastruct/d2@0.1.33/+esm');
+    d2Module = mod;
+    const D2 = mod.D2;
+    d2Instance = new D2();
+  }
+
+  async function render() {
+    if (!id || rendering) return;
+    rendering = true;
+    const statusEl = document.getElementById('status-msg');
+    const svgWrap = document.getElementById('svg-wrap');
+    statusEl.textContent = 'Loading…';
+    statusEl.className = 'status';
+    statusEl.style.display = '';
+    svgWrap.style.display = 'none';
+    svgWrap.innerHTML = '';
+
+    const sketch = document.getElementById('sketch-chk').checked;
+    const dark = document.getElementById('dark-chk').checked;
+    const scale = parseFloat(document.getElementById('scale-range').value);
+
+    try {
+      await loadD2Module();
+      const src = await fetch(d2Url, { cache: 'no-store' });
+      if (!src.ok) throw new Error(`Failed to load D2 source (${src.status})`);
+      d2Text = await src.text();
+
+      const result = await d2Instance.compile(d2Text, { sketch, theme: dark ? '200' : '0' });
+      const svg = await d2Instance.render(result.diagram, result.renderOptions);
+
+      svgWrap.innerHTML = svg;
+      svgWrap.style.transform = `scale(${scale})`;
+      svgWrap.style.display = 'inline-block';
+      statusEl.style.display = 'none';
+    } catch (e) {
+      statusEl.textContent = `Error: ${e.message}`;
+      statusEl.className = 'status error';
+    } finally {
+      rendering = false;
+    }
+  }
+
+  function updateScale() {
+    const v = parseFloat(document.getElementById('scale-range').value);
+    document.getElementById('scale-val').textContent = Math.round(v * 100) + '%';
+    document.getElementById('svg-wrap').style.transform = `scale(${v})`;
+  }
+
+  document.getElementById('scale-range').addEventListener('input', updateScale);
+  document.getElementById('sketch-chk').addEventListener('change', render);
+  document.getElementById('dark-chk').addEventListener('change', render);
+
+  async function copyText(txt) {
+    try { await navigator.clipboard.writeText(txt); return true; } catch { return false; }
+  }
+
+  document.getElementById('copy-d2-btn').addEventListener('click', async () => {
+    if (!d2Text) return;
+    const ok = await copyText(d2Text);
+    if (ok) {
+      const btn = document.getElementById('copy-d2-btn');
+      btn.textContent = 'Copied D2';
+      setTimeout(() => btn.textContent = 'Copy D2', 1200);
+    }
+  });
+
+  document.getElementById('copy-json-btn').addEventListener('click', async () => {
+    try {
+      const res = await fetch(jsonUrl, { cache: 'no-store' });
+      if (!res.ok) throw new Error('Failed');
+      const txt = await res.text();
+      const ok = await copyText(txt);
+      if (ok) {
+        const btn = document.getElementById('copy-json-btn');
+        btn.textContent = 'Copied JSON';
+        setTimeout(() => btn.textContent = 'Copy JSON', 1200);
+      }
+    } catch {}
+  });
+
+  if (id) render();
+</script>
+</body>
+</html>

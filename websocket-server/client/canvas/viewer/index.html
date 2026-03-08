@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Canvas Viewer · HK</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #fff; display: flex; flex-direction: column; height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; font-size: 13px; }
+    header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px; border-bottom: 1px solid #e5e7eb;
+      background: #fff; flex-shrink: 0;
+    }
+    .title-block { min-width: 0; }
+    .title-sub { font-size: 10px; color: #9ca3af; line-height: 1.2; }
+    .title-main { font-size: 14px; font-weight: 500; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .spacer { flex: 1; }
+    .hdr-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 12px; padding: 4px 10px; border-radius: 5px;
+      border: 1px solid #d1d5db; background: #fff; color: #374151;
+      cursor: pointer; white-space: nowrap;
+    }
+    .hdr-btn:hover:not(:disabled) { background: #f9fafb; }
+    .hdr-btn:disabled { opacity: 0.4; cursor: default; }
+    main { flex: 1; background: #fff; }
+    iframe { width: 100%; height: 100%; border: none; display: block; }
+    .empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #9ca3af; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <button class="hdr-btn" id="back-btn" onclick="window.history.back()">← back</button>
+    <div class="title-block">
+      <div class="title-sub">Canvas</div>
+      <div class="title-main" id="title-el">viewer</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="hdr-btn" id="open-btn" disabled>↗ open</button>
+    <button class="hdr-btn" id="reload-btn" disabled>↺ reload</button>
+    <button class="hdr-btn" id="copy-btn">⧉ copy link</button>
+  </header>
+  <main id="main-content">
+    <div class="empty" id="empty-msg">No canvas URL provided. Append ?url=… to the address.</div>
+  </main>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const url = params.get('url') || '';
+  const title = params.get('title') || '';
+
+  document.getElementById('title-el').textContent = title || url || 'viewer';
+  document.title = (title || 'Canvas') + ' · HK';
+
+  if (url) {
+    document.getElementById('empty-msg').style.display = 'none';
+    let key = 0;
+    function buildIframe() {
+      const main = document.getElementById('main-content');
+      const old = main.querySelector('iframe');
+      if (old) old.remove();
+      const iframe = document.createElement('iframe');
+      iframe.src = url + (key ? `#reload=${key}` : '');
+      iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms allow-popups');
+      iframe.setAttribute('referrerpolicy', 'no-referrer');
+      iframe.title = title || 'Canvas';
+      main.appendChild(iframe);
+    }
+    buildIframe();
+    document.getElementById('open-btn').disabled = false;
+    document.getElementById('reload-btn').disabled = false;
+    document.getElementById('open-btn').addEventListener('click', () => window.open(url, '_blank', 'noopener,noreferrer'));
+    document.getElementById('reload-btn').addEventListener('click', () => { key++; buildIframe(); });
+  }
+
+  document.getElementById('copy-btn').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(location.href);
+      const btn = document.getElementById('copy-btn');
+      btn.textContent = '✓ copied';
+      setTimeout(() => btn.textContent = '⧉ copy link', 1500);
+    } catch {}
+  });
+</script>
+</body>
+</html>

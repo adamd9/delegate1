@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Logs · HK</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #1b1d27; --surface: #22253a; --surface2: #2a2d42; --surface3: #181a26;
+      --border: #2e3150; --border2: #383b5e; --accent: #818cf8; --green: #34d399;
+      --amber: #fbbf24; --red: #f87171; --blue: #60a5fa;
+      --text: #e2e4f0; --text-mid: #6b7194; --text-dim: #3d4268;
+      --font: 'SF Mono','Fira Code','Consolas',monospace;
+      --font-ui: -apple-system,BlinkMacSystemFont,'Inter',sans-serif;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font-ui); min-height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
+    header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface3); flex-shrink: 0; gap: 12px; }
+    .hdr-left { display: flex; align-items: center; gap: 12px; }
+    .back-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border2); background: transparent; color: var(--text-mid); font-size: 11px; font-family: var(--font); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+    .back-btn:hover { color: var(--text); }
+    h1 { font-size: 14px; font-weight: 600; color: var(--text); }
+    .hdr-right { display: flex; align-items: center; gap: 8px; }
+    .raw-link { font-size: 11px; color: var(--accent); text-decoration: none; font-family: var(--font); }
+    .raw-link:hover { text-decoration: underline; }
+    .refresh-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border2); background: transparent; color: var(--text-mid); font-size: 11px; font-family: var(--font); cursor: pointer; }
+    .refresh-btn:hover { color: var(--text); }
+    .auto-label { font-size: 11px; color: var(--text-mid); display: flex; align-items: center; gap: 5px; font-family: var(--font); cursor: pointer; }
+    .status-bar { font-size: 10px; color: var(--text-dim); font-family: var(--font); padding: 4px 20px; border-bottom: 1px solid var(--border); background: var(--surface3); }
+    #log-container { flex: 1; overflow-y: auto; padding: 12px 20px; font-family: var(--font); font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+    #log-container::-webkit-scrollbar { width: 4px; }
+    #log-container::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+    .log-line { display: block; }
+    /* ANSI colors */
+    .a30{color:#555} .a31{color:#f87171} .a32{color:#34d399} .a33{color:#fbbf24}
+    .a34{color:#60a5fa} .a35{color:#c084fc} .a36{color:#22d3ee} .a37{color:#e2e4f0}
+    .a90{color:#6b7194} .a91{color:#f87171} .a92{color:#34d399} .a93{color:#fbbf24}
+    .a94{color:#818cf8} .a95{color:#a78bfa} .a96{color:#67e8f9} .a97{color:#f3f4f6}
+    .a1{font-weight:700} .a2{opacity:0.6} .a3{font-style:italic} .a4{text-decoration:underline}
+    .empty { display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-dim); font-family: var(--font); font-size: 12px; flex: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="hdr-left">
+      <a class="back-btn" href="/">← back</a>
+      <h1>Backend Logs</h1>
+    </div>
+    <div class="hdr-right">
+      <label class="auto-label">
+        <input type="checkbox" id="auto-refresh" checked style="width:12px;height:12px;" />
+        auto-refresh
+      </label>
+      <button class="refresh-btn" id="refresh-btn">refresh</button>
+      <a id="raw-link" class="raw-link" target="_blank" rel="noopener noreferrer">raw</a>
+    </div>
+  </header>
+  <div id="status-bar" class="status-bar">loading…</div>
+  <div id="log-container"><div class="empty">loading…</div></div>
+
+<script>
+  const ANSI_RE = /\u001b\[(\d+(?:;\d+)*)m/g;
+
+  const ansiMap = {
+    '1':'a1','2':'a2','3':'a3','4':'a4',
+    '30':'a30','31':'a31','32':'a32','33':'a33','34':'a34','35':'a35','36':'a36','37':'a37',
+    '90':'a90','91':'a91','92':'a92','93':'a93','94':'a94','95':'a95','96':'a96','97':'a97',
+  };
+
+  function ansiToHtml(text) {
+    let openSpans = 0;
+    let result = '';
+    let last = 0;
+    let m;
+    ANSI_RE.lastIndex = 0;
+    while ((m = ANSI_RE.exec(text)) !== null) {
+      result += esc(text.slice(last, m.index));
+      last = m.index + m[0].length;
+      const codes = m[1].split(';');
+      for (const code of codes) {
+        if (code === '0' || code === '') {
+          while (openSpans-- > 0) result += '</span>';
+          openSpans = 0;
+        } else if (ansiMap[code]) {
+          result += `<span class="${ansiMap[code]}">`;
+          openSpans++;
+        }
+      }
+    }
+    result += esc(text.slice(last));
+    while (openSpans-- > 0) result += '</span>';
+    return result;
+  }
+
+  function esc(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  const backendBase = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? `${location.protocol}//${location.hostname}:${location.port || 80}`
+    : '';
+  const logsUrl = `${backendBase}/logs`;
+  document.getElementById('raw-link').href = logsUrl;
+  document.getElementById('raw-link').textContent = `raw: ${logsUrl}`;
+
+  let lastFetch = null;
+  let intervalId = null;
+
+  async function fetchLogs() {
+    try {
+      const res = await fetch(logsUrl, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      const container = document.getElementById('log-container');
+      const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 40;
+
+      const lines = text.split('\n');
+      container.innerHTML = lines.map(line =>
+        `<span class="log-line">${ansiToHtml(line)}</span>`
+      ).join('\n');
+
+      if (wasAtBottom) container.scrollTop = container.scrollHeight;
+
+      lastFetch = new Date();
+      document.getElementById('status-bar').textContent = `last updated ${lastFetch.toLocaleTimeString()} · ${lines.length} lines`;
+    } catch (e) {
+      document.getElementById('status-bar').textContent = `fetch error: ${e.message}`;
+    }
+  }
+
+  function startAutoRefresh() {
+    stopAutoRefresh();
+    intervalId = setInterval(fetchLogs, 1500);
+  }
+
+  function stopAutoRefresh() {
+    if (intervalId) { clearInterval(intervalId); intervalId = null; }
+  }
+
+  document.getElementById('auto-refresh').addEventListener('change', (e) => {
+    if (e.target.checked) startAutoRefresh();
+    else stopAutoRefresh();
+  });
+
+  document.getElementById('refresh-btn').addEventListener('click', fetchLogs);
+
+  fetchLogs();
+  startAutoRefresh();
+</script>
+</body>
+</html>

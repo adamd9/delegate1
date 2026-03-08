@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Direct Voice · HK</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #10b981, #06b6d4);
+      display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+      font-size: 13px; color: #fff; padding: 16px;
+    }
+    .card {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(16px);
+      border-radius: 24px; padding: 32px;
+      max-width: 480px; width: 100%;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+    }
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+    .sub { color: rgba(255,255,255,0.7); margin-bottom: 28px; font-size: 13px; }
+    .status-box {
+      padding: 14px; border-radius: 12px; margin-bottom: 20px;
+      font-size: 15px; font-weight: 600; text-align: center;
+      transition: background 0.2s;
+    }
+    .status-box.connected    { background: rgba(34,197,94,0.2); color: #bbf7d0; }
+    .status-box.connecting   { background: rgba(234,179,8,0.2); color: #fef08a; }
+    .status-box.disconnected { background: rgba(239,68,68,0.2); color: #fecaca; }
+    .url-input {
+      width: 100%; padding: 11px 14px; border-radius: 12px;
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+      color: #fff; font-size: 13px; outline: none; margin-bottom: 10px;
+    }
+    .url-input::placeholder { color: rgba(255,255,255,0.5); }
+    .url-input:focus { border-color: rgba(255,255,255,0.5); }
+    .connect-btn {
+      width: 100%; padding: 12px; border-radius: 12px;
+      font-size: 14px; font-weight: 600; cursor: pointer; border: none;
+      transition: background 0.15s;
+    }
+    .connect-btn.idle    { background: #10b981; color: #fff; }
+    .connect-btn.idle:hover { background: #059669; }
+    .connect-btn.active  { background: #ef4444; color: #fff; }
+    .connect-btn.active:hover { background: #dc2626; }
+    .connect-btn.busy    { background: rgba(107,114,128,0.5); color: rgba(255,255,255,0.6); cursor: not-allowed; }
+    .info-row { font-size: 11px; color: rgba(255,255,255,0.55); margin-top: 10px; line-height: 1.6; }
+    .log-box {
+      background: rgba(0,0,0,0.2); border-radius: 12px;
+      padding: 14px; margin-top: 16px; max-height: 220px; overflow-y: auto;
+    }
+    .log-box::-webkit-scrollbar { width: 3px; }
+    .log-box::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+    .log-box h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+    .log-entry { font-size: 12px; line-height: 1.5; }
+    .log-entry.info    { color: rgba(255,255,255,0.8); }
+    .log-entry.success { color: #86efac; }
+    .log-entry.error   { color: #fca5a5; }
+    .log-empty { font-size: 12px; color: rgba(255,255,255,0.4); font-style: italic; }
+    .back-link { display: inline-block; margin-top: 16px; font-size: 12px; color: rgba(255,255,255,0.6); text-decoration: none; }
+    .back-link:hover { color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>HK</h1>
+    <div class="sub">Direct Voice · Browser → Backend → OpenAI</div>
+
+    <div class="status-box disconnected" id="status-box">Disconnected</div>
+
+    <input type="text" class="url-input" id="backend-url" placeholder="Backend URL (leave blank for same origin)" />
+
+    <button class="connect-btn idle" id="connect-btn">Connect &amp; Stream Mic</button>
+
+    <div class="info-row" id="info-row">
+      <div id="ws-label"></div>
+      <div>Upstream: PCM16 mono @ 24kHz (resampled from browser)</div>
+      <div>Downstream: PCM16 mono @ 24kHz</div>
+    </div>
+
+    <div class="log-box" id="log-box">
+      <h3>Logs</h3>
+      <div id="log-list"><div class="log-empty">No logs yet…</div></div>
+    </div>
+
+    <a class="back-link" href="/">← back to main</a>
+  </div>
+
+<script>
+  // ── Audio helpers ─────────────────────────────────────────────────────────────
+  function base64ToInt16(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Int16Array(bytes.buffer);
+  }
+
+  function int16ToBase64(i16) {
+    const bytes = new Uint8Array(i16.buffer);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+
+  function clampToInt16(v) {
+    const x = Math.max(-1, Math.min(1, v));
+    return ((x < 0 ? x * 0x8000 : x * 0x7fff) | 0);
+  }
+
+  function resampleFloat32Linear(input, inRate, outRate) {
+    if (inRate === outRate) return input;
+    const ratio = inRate / outRate;
+    const outLength = Math.floor(input.length / ratio);
+    const out = new Float32Array(outLength);
+    for (let i = 0; i < outLength; i++) {
+      const t = i * ratio;
+      const i0 = Math.floor(t);
+      const i1 = Math.min(i0 + 1, input.length - 1);
+      const frac = t - i0;
+      out[i] = input[i0] * (1 - frac) + input[i1] * frac;
+    }
+    return out;
+  }
+
+  // ── State ─────────────────────────────────────────────────────────────────────
+  let ws = null;
+  let audioCtx = null;
+  let micStream = null;
+  let micSource = null;
+  let processor = null;
+  let playbackTime = 0;
+  let playbackMutedUntil = 0;
+  let playbackSources = new Set();
+  let holdSources = new Set();
+  let isConnected = false;
+  let isConnecting = false;
+
+  // ── Logging ───────────────────────────────────────────────────────────────────
+  function addLog(msg, type = 'info') {
+    const list = document.getElementById('log-list');
+    const empty = list.querySelector('.log-empty');
+    if (empty) empty.remove();
+    const ts = new Date().toLocaleTimeString();
+    const div = document.createElement('div');
+    div.className = `log-entry ${type}`;
+    div.textContent = `[${ts}] ${msg}`;
+    list.appendChild(div);
+    // Keep max 50 entries
+    const entries = list.querySelectorAll('.log-entry');
+    if (entries.length > 50) entries[0].remove();
+    document.getElementById('log-box').scrollTop = document.getElementById('log-box').scrollHeight;
+  }
+
+  function setStatus(text, cls) {
+    const box = document.getElementById('status-box');
+    box.textContent = text;
+    box.className = `status-box ${cls}`;
+  }
+
+  function updateBtn() {
+    const btn = document.getElementById('connect-btn');
+    if (isConnecting) {
+      btn.textContent = 'Connecting…';
+      btn.className = 'connect-btn busy';
+    } else if (isConnected) {
+      btn.textContent = 'Disconnect';
+      btn.className = 'connect-btn active';
+    } else {
+      btn.textContent = 'Connect & Stream Mic';
+      btn.className = 'connect-btn idle';
+    }
+  }
+
+  // ── Audio context ─────────────────────────────────────────────────────────────
+  async function ensureAudioContext(targetSampleRate = 48000) {
+    if (audioCtx) return audioCtx;
+    audioCtx = new AudioContext({ sampleRate: targetSampleRate });
+    await audioCtx.resume();
+    return audioCtx;
+  }
+
+  async function playPcm16(b64, sampleRate = 24000) {
+    const ctx = await ensureAudioContext();
+    const now = ctx.currentTime;
+    if (now < playbackMutedUntil) return;
+    const int16 = base64ToInt16(b64);
+    const floats = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) floats[i] = int16[i] / 32768;
+    const buffer = ctx.createBuffer(1, floats.length, sampleRate);
+    buffer.copyToChannel(floats, 0);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    playbackSources.add(src);
+    src.onended = () => playbackSources.delete(src);
+    const startAt = Math.max(now + 0.02, playbackTime || now + 0.02);
+    src.start(startAt);
+    playbackTime = startAt + buffer.duration;
+  }
+
+  async function playHoldPcm16(b64, sampleRate = 24000) {
+    const ctx = await ensureAudioContext();
+    const int16 = base64ToInt16(b64);
+    const floats = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) floats[i] = int16[i] / 32768;
+    const buffer = ctx.createBuffer(1, floats.length, sampleRate);
+    buffer.copyToChannel(floats, 0);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    holdSources.add(src);
+    src.onended = () => holdSources.delete(src);
+    src.start(ctx.currentTime);
+  }
+
+  async function clearPlayback() {
+    try {
+      const ctx = await ensureAudioContext();
+      const now = ctx.currentTime;
+      playbackTime = now;
+      playbackMutedUntil = now + 0.6;
+      for (const src of Array.from(playbackSources)) {
+        try { src.onended = null; src.stop(0); } catch {}
+        playbackSources.delete(src);
+      }
+    } catch {}
+  }
+
+  function clearHoldPlayback() {
+    for (const src of Array.from(holdSources)) {
+      try { src.stop(0); } catch {}
+      holdSources.delete(src);
+    }
+  }
+
+  // ── WebSocket URL ─────────────────────────────────────────────────────────────
+  function getWsUrl() {
+    const raw = document.getElementById('backend-url').value.trim();
+    const base = raw || `${location.protocol}//${location.host}`;
+    const proto = base.startsWith('https://') ? 'wss://' : 'ws://';
+    const host = base.replace(/^https?:\/\//, '');
+    return `${proto}${host.replace(/\/$/, '')}/browser-call`;
+  }
+
+  // ── Connect ───────────────────────────────────────────────────────────────────
+  async function connect() {
+    if (isConnected || isConnecting) return;
+    isConnecting = true;
+    updateBtn();
+    setStatus('Connecting…', 'connecting');
+    const wsUrl = getWsUrl();
+    addLog(`Connecting to: ${wsUrl}`, 'info');
+    document.getElementById('ws-label').textContent = `WS: ${wsUrl}`;
+
+    try {
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = async () => {
+        try {
+          addLog('WebSocket connected', 'success');
+          isConnected = true;
+          isConnecting = false;
+          setStatus('Connected', 'connected');
+          updateBtn();
+
+          const ctx = await ensureAudioContext();
+          playbackTime = ctx.currentTime + 0.05;
+
+          ws.send(JSON.stringify({ event: 'start' }));
+
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+          });
+          micStream = stream;
+
+          const source = ctx.createMediaStreamSource(stream);
+          micSource = source;
+
+          const proc = ctx.createScriptProcessor(4096, 1, 1);
+          processor = proc;
+
+          const inRate = ctx.sampleRate;
+          const outRate = 24000;
+          let floatCarry = new Float32Array(0);
+
+          proc.onaudioprocess = (evt) => {
+            try {
+              if (!ws || ws.readyState !== WebSocket.OPEN) return;
+              const input = evt.inputBuffer.getChannelData(0);
+              const merged = new Float32Array(floatCarry.length + input.length);
+              merged.set(floatCarry, 0);
+              merged.set(input, floatCarry.length);
+              const resampled = resampleFloat32Linear(merged, inRate, outRate);
+              const frameSamples = Math.floor(outRate * 0.05);
+              if (resampled.length < frameSamples) { floatCarry = merged; return; }
+              const usableFrames = Math.floor(resampled.length / frameSamples);
+              const usableSamples = usableFrames * frameSamples;
+              for (let f = 0; f < usableFrames; f++) {
+                const start = f * frameSamples;
+                const slice = resampled.subarray(start, start + frameSamples);
+                const pcm16 = new Int16Array(slice.length);
+                for (let i = 0; i < slice.length; i++) pcm16[i] = clampToInt16(slice[i]);
+                ws.send(JSON.stringify({ event: 'media', media: { timestamp: Date.now(), payload: int16ToBase64(pcm16) } }));
+              }
+              const consumedAtIn = Math.floor(usableSamples * (inRate / outRate));
+              floatCarry = merged.subarray(consumedAtIn);
+            } catch {}
+          };
+
+          source.connect(proc);
+          proc.connect(ctx.destination);
+          addLog('Microphone streaming started (PCM16 @ 24kHz)', 'success');
+        } catch (err) {
+          addLog(`Failed to start mic: ${err?.message || err}`, 'error');
+          await disconnect();
+        }
+      };
+
+      ws.onmessage = async (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          if (msg?.event === 'voice_settings_ack') return;
+          if (msg?.event === 'clear') { await clearPlayback(); return; }
+          if (msg?.event === 'hold.clear') { clearHoldPlayback(); return; }
+          if (msg?.event === 'hold.media' && msg?.media?.payload) { await playHoldPcm16(msg.media.payload, 24000); return; }
+          if (msg?.event === 'media' && msg?.media?.payload) await playPcm16(msg.media.payload, 24000);
+        } catch {}
+      };
+
+      ws.onerror = () => addLog('WebSocket error', 'error');
+
+      ws.onclose = () => {
+        addLog('WebSocket closed', 'info');
+        void disconnect();
+      };
+    } catch (err) {
+      addLog(`Connect failed: ${err?.message || err}`, 'error');
+      isConnected = false;
+      isConnecting = false;
+      setStatus('Disconnected', 'disconnected');
+      updateBtn();
+    }
+  }
+
+  async function disconnect() {
+    isConnecting = false;
+    isConnected = false;
+    setStatus('Disconnected', 'disconnected');
+    updateBtn();
+
+    try { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ event: 'close' })); } catch {}
+    try { ws?.close(); } catch {}
+    ws = null;
+
+    try { processor?.disconnect(); } catch {}
+    processor = null;
+    try { micSource?.disconnect(); } catch {}
+    micSource = null;
+    try { micStream?.getTracks().forEach(t => t.stop()); } catch {}
+    micStream = null;
+
+    addLog('Disconnected', 'success');
+  }
+
+  document.getElementById('connect-btn').addEventListener('click', () => {
+    if (isConnected) disconnect();
+    else connect();
+  });
+
+  addLog('Direct voice client initialized', 'info');
+
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    try { ws?.close(); } catch {}
+    try { audioCtx?.close(); } catch {}
+  });
+</script>
+</body>
+</html>

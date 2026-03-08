@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Voice · HK</title>
+  <!-- Twilio Voice SDK via CDN -->
+  <script src="https://sdk.twilio.com/js/voice/releases/2.11.0/twilio.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #3b82f6, #7c3aed);
+      display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+      font-size: 13px; color: #fff; padding: 16px;
+    }
+    .card {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(16px);
+      border-radius: 24px; padding: 32px;
+      max-width: 420px; width: 100%;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+      text-align: center;
+    }
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+    .sub { color: rgba(255,255,255,0.7); margin-bottom: 28px; font-size: 13px; }
+    .status-box {
+      padding: 14px; border-radius: 12px; margin-bottom: 20px;
+      font-size: 15px; font-weight: 600; transition: background 0.2s;
+    }
+    .status-box.connected    { background: rgba(34,197,94,0.2); color: #bbf7d0; }
+    .status-box.connecting   { background: rgba(234,179,8,0.2); color: #fef08a; }
+    .status-box.disconnected { background: rgba(239,68,68,0.2); color: #fecaca; }
+    .url-input {
+      width: 100%; padding: 11px 14px; border-radius: 12px;
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+      color: #fff; font-size: 13px; outline: none; margin-bottom: 10px; text-align: left;
+    }
+    .url-input::placeholder { color: rgba(255,255,255,0.5); }
+    .url-input:focus { border-color: rgba(255,255,255,0.5); }
+    .btn {
+      width: 100%; padding: 12px; border-radius: 12px;
+      font-size: 14px; font-weight: 600; cursor: pointer; border: none;
+      transition: background 0.15s; margin-bottom: 8px;
+    }
+    .btn-init-idle   { background: #3b82f6; color: #fff; }
+    .btn-init-idle:hover { background: #2563eb; }
+    .btn-init-active { background: #ef4444; color: #fff; }
+    .btn-init-active:hover { background: #dc2626; }
+    .btn-init-busy   { background: rgba(107,114,128,0.5); color: rgba(255,255,255,0.5); cursor: not-allowed; }
+    .call-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .btn-call { padding: 12px; border-radius: 12px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: background 0.15s; }
+    .btn-call.green { background: #22c55e; color: #fff; }
+    .btn-call.green:hover:not(:disabled) { background: #16a34a; }
+    .btn-call.red   { background: #ef4444; color: #fff; }
+    .btn-call.red:hover:not(:disabled)   { background: #dc2626; }
+    .btn-call:disabled { background: rgba(107,114,128,0.4); color: rgba(255,255,255,0.4); cursor: not-allowed; }
+    .log-box {
+      background: rgba(0,0,0,0.2); border-radius: 12px;
+      padding: 14px; max-height: 220px; overflow-y: auto; text-align: left;
+    }
+    .log-box::-webkit-scrollbar { width: 3px; }
+    .log-box::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+    .log-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+    .log-entry { font-size: 12px; line-height: 1.5; }
+    .log-entry.info    { color: rgba(255,255,255,0.8); }
+    .log-entry.success { color: #86efac; }
+    .log-entry.error   { color: #fca5a5; }
+    .log-empty { font-size: 12px; color: rgba(255,255,255,0.4); font-style: italic; }
+    .back-link { display: inline-block; margin-top: 16px; font-size: 12px; color: rgba(255,255,255,0.6); text-decoration: none; }
+    .back-link:hover { color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>HK</h1>
+    <div class="sub">Twilio Voice Client</div>
+
+    <div class="status-box disconnected" id="status-box">Disconnected</div>
+
+    <input type="text" class="url-input" id="backend-url" placeholder="Backend URL (leave blank for same origin)" />
+
+    <button class="btn btn-init-idle" id="init-btn">Initialize Twilio Device</button>
+
+    <div class="call-grid">
+      <button class="btn-call green" id="call-btn" disabled>Call</button>
+      <button class="btn-call red" id="hangup-btn" disabled>Hang Up</button>
+    </div>
+
+    <div class="log-box" id="log-box">
+      <div class="log-title">Logs</div>
+      <div id="log-list"><div class="log-empty">No logs yet…</div></div>
+    </div>
+
+    <a class="back-link" href="/">← back to main</a>
+  </div>
+
+<script>
+  let device = null;
+  let connection = null;
+  let isConnected = false;
+  let isConnecting = false;
+  let isInCall = false;
+
+  function addLog(msg, type = 'info') {
+    const list = document.getElementById('log-list');
+    const empty = list.querySelector('.log-empty');
+    if (empty) empty.remove();
+    const ts = new Date().toLocaleTimeString();
+    const div = document.createElement('div');
+    div.className = `log-entry ${type}`;
+    div.textContent = `[${ts}] ${msg}`;
+    list.appendChild(div);
+    const entries = list.querySelectorAll('.log-entry');
+    if (entries.length > 50) entries[0].remove();
+    document.getElementById('log-box').scrollTop = document.getElementById('log-box').scrollHeight;
+  }
+
+  function setStatus(text, cls) {
+    const box = document.getElementById('status-box');
+    box.textContent = text;
+    box.className = `status-box ${cls}`;
+  }
+
+  function updateButtons() {
+    const initBtn = document.getElementById('init-btn');
+    const callBtn = document.getElementById('call-btn');
+    const hangupBtn = document.getElementById('hangup-btn');
+
+    if (isConnecting) {
+      initBtn.textContent = 'Connecting…';
+      initBtn.className = 'btn btn-init-busy';
+      initBtn.disabled = true;
+    } else if (isConnected) {
+      initBtn.textContent = 'Disconnect';
+      initBtn.className = 'btn btn-init-active';
+      initBtn.disabled = false;
+    } else {
+      initBtn.textContent = 'Initialize Twilio Device';
+      initBtn.className = 'btn btn-init-idle';
+      initBtn.disabled = false;
+    }
+
+    callBtn.disabled = !isConnected || isInCall;
+    hangupBtn.disabled = !isInCall;
+  }
+
+  function getBackendUrl() {
+    const raw = document.getElementById('backend-url').value.trim();
+    return raw || '';
+  }
+
+  async function initializeDevice() {
+    if (isConnected) { await disconnectDevice(); return; }
+    if (isConnecting) return;
+
+    isConnecting = true;
+    setStatus('Connecting…', 'connecting');
+    updateButtons();
+
+    const backendUrl = getBackendUrl();
+    const tokenUrl = `${backendUrl}/access-token`;
+    addLog(`Fetching token from ${tokenUrl}`, 'info');
+
+    try {
+      const res = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identity: 'voice-client' }),
+      });
+
+      if (!res.ok) throw new Error(`Token fetch failed: HTTP ${res.status}`);
+
+      const data = await res.json();
+      const token = data.token;
+      if (!token) throw new Error('Backend did not return an access token');
+
+      addLog('Access token received', 'success');
+      await initializeTwilioDevice(token);
+    } catch (err) {
+      addLog(`Failed to get token: ${err.message}`, 'error');
+      setStatus('Disconnected', 'disconnected');
+      isConnecting = false;
+      updateButtons();
+    }
+  }
+
+  async function initializeTwilioDevice(token) {
+    addLog('Initializing Twilio Device…', 'info');
+
+    // Twilio.Device is loaded from CDN and available as window.Twilio.Device
+    const TwilioDevice = (typeof Device !== 'undefined') ? Device : window?.Twilio?.Device;
+    if (!TwilioDevice) {
+      addLog('Twilio SDK not loaded', 'error');
+      isConnecting = false;
+      setStatus('Disconnected', 'disconnected');
+      updateButtons();
+      return;
+    }
+
+    try {
+      device = new TwilioDevice(token, {
+        logLevel: 1,
+        codecPreferences: ['opus', 'pcmu'],
+      });
+
+      device.on('registered', () => {
+        addLog('Twilio Device registered successfully', 'success');
+        setStatus('Connected & Ready', 'connected');
+        isConnected = true;
+        isConnecting = false;
+        updateButtons();
+      });
+
+      device.on('error', (err) => {
+        addLog(`Twilio Device error: ${err.message} (code: ${err.code})`, 'error');
+        if (err.code === 20101) {
+          addLog('Token is invalid — try regenerating it', 'error');
+        }
+        setStatus('Device Error', 'disconnected');
+        isConnecting = false;
+        updateButtons();
+      });
+
+      device.on('incoming', (conn) => {
+        addLog(`Incoming call from: ${conn.parameters?.From || 'unknown'}`, 'info');
+        handleIncomingCall(conn);
+      });
+
+      await device.register();
+    } catch (err) {
+      addLog(`Failed to initialize device: ${err.message}`, 'error');
+      setStatus('Device Initialization Failed', 'disconnected');
+      isConnecting = false;
+      updateButtons();
+    }
+  }
+
+  async function startCall() {
+    if (!device) { addLog('Device not initialized', 'error'); return; }
+    addLog('Starting outbound call…', 'info');
+    try {
+      const conn = await device.connect({
+        params: { To: 'client:test', From: 'voice-client' },
+      });
+      connection = conn;
+      conn.on('accept', () => {
+        addLog('Call connected', 'success');
+        setStatus('In Call', 'connected');
+        isInCall = true;
+        updateButtons();
+      });
+      conn.on('disconnect', () => {
+        addLog('Call disconnected', 'info');
+        setStatus('Connected & Ready', 'connected');
+        isInCall = false;
+        connection = null;
+        updateButtons();
+      });
+      conn.on('error', (err) => {
+        addLog(`Call error: ${err.message}`, 'error');
+        isInCall = false;
+        updateButtons();
+      });
+    } catch (err) {
+      addLog(`Failed to start call: ${err.message}`, 'error');
+    }
+  }
+
+  function hangUp() {
+    if (connection) {
+      addLog('Hanging up…', 'info');
+      connection.disconnect();
+    }
+  }
+
+  function handleIncomingCall(conn) {
+    conn.accept();
+    connection = conn;
+    setStatus('In Call (Incoming)', 'connected');
+    isInCall = true;
+    updateButtons();
+    conn.on('disconnect', () => {
+      addLog('Incoming call disconnected', 'info');
+      setStatus('Connected & Ready', 'connected');
+      isInCall = false;
+      connection = null;
+      updateButtons();
+    });
+  }
+
+  async function disconnectDevice() {
+    addLog('Disconnecting…', 'info');
+    try { connection?.disconnect(); } catch {}
+    connection = null;
+    try { device?.destroy(); } catch {}
+    device = null;
+    isConnected = false;
+    isInCall = false;
+    isConnecting = false;
+    setStatus('Disconnected', 'disconnected');
+    updateButtons();
+    addLog('Disconnected', 'success');
+  }
+
+  document.getElementById('init-btn').addEventListener('click', initializeDevice);
+  document.getElementById('call-btn').addEventListener('click', startCall);
+  document.getElementById('hangup-btn').addEventListener('click', hangUp);
+
+  addLog('Voice client initialized', 'info');
+  addLog('Enter backend URL (or leave blank for same origin) and click Initialize', 'info');
+
+  window.addEventListener('beforeunload', () => {
+    try { connection?.disconnect(); } catch {}
+    try { device?.destroy(); } catch {}
+  });
+</script>
+</body>
+</html>
