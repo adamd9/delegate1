@@ -24,8 +24,9 @@ jobs:
           node-version: '24.x'
 
       - name: Install dependencies and build webapp (static export)
-        env:
-          NEXT_PUBLIC_REMOTE_BACKEND: ${{ vars.NEXT_PUBLIC_REMOTE_BACKEND }}
+        # NEXT_PUBLIC_REMOTE_BACKEND is intentionally not set here.
+        # Frontend and backend are the same server, so the app uses relative
+        # URLs (same-origin). No hostname needs to be baked into the build.
         run: |
           cd webapp && npm install && npm run build
 
