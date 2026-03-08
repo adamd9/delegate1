@@ -1,0 +1,1300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HK</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1b1d27;
+      --surface: #22253a;
+      --surface2: #2a2d42;
+      --surface3: #181a26;
+      --border: #2e3150;
+      --border2: #383b5e;
+      --accent: #818cf8;
+      --accent-dim: rgba(129,140,248,0.12);
+      --green: #34d399;
+      --green-dim: rgba(52,211,153,0.1);
+      --amber: #fbbf24;
+      --amber-dim: rgba(251,191,36,0.1);
+      --red: #f87171;
+      --red-dim: rgba(248,113,113,0.1);
+      --blue: #60a5fa;
+      --blue-dim: rgba(96,165,250,0.1);
+      --text: #e2e4f0;
+      --text-mid: #6b7194;
+      --text-dim: #3d4268;
+      --font: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      --font-ui: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-ui);
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Left panel ── */
+    .left-panel {
+      width: 260px;
+      flex-shrink: 0;
+      background: var(--surface3);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .identity {
+      padding: 20px 18px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .agent-name { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+    .agent-tagline { font-size: 11px; color: var(--text-mid); margin-top: 3px; font-family: var(--font); }
+
+    .state-card {
+      margin: 14px 18px;
+      padding: 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border2);
+      background: var(--surface2);
+      transition: background 0.3s, border-color 0.3s;
+    }
+
+    .state-card.active {
+      background: var(--green-dim);
+      border-color: rgba(52,211,153,0.25);
+    }
+
+    .state-main {
+      font-size: 22px; font-weight: 700; line-height: 1; margin-bottom: 6px;
+      color: var(--text-mid);
+      transition: color 0.3s;
+    }
+
+    .state-card.active .state-main { color: var(--green); }
+
+    .state-detail { font-size: 11px; color: var(--text-mid); font-family: var(--font); line-height: 1.5; }
+
+    .lp-label {
+      padding: 10px 18px 6px;
+      font-size: 10px; font-family: var(--font);
+      letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim);
+    }
+
+    .ch-list { padding: 0 18px 12px; display: flex; flex-direction: column; gap: 4px; }
+
+    .ch-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; border-radius: 6px;
+      background: var(--surface2); border: 1px solid var(--border);
+    }
+
+    .ch-left { display: flex; align-items: center; gap: 8px; }
+    .ch-icon { font-size: 14px; }
+    .ch-name { font-size: 12px; color: var(--text); font-weight: 500; }
+    .ch-sub { font-size: 10px; color: var(--text-mid); font-family: var(--font); margin-top: 1px; }
+
+    .ch-badge {
+      font-size: 10px; padding: 2px 7px; border-radius: 4px;
+      font-family: var(--font); letter-spacing: 0.04em;
+    }
+    .ch-badge.live  { background: var(--green-dim);  color: var(--green); border: 1px solid rgba(52,211,153,0.25); }
+    .ch-badge.ready { background: var(--blue-dim);   color: var(--blue);  border: 1px solid rgba(96,165,250,0.25); }
+    .ch-badge.off   { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+
+    .lp-nav { padding: 0 18px 12px; display: flex; flex-direction: column; gap: 2px; }
+
+    .lp-navitem {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px; border-radius: 5px;
+      font-size: 12px; color: var(--text-mid); cursor: pointer;
+      text-decoration: none; transition: all 0.1s;
+    }
+    .lp-navitem:hover { background: var(--surface2); color: var(--text); }
+    .ni-icon { font-size: 13px; }
+
+    /* Checklist */
+    #checklist-section { padding: 0 18px 12px; }
+
+    .checklist-row {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--text-mid);
+      padding: 3px 0;
+    }
+
+    .check-icon { font-size: 12px; }
+    .check-icon.ok    { color: var(--green); }
+    .check-icon.fail  { color: var(--red); }
+    .check-icon.wait  { color: var(--text-dim); }
+
+    /* End zone */
+    .end-zone {
+      margin-top: auto;
+      padding: 14px 18px;
+      border-top: 1px solid var(--border);
+    }
+
+    .btn-end {
+      width: 100%; padding: 9px; border-radius: 6px;
+      border: 1px solid rgba(248,113,113,0.25);
+      background: var(--red-dim); color: var(--red);
+      font-size: 11px; font-family: var(--font);
+      letter-spacing: 0.06em; cursor: pointer;
+      text-transform: uppercase; transition: all 0.12s;
+    }
+    .btn-end:hover:not(:disabled) { border-color: rgba(248,113,113,0.6); background: rgba(248,113,113,0.18); }
+    .btn-end:disabled { opacity: 0.4; cursor: default; }
+
+    .end-note { text-align: center; font-size: 10px; color: var(--text-dim); margin-top: 5px; font-family: var(--font); }
+
+    /* ── Main ── */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    .topbar {
+      height: 46px; background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center;
+      padding: 0 20px; gap: 12px; flex-shrink: 0;
+    }
+
+    .conv-label { font-size: 12px; color: var(--text-mid); font-family: var(--font); }
+    .conv-id { color: var(--accent); }
+
+    .live-chip {
+      display: flex; align-items: center; gap: 5px;
+      background: var(--green-dim);
+      border: 1px solid rgba(52,211,153,0.2);
+      padding: 3px 9px; border-radius: 4px;
+      font-size: 10px; color: var(--green); font-family: var(--font);
+      transition: opacity 0.3s;
+    }
+    .live-chip.hidden { opacity: 0; }
+
+    .live-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--green); animation: blink 1.2s step-end infinite;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+    .tb-btn {
+      padding: 5px 11px; border-radius: 4px;
+      border: 1px solid var(--border2); background: transparent;
+      color: var(--text-mid); font-size: 11px;
+      font-family: var(--font); cursor: pointer;
+    }
+    .tb-btn:hover { color: var(--text); background: var(--surface2); }
+
+    /* Feed */
+    .feed { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* History accordion */
+    .hist-block { background: var(--surface3); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+
+    .hist-toggle {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 20px; cursor: pointer; user-select: none;
+    }
+    .hist-toggle:hover { background: rgba(255,255,255,0.02); }
+
+    .harrrow { color: var(--text-dim); font-size: 10px; transition: transform 0.15s; display: inline-block; }
+    .hist-block.open .harrrow { transform: rotate(90deg); }
+
+    .hist-toggle-txt { font-size: 11px; font-family: var(--font); color: var(--text-mid); letter-spacing: 0.04em; }
+    .hist-toggle-n { font-size: 10px; color: var(--text-dim); margin-left: 4px; }
+    .hist-archive-note { margin-left: auto; font-size: 10px; color: var(--text-dim); font-family: var(--font); font-style: italic; }
+
+    .hist-list { display: none; flex-direction: column; border-top: 1px solid var(--border); }
+    .hist-block.open .hist-list { display: flex; }
+
+    .hist-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 20px; border-bottom: 1px solid var(--border);
+      cursor: pointer; font-size: 11px; font-family: var(--font);
+    }
+    .hist-row:last-child { border-bottom: none; }
+    .hist-row:hover { background: rgba(255,255,255,0.02); }
+
+    .hr-id { color: var(--text-dim); width: 65px; font-size: 10px; }
+    .hr-ch { font-size: 13px; }
+    .hr-summary { flex: 1; color: var(--text-mid); font-family: var(--font-ui); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hr-when { color: var(--text-dim); font-size: 10px; white-space: nowrap; }
+    .hr-badge { font-size: 9px; padding: 1px 6px; border-radius: 3px; background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border2); flex-shrink: 0; }
+
+    /* Events scroll area */
+    .events {
+      flex: 1; overflow-y: auto;
+      padding: 12px 20px;
+      display: flex; flex-direction: column; gap: 1px;
+    }
+    .events::-webkit-scrollbar { width: 3px; }
+    .events::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* Event groups */
+    .ev-group { display: flex; flex-direction: column; gap: 3px; margin: 6px 0; }
+    .ev-group.right { align-items: flex-end; }
+    .ev-group.left  { align-items: flex-start; }
+
+    .ev-group-meta {
+      display: flex; align-items: center; gap: 7px;
+      padding: 0 4px; margin-bottom: 3px;
+    }
+    .ev-group.right .ev-group-meta { flex-direction: row-reverse; }
+
+    .ev-meta-role { font-size: 10px; font-family: var(--font); letter-spacing: 0.06em; }
+    .caller-r { color: var(--amber); }
+    .agent-r  { color: var(--text-mid); }
+
+    .ev-meta-ts { font-size: 10px; color: var(--text-dim); font-family: var(--font); }
+
+    .ev-ch-tag {
+      font-size: 9px; padding: 1px 5px; border-radius: 3px;
+      font-family: var(--font); letter-spacing: 0.04em;
+    }
+    .ev-ch-tag.voice { background: var(--green-dim); color: var(--green); }
+    .ev-ch-tag.phone { background: var(--green-dim); color: var(--green); }
+    .ev-ch-tag.sms   { background: var(--blue-dim);  color: var(--blue); }
+    .ev-ch-tag.text  { background: var(--accent-dim); color: var(--accent); }
+    .ev-ch-tag.web   { background: var(--accent-dim); color: var(--accent); }
+
+    .ev-bubble {
+      max-width: 68%; padding: 9px 14px;
+      border-radius: 12px; font-size: 13px; line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .ev-group.right .ev-bubble {
+      background: var(--surface2);
+      border: 1px solid var(--border2); color: var(--text);
+      border-bottom-right-radius: 3px;
+    }
+
+    .ev-group.left .ev-bubble {
+      background: var(--accent-dim);
+      border: 1px solid rgba(129,140,248,0.2); color: var(--text);
+      border-bottom-left-radius: 3px;
+    }
+
+    .ev-group.history .ev-bubble { opacity: 0.55; }
+    .ev-group.history .ev-group-meta { opacity: 0.55; }
+
+    /* Breadcrumb / tool events — inline */
+    .tool-ev {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 6px 12px; border-radius: 6px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      margin: 3px 0; cursor: pointer;
+    }
+    .tool-ev:hover { background: rgba(255,255,255,0.04); }
+
+    .tool-ev-icon { color: var(--text-dim); font-size: 12px; padding-top: 1px; flex-shrink: 0; }
+    .tool-ev-body { flex: 1; min-width: 0; }
+    .tool-ev-title { font-size: 11px; color: var(--text-mid); font-family: var(--font); }
+    .tool-ev-data {
+      font-size: 10px; color: var(--text-dim); margin-top: 2px;
+      font-family: var(--font); display: none;
+      white-space: pre-wrap; word-break: break-all;
+      max-height: 200px; overflow-y: auto;
+    }
+    .tool-ev.expanded .tool-ev-data { display: block; }
+    .tool-ev-ts { font-family: var(--font); font-size: 10px; color: var(--text-dim); flex-shrink: 0; align-self: center; }
+
+    /* Sys event */
+    .sys-ev {
+      font-size: 11px; color: var(--text-dim);
+      font-family: var(--font); font-style: italic;
+      padding: 5px 4px; text-align: center;
+    }
+
+    /* History separator inside events */
+    .hist-sep-line {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 0; cursor: pointer; user-select: none;
+    }
+
+    .hsl-line { flex: 1; height: 1px; background: var(--border2); }
+
+    .hsl-label {
+      font-size: 10px; color: var(--text-dim);
+      padding: 3px 10px; border: 1px solid var(--border2);
+      border-radius: 20px; font-family: var(--font);
+      white-space: nowrap;
+    }
+
+    /* Processing */
+    .proc-row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 8px 4px; font-size: 11px;
+      font-family: var(--font); color: var(--text-dim);
+    }
+    .proc-dots span {
+      display: inline-block; width: 3px; height: 3px;
+      border-radius: 50%; background: var(--accent);
+      margin: 0 1px; animation: pd 1.2s infinite;
+    }
+    .proc-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .proc-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes pd { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+
+    /* Intervene bar */
+    .intervene {
+      border-top: 1px solid var(--border);
+      padding: 12px 20px 14px;
+      background: var(--surface); flex-shrink: 0;
+    }
+
+    .int-label {
+      font-size: 10px; font-family: var(--font); color: var(--text-dim);
+      letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 7px;
+    }
+
+    .int-row { display: flex; gap: 8px; align-items: flex-end; }
+
+    .int-input {
+      flex: 1; background: var(--surface2);
+      border: 1px solid var(--border2); border-radius: 6px;
+      padding: 8px 12px; font-family: var(--font-ui);
+      font-size: 13px; color: var(--text); outline: none;
+      resize: none; min-height: 36px; max-height: 100px;
+      line-height: 1.5; transition: border-color 0.15s;
+    }
+    .int-input:focus { border-color: var(--accent); }
+    .int-input::placeholder { color: var(--text-dim); }
+    .int-input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .int-send {
+      padding: 8px 16px; border-radius: 6px;
+      border: 1px solid var(--accent); background: var(--accent-dim);
+      color: var(--accent); font-size: 12px; font-family: var(--font);
+      cursor: pointer; flex-shrink: 0;
+      letter-spacing: 0.04em; transition: all 0.1s;
+    }
+    .int-send:hover:not(:disabled) { background: rgba(129,140,248,0.2); }
+    .int-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .int-stop {
+      padding: 8px 12px; border-radius: 6px;
+      border: 1px solid var(--border2); background: transparent;
+      color: var(--text-mid); font-size: 12px;
+      font-family: var(--font); cursor: pointer; flex-shrink: 0;
+    }
+    .int-stop:hover:not(:disabled) { border-color: var(--amber); color: var(--amber); }
+    .int-stop:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Canvas overlay */
+    .canvas-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .canvas-overlay.open { display: flex; }
+
+    .canvas-panel {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 12px;
+      width: 90vw; max-width: 900px;
+      height: 80vh;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    .canvas-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+    }
+
+    .canvas-title { font-size: 13px; color: var(--text); font-weight: 500; }
+
+    .canvas-close {
+      padding: 4px 10px; border-radius: 4px;
+      border: 1px solid var(--border2); background: transparent;
+      color: var(--text-mid); font-size: 11px;
+      font-family: var(--font); cursor: pointer;
+    }
+    .canvas-close:hover { color: var(--text); }
+
+    .canvas-iframe { flex: 1; border: none; background: white; }
+  </style>
+</head>
+<body>
+
+  <!-- Left panel -->
+  <div class="left-panel">
+
+    <div class="identity">
+      <div class="agent-name">HK</div>
+      <div class="agent-tagline">agentic body · single thread</div>
+    </div>
+
+    <div id="state-card" class="state-card">
+      <div id="state-main" class="state-main">disconnected</div>
+      <div id="state-detail" class="state-detail">waiting for connection</div>
+    </div>
+
+    <div class="lp-label">channels</div>
+    <div class="ch-list">
+      <div class="ch-row">
+        <div class="ch-left">
+          <span class="ch-icon">📞</span>
+          <div>
+            <div class="ch-name">Phone</div>
+            <div class="ch-sub">Twilio inbound</div>
+          </div>
+        </div>
+        <span class="ch-badge ready">ready</span>
+      </div>
+      <div class="ch-row">
+        <div class="ch-left">
+          <span class="ch-icon">💬</span>
+          <div>
+            <div class="ch-name">SMS</div>
+            <div class="ch-sub">Twilio</div>
+          </div>
+        </div>
+        <span class="ch-badge ready">ready</span>
+      </div>
+      <div class="ch-row">
+        <div class="ch-left">
+          <span class="ch-icon">🌐</span>
+          <div>
+            <div class="ch-name">Web</div>
+            <div class="ch-sub">this view</div>
+          </div>
+        </div>
+        <span id="web-badge" class="ch-badge off">connecting…</span>
+      </div>
+    </div>
+
+    <div class="lp-label">navigate</div>
+    <div class="lp-nav">
+      <a class="lp-navitem" href="/settings"><span class="ni-icon">⚙</span> Settings</a>
+      <a class="lp-navitem" href="/voice" target="_blank" rel="noopener noreferrer"><span class="ni-icon">📞</span> Twilio Voice</a>
+      <a class="lp-navitem" href="/voice-direct" target="_blank" rel="noopener noreferrer"><span class="ni-icon">📡</span> Direct Voice</a>
+      <a class="lp-navitem" href="/logs"><span class="ni-icon">📋</span> Logs</a>
+      <a class="lp-navitem" href="/thoughtflow/viewer"><span class="ni-icon">🔷</span> Thought flow</a>
+    </div>
+
+    <div class="lp-label">mini-apps</div>
+    <div class="lp-nav">
+      <a class="lp-navitem" href="/miniapps/client_side_wake_word/index.html" target="_blank" rel="noopener noreferrer"><span class="ni-icon">🎤</span> Wakeword Demo</a>
+      <a class="lp-navitem" href="/miniapps/wakeword_direct_voice/index.html" target="_blank" rel="noopener noreferrer"><span class="ni-icon">🎧</span> Wakeword Direct Voice</a>
+      <a class="lp-navitem" href="/miniapps/voice_message_tester/index.html" target="_blank" rel="noopener noreferrer"><span class="ni-icon">🔊</span> Voice Message Tester</a>
+    </div>
+
+    <div class="lp-label">setup</div>
+    <div id="checklist-section" style="padding: 0 18px 12px;">
+      <div class="checklist-row"><span class="check-icon wait">○</span><span>checking…</span></div>
+    </div>
+
+    <div class="end-zone">
+      <button id="btn-end" class="btn-end" disabled>⚠ end conversation</button>
+      <div id="end-note" class="end-note">manual override · use sparingly</div>
+    </div>
+
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+
+    <div class="topbar">
+      <span class="conv-label">conversation <span id="conv-id-label" class="conv-id">—</span></span>
+      <div id="live-chip" class="live-chip hidden">
+        <div class="live-dot"></div>live
+      </div>
+      <div class="topbar-right">
+        <button class="tb-btn" id="btn-copy">copy transcript</button>
+      </div>
+    </div>
+
+    <div class="feed">
+
+      <!-- History accordion -->
+      <div id="hist-block" class="hist-block" style="display:none;">
+        <div class="hist-toggle" id="hist-toggle">
+          <span class="harrrow">▶</span>
+          <span class="hist-toggle-txt">previous conversations</span>
+          <span id="hist-count" class="hist-toggle-n">(0)</span>
+          <span class="hist-archive-note">archive · read-only</span>
+        </div>
+        <div id="hist-list" class="hist-list"></div>
+      </div>
+
+      <div id="events" class="events"></div>
+
+      <!-- Intervene bar -->
+      <div class="intervene">
+        <div class="int-label">intervene</div>
+        <div class="int-row">
+          <textarea id="int-input" class="int-input" placeholder="type to send a message…" rows="1" disabled></textarea>
+          <button id="int-stop" class="int-stop" disabled>stop</button>
+          <button id="int-send" class="int-send" disabled>send ↵</button>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Canvas overlay -->
+  <div id="canvas-overlay" class="canvas-overlay">
+    <div class="canvas-panel">
+      <div class="canvas-header">
+        <span id="canvas-title" class="canvas-title"></span>
+        <button class="canvas-close" id="canvas-close">close</button>
+      </div>
+      <iframe id="canvas-iframe" class="canvas-iframe"></iframe>
+    </div>
+  </div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+const state = {
+  ws: null,
+  wsStatus: 'disconnected',   // 'disconnected' | 'connecting' | 'connected'
+  inFlight: false,
+  currentRequestId: null,
+  currentConversationId: null,
+
+  // Transcript items array — each item: { id, type, role, channel, title, data, ts, createdAt, isHidden, supervisor }
+  items: [],
+
+  // History: array of { id, summary, channel, when }
+  history: [],
+  historyExpanded: false,
+  historyHeaderCount: 0,
+
+  // Streaming: map of itemId → current accumulated text
+  streaming: {},
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function ts() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mm = String(now.getMinutes()).padStart(2,'0');
+  const ss = String(now.getSeconds()).padStart(2,'0');
+  const ms = String(now.getMilliseconds()).padStart(3,'0');
+  return `${hh}:${mm}:${ss}.${ms}`;
+}
+
+function esc(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function shortId(id) {
+  if (!id) return '—';
+  const parts = String(id).split('_');
+  const tail = parts[parts.length - 1] || id;
+  return tail.length > 8 ? tail.slice(-8) : tail;
+}
+
+function wsUrl(path) {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${location.host}${path}`;
+}
+
+// ─── WebSocket ────────────────────────────────────────────────────────────────
+function connect() {
+  if (state.ws) return;
+  setWsStatus('connecting');
+
+  const ws = new WebSocket(wsUrl('/chat'));
+  state.ws = ws;
+
+  ws.onopen = () => {
+    setWsStatus('connected');
+  };
+
+  ws.onmessage = (evt) => {
+    let data;
+    try { data = JSON.parse(evt.data); } catch { return; }
+    handleEvent(data);
+  };
+
+  ws.onclose = () => {
+    state.ws = null;
+    setWsStatus('disconnected');
+    // Attempt reconnect after 3s
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => {
+    setWsStatus('disconnected');
+  };
+}
+
+function sendWs(msg) {
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify(msg));
+    return true;
+  }
+  return false;
+}
+
+// ─── Event handler ────────────────────────────────────────────────────────────
+// Track voice user item id across events
+let currentVoiceUserItemId = null;
+let lastFinalizedVoiceUserItemId = null;
+const seenFunctionCallBreadcrumbs = new Set();
+
+function handleEvent(event) {
+  switch (event.type) {
+
+    case 'history.header': {
+      const count = typeof event.count === 'number' ? event.count : 0;
+      state.historyHeaderCount = count;
+      updateHistoryHeader(count);
+      break;
+    }
+
+    case 'conversation.item.created': {
+      if (!event.item) return;
+      const item = event.item;
+      const isReplay = event.replay === true;
+
+      if (item.type === 'message') {
+        const channel = item.channel || (item.role === 'user' ? 'voice' : 'text');
+        const supervisor = item.supervisor || false;
+        const convId = event.conversation_id || null;
+        let text = extractMessageText(item.content || []);
+        if (item.role === 'user' && !text) text = '[Transcribing…]';
+
+        const newId = isReplay ? `replay_${event.conversation_id || 'conv'}_${item.id}` : item.id;
+        addMessage(newId, item.role, text, channel, supervisor, isReplay, convId, event.timestamp);
+
+        if (item.role === 'user' && channel === 'voice') currentVoiceUserItemId = item.id;
+
+      } else if (item.type === 'function_call') {
+        const isReplay = event.replay === true;
+        const name = item.name || item.call_id || 'function';
+        let args = safeParse(item.arguments);
+        addBreadcrumb(`🔧 Function call: ${name}`, { name, call_id: item.call_id, arguments: args, status: item.status || 'created' }, isReplay, event.timestamp);
+      }
+      break;
+    }
+
+    case 'conversation.item.input_audio_transcription.delta': {
+      if (!event.item_id || !event.delta) break;
+      currentVoiceUserItemId = event.item_id;
+      ensureMessage(event.item_id, 'user', 'voice');
+      appendText(event.item_id, event.delta);
+      break;
+    }
+
+    case 'conversation.item.input_audio_transcription.completed': {
+      const final = (!event.transcript || event.transcript === '\n') ? '[inaudible]' : event.transcript;
+      const targetId = currentVoiceUserItemId || event.item_id;
+      if (targetId) {
+        ensureMessage(targetId, 'user', 'voice');
+        setText(targetId, final);
+        if (final !== '[inaudible]') addBreadcrumb('🎤 Transcription completed', { itemId: targetId, transcript: final });
+        currentVoiceUserItemId = null;
+        lastFinalizedVoiceUserItemId = targetId;
+      }
+      break;
+    }
+
+    case 'response.output_text.delta': {
+      const id = event.item_id || event.response_id;
+      if (!id || !event.delta) break;
+      ensureMessage(id, 'assistant', 'text');
+      appendText(id, event.delta);
+      break;
+    }
+
+    case 'response.output_text.done': {
+      const id = event.item_id || event.response_id;
+      if (!id || !event.text) break;
+      ensureMessage(id, 'assistant', 'text');
+      setText(id, event.text);
+      break;
+    }
+
+    case 'response.audio_transcript.delta': {
+      if (!event.item_id || !event.delta) break;
+      ensureMessage(event.item_id, 'assistant', 'voice');
+      appendText(event.item_id, event.delta);
+      break;
+    }
+
+    case 'response.output_item.done': {
+      if (event.item?.content?.[0]?.text) {
+        ensureMessage(event.item.id, 'assistant', 'text');
+        setText(event.item.id, event.item.content[0].text);
+      } else if (event.item?.type === 'function_call') {
+        const name = event.item.name || event.item.call_id || 'function';
+        addBreadcrumb(`✅ Function call completed: ${name}`, { name, call_id: event.item.call_id, arguments: safeParse(event.item.arguments), status: 'completed' });
+      }
+      break;
+    }
+
+    case 'conversation.item.completed': {
+      if (event.item?.type === 'function_call') {
+        const isReplay = event.replay === true;
+        const name = event.item.name || event.item.call_id || 'function';
+        addBreadcrumb(`✅ Function call completed: ${name}`, { name, call_id: event.item.call_id, arguments: safeParse(event.item.arguments), status: 'completed' }, isReplay, event.timestamp);
+      }
+      break;
+    }
+
+    case 'response.function_call_arguments.delta': {
+      const name = event.name || event.call_id || 'function';
+      const callId = event.call_id || name;
+      if (!seenFunctionCallBreadcrumbs.has(callId)) {
+        seenFunctionCallBreadcrumbs.add(callId);
+        addBreadcrumb(`🛠️ Function call requested: ${name}`, { name, call_id: event.call_id, arguments: safeParse(event.arguments) });
+      }
+      break;
+    }
+
+    case 'response.function_call_arguments.done': {
+      const name = event.name || event.call_id || 'function';
+      addBreadcrumb(`✅ Function call completed: ${name}`, { name, arguments: event.arguments, call_id: event.call_id, status: 'completed', result: event.result });
+      break;
+    }
+
+    case 'chat.working': {
+      state.inFlight = true;
+      state.currentRequestId = event.request_id || null;
+      updateInFlight();
+      break;
+    }
+
+    case 'chat.done':
+    case 'chat.canceled': {
+      state.inFlight = false;
+      state.currentRequestId = null;
+      updateInFlight();
+      break;
+    }
+
+    case 'chat.response': {
+      const supervisor = event.supervisor || false;
+      const id = `chat_${event.timestamp || Date.now()}`;
+      addMessage(id, 'assistant', event.content, 'text', supervisor, false, event.conversation_id);
+      if (event.conversation_id) state.currentConversationId = event.conversation_id;
+      updateConvId();
+      break;
+    }
+
+    case 'chat.canvas': {
+      const isReplay = event.replay === true;
+      addBreadcrumb('📝 Canvas response', { content: event.content, title: event.title, timestamp: event.timestamp }, isReplay, event.timestamp);
+      // Also show open button
+      if (event.url || event.content) addCanvasEvent(event);
+      break;
+    }
+
+    case 'chat.error': {
+      const id = `error_${event.timestamp || Date.now()}`;
+      addMessage(id, 'assistant', `❌ ${event.error || 'An error occurred'}`, 'text', false, false);
+      addBreadcrumb(`❌ Chat error: ${event.error}`, { error: event.error, code: event.code });
+      break;
+    }
+
+    case 'thoughtflow.artifacts': {
+      const isReplay = event.replay === true;
+      addBreadcrumb('🔧 ThoughtFlow artifacts written', {
+        artifact_id: event.artifact_id,
+        url_d2_viewer: event.url_d2_viewer,
+        url_json: event.url_json,
+      }, isReplay && !state.historyExpanded, event.timestamp);
+      break;
+    }
+
+    case 'session.created':
+      addBreadcrumb('🔗 Session started', { session_id: event.session?.id });
+      break;
+
+    case 'session.updated':
+      addBreadcrumb('⚙️ Session updated', { session: event.session });
+      break;
+
+    case 'conversation.finalized':
+      addSysEvent('conversation closed');
+      state.inFlight = false;
+      updateInFlight();
+      // Reload to see history
+      setTimeout(() => location.reload(), 500);
+      break;
+
+    case 'error':
+      addBreadcrumb(`❌ Error: ${event.error?.message || 'Unknown error'}`, { error: event.error });
+      break;
+
+    // Ignore noisy voice buffer events
+    case 'input_audio_buffer.speech_started':
+    case 'input_audio_buffer.speech_stopped':
+    case 'input_audio_buffer.committed':
+      break;
+  }
+}
+
+// ─── Transcript model ─────────────────────────────────────────────────────────
+function extractMessageText(content) {
+  if (!Array.isArray(content)) return '';
+  return content.map(c => {
+    if (!c) return '';
+    if (c.type === 'text' || c.type === 'input_text') return c.text || '';
+    if (c.type === 'audio') return c.transcript || '';
+    return '';
+  }).filter(Boolean).join('\n');
+}
+
+function safeParse(val) {
+  if (!val) return val;
+  try { return typeof val === 'string' ? JSON.parse(val) : val; } catch { return val; }
+}
+
+function addMessage(id, role, text, channel, supervisor, isHistory, convId, timestamp) {
+  if (state.items.find(i => i.id === id && i.type === 'MESSAGE')) return;
+  const item = {
+    id, type: 'MESSAGE', role, title: text,
+    channel: channel || 'text', supervisor: supervisor || false,
+    isHistory: !!isHistory, convId: convId || null,
+    ts: ts(), createdAt: (typeof timestamp === 'number' ? timestamp : Date.now()),
+    isHidden: isHistory && !state.historyExpanded,
+  };
+  state.items.push(item);
+  // Track latest conversation id from non-history items
+  if (!isHistory && convId) {
+    state.currentConversationId = convId;
+    updateConvId();
+  }
+  renderItem(item);
+}
+
+function ensureMessage(id, role, channel) {
+  if (!state.items.find(i => i.id === id && i.type === 'MESSAGE')) {
+    addMessage(id, role, '', channel, false, false, null, Date.now());
+  }
+}
+
+function appendText(id, delta) {
+  const item = state.items.find(i => i.id === id);
+  if (!item) return;
+  item.title = (item.title || '') + delta;
+  const el = document.getElementById(`msg-${id}`);
+  if (el) el.textContent = item.title;
+}
+
+function setText(id, text) {
+  const item = state.items.find(i => i.id === id);
+  if (!item) return;
+  item.title = text;
+  const el = document.getElementById(`msg-${id}`);
+  if (el) el.textContent = text;
+}
+
+function addBreadcrumb(title, data, isHidden, timestamp) {
+  const id = `bc-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+  const item = {
+    id, type: 'BREADCRUMB', title, data: data || {},
+    isHidden: !!isHidden,
+    ts: ts(), createdAt: (typeof timestamp === 'number' ? timestamp : Date.now()),
+  };
+  state.items.push(item);
+  if (!item.isHidden) renderItem(item);
+}
+
+function addSysEvent(text) {
+  const eventsEl = document.getElementById('events');
+  if (!eventsEl) return;
+  const div = document.createElement('div');
+  div.className = 'sys-ev';
+  div.textContent = text + ' · ' + ts();
+  eventsEl.appendChild(div);
+  scrollToBottom();
+}
+
+function addCanvasEvent(event) {
+  const id = `canvas-${Date.now()}`;
+  const item = {
+    id, type: 'BREADCRUMB',
+    title: `📄 Canvas: ${event.title || 'untitled'}`,
+    data: { _canvas: true, url: event.url, content: event.content, title: event.title },
+    isHidden: false, ts: ts(), createdAt: Date.now(),
+  };
+  state.items.push(item);
+  renderItem(item);
+}
+
+// ─── History ──────────────────────────────────────────────────────────────────
+function updateHistoryHeader(count) {
+  state.historyHeaderCount = count;
+  const block = document.getElementById('hist-block');
+  const countEl = document.getElementById('hist-count');
+  if (!block) return;
+  if (count > 0) {
+    block.style.display = '';
+    if (countEl) countEl.textContent = `(${count})`;
+  } else {
+    block.style.display = 'none';
+  }
+}
+
+function toggleHistory() {
+  state.historyExpanded = !state.historyExpanded;
+  document.getElementById('hist-block').classList.toggle('open', state.historyExpanded);
+
+  // Show/hide history items in the events div
+  state.items.forEach(item => {
+    if (item.isHistory || (item.type === 'BREADCRUMB' && item.data && item.data._replay)) {
+      item.isHidden = !state.historyExpanded;
+      const el = document.getElementById(`ev-${item.id}`);
+      if (el) el.style.display = item.isHidden ? 'none' : '';
+    }
+  });
+
+  // If expanding and items haven't been rendered yet, render them now
+  if (state.historyExpanded) {
+    const eventsEl = document.getElementById('events');
+    state.items
+      .filter(i => i.isHistory)
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .forEach(item => {
+        if (!document.getElementById(`ev-${item.id}`)) renderItem(item, true);
+      });
+  }
+}
+
+// ─── Rendering ────────────────────────────────────────────────────────────────
+function renderItem(item, prepend) {
+  if (item.isHidden) return;
+  const eventsEl = document.getElementById('events');
+  if (!eventsEl) return;
+
+  let el;
+
+  if (item.type === 'MESSAGE') {
+    const isUser = item.role === 'user';
+    const side = isUser ? 'right' : 'left';
+    const roleLabel = isUser ? 'user' : 'agent';
+    const roleClass = isUser ? 'caller-r' : 'agent-r';
+    const chTag = item.channel || 'text';
+    const histClass = item.isHistory ? ' history' : '';
+
+    el = document.createElement('div');
+    el.id = `ev-${item.id}`;
+    el.className = `ev-group ${side}${histClass}`;
+    el.innerHTML = `
+      <div class="ev-group-meta">
+        <span class="ev-meta-role ${roleClass}">${esc(roleLabel)}</span>
+        <span class="ev-meta-ts">${esc(item.ts)}</span>
+        <span class="ev-ch-tag ${esc(chTag)}">${esc(chTag)}</span>
+        ${item.supervisor ? '<span class="ev-ch-tag text">supervisor</span>' : ''}
+      </div>
+      <div class="ev-bubble"><span id="msg-${item.id}">${esc(item.title)}</span></div>
+    `;
+  } else {
+    // BREADCRUMB
+    el = document.createElement('div');
+    el.id = `ev-${item.id}`;
+    el.className = 'tool-ev';
+
+    // Canvas breadcrumbs get a special open button
+    if (item.data && item.data._canvas) {
+      el.innerHTML = `
+        <span class="tool-ev-icon">📄</span>
+        <div class="tool-ev-body">
+          <div class="tool-ev-title">${esc(item.title)}</div>
+        </div>
+        <button onclick="openCanvas(${JSON.stringify(item.data).replace(/"/g,'&quot;')})" style="padding:3px 8px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--accent);font-size:10px;font-family:var(--font);cursor:pointer;">open</button>
+        <span class="tool-ev-ts">${esc(item.ts)}</span>
+      `;
+    } else {
+      const dataStr = Object.keys(item.data || {}).length
+        ? JSON.stringify(item.data, null, 2)
+        : '';
+      el.innerHTML = `
+        <span class="tool-ev-icon">▸</span>
+        <div class="tool-ev-body">
+          <div class="tool-ev-title">${esc(item.title)}</div>
+          ${dataStr ? `<div class="tool-ev-data">${esc(dataStr)}</div>` : ''}
+        </div>
+        <span class="tool-ev-ts">${esc(item.ts)}</span>
+      `;
+      el.onclick = () => el.classList.toggle('expanded');
+    }
+  }
+
+  if (prepend && eventsEl.firstChild) {
+    eventsEl.insertBefore(el, eventsEl.firstChild);
+  } else {
+    eventsEl.appendChild(el);
+  }
+
+  scrollToBottom();
+}
+
+function scrollToBottom() {
+  const el = document.getElementById('events');
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+// ─── UI state updates ─────────────────────────────────────────────────────────
+function setWsStatus(status) {
+  state.wsStatus = status;
+
+  const stateCard = document.getElementById('state-card');
+  const stateMain = document.getElementById('state-main');
+  const stateDetail = document.getElementById('state-detail');
+  const webBadge = document.getElementById('web-badge');
+  const liveChip = document.getElementById('live-chip');
+  const intInput = document.getElementById('int-input');
+
+  if (status === 'connected') {
+    stateCard.classList.add('active');
+    stateMain.textContent = 'connected';
+    stateDetail.textContent = 'web channel open';
+    webBadge.textContent = 'live';
+    webBadge.className = 'ch-badge live';
+    liveChip.classList.remove('hidden');
+    intInput.disabled = false;
+    document.getElementById('int-send').disabled = false;
+    document.getElementById('btn-end').disabled = false;
+    addSysEvent('connected to backend');
+  } else if (status === 'connecting') {
+    stateCard.classList.remove('active');
+    stateMain.textContent = 'connecting…';
+    stateDetail.textContent = 'establishing WebSocket';
+    webBadge.textContent = 'connecting…';
+    webBadge.className = 'ch-badge off';
+    liveChip.classList.add('hidden');
+    intInput.disabled = true;
+    document.getElementById('int-send').disabled = true;
+    document.getElementById('btn-end').disabled = true;
+  } else {
+    stateCard.classList.remove('active');
+    stateMain.textContent = 'disconnected';
+    stateDetail.textContent = 'reconnecting in 3s…';
+    webBadge.textContent = 'off';
+    webBadge.className = 'ch-badge off';
+    liveChip.classList.add('hidden');
+    intInput.disabled = true;
+    document.getElementById('int-send').disabled = true;
+    document.getElementById('btn-end').disabled = true;
+  }
+
+  updateInFlight();
+}
+
+function updateInFlight() {
+  const intStop = document.getElementById('int-stop');
+  const intSend = document.getElementById('int-send');
+
+  intStop.disabled = !state.inFlight;
+
+  // Show/hide processing indicator
+  const existingProc = document.getElementById('proc-indicator');
+  if (state.inFlight) {
+    if (!existingProc) {
+      const eventsEl = document.getElementById('events');
+      const proc = document.createElement('div');
+      proc.id = 'proc-indicator';
+      proc.className = 'proc-row';
+      proc.innerHTML = `<div class="proc-dots"><span></span><span></span><span></span></div>processing`;
+      eventsEl.appendChild(proc);
+      scrollToBottom();
+    }
+  } else {
+    if (existingProc) existingProc.remove();
+  }
+
+  const canSend = state.wsStatus === 'connected' && !state.inFlight;
+  const input = document.getElementById('int-input');
+  if (!state.inFlight && state.wsStatus === 'connected') {
+    intSend.disabled = input.value.trim().length === 0;
+  }
+}
+
+function updateConvId() {
+  const el = document.getElementById('conv-id-label');
+  if (el && state.currentConversationId) {
+    el.textContent = shortId(state.currentConversationId);
+  }
+}
+
+// ─── Actions ──────────────────────────────────────────────────────────────────
+function sendMessage() {
+  const input = document.getElementById('int-input');
+  const text = input.value.trim();
+  if (!text || state.wsStatus !== 'connected') return;
+
+  sendWs({ type: 'chat.message', content: text, timestamp: Date.now() });
+
+  // Don't add an optimistic message — the server echoes it back via conversation.item.created
+  input.value = '';
+  input.style.height = 'auto';
+  state.inFlight = true;
+  updateInFlight();
+  document.getElementById('int-send').disabled = true;
+}
+
+function cancelRequest() {
+  if (!state.inFlight) return;
+  const msg = { type: 'chat.cancel' };
+  if (state.currentRequestId) msg.request_id = state.currentRequestId;
+  sendWs(msg);
+}
+
+function endConversation() {
+  if (!confirm('End the current conversation? This is a manual override and cannot be undone.')) return;
+  const ws = new WebSocket(wsUrl('/chat'));
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'conversation.end', conversation_id: state.currentConversationId }));
+    setTimeout(() => ws.close(), 300);
+  };
+  ws.onerror = () => alert('Failed to send end conversation command.');
+}
+
+function copyTranscript() {
+  const lines = state.items
+    .filter(i => !i.isHidden && i.type === 'MESSAGE')
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map(i => {
+      const ch = i.channel ? `[${i.channel.toUpperCase()}]` : '';
+      const sv = i.supervisor ? '[SUPERVISOR]' : '';
+      return `${i.ts} ${ch}${sv} ${(i.role || '').toUpperCase()}: ${i.title}`;
+    })
+    .join('\n');
+  navigator.clipboard.writeText(lines).then(() => {
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = 'copied!';
+    setTimeout(() => btn.textContent = 'copy transcript', 2000);
+  });
+}
+
+function openCanvas(data) {
+  const overlay = document.getElementById('canvas-overlay');
+  const iframe = document.getElementById('canvas-iframe');
+  const title = document.getElementById('canvas-title');
+  title.textContent = data.title || 'Canvas';
+  if (data.url) {
+    iframe.src = data.url;
+  } else if (data.content) {
+    iframe.srcdoc = data.content;
+  }
+  overlay.classList.add('open');
+}
+
+// ─── Checklist ────────────────────────────────────────────────────────────────
+async function runChecklist() {
+  const section = document.getElementById('checklist-section');
+  if (!section) return;
+
+  const results = [];
+
+  // Check OpenAI (session endpoint)
+  let openaiOk = false;
+  try {
+    const r = await fetch('/api/session', { method: 'GET' });
+    openaiOk = r.ok;
+  } catch {}
+  results.push({ label: 'OpenAI API', ok: openaiOk });
+
+  // Check Twilio
+  let twilioOk = false;
+  let phoneNumber = null;
+  try {
+    const r = await fetch('/api/twilio');
+    if (r.ok) {
+      twilioOk = true;
+      const body = await r.json();
+      if (body.accountSid) twilioOk = true;
+    }
+  } catch {}
+  results.push({ label: 'Twilio account', ok: twilioOk });
+
+  // Check phone numbers
+  try {
+    const r = await fetch('/api/twilio/numbers');
+    if (r.ok) {
+      const body = await r.json();
+      const numbers = body.numbers || body.incomingPhoneNumbers || [];
+      if (numbers.length > 0) {
+        phoneNumber = numbers[0].phoneNumber || numbers[0].phone_number;
+        results.push({ label: `Phone: ${phoneNumber}`, ok: true });
+      } else {
+        results.push({ label: 'No phone numbers', ok: false });
+      }
+    }
+  } catch {
+    results.push({ label: 'Phone numbers', ok: false });
+  }
+
+  section.innerHTML = results.map(r => `
+    <div class="checklist-row">
+      <span class="check-icon ${r.ok ? 'ok' : 'fail'}">${r.ok ? '✓' : '✗'}</span>
+      <span>${esc(r.label)}</span>
+    </div>
+  `).join('');
+}
+
+// ─── Event bindings ───────────────────────────────────────────────────────────
+document.getElementById('hist-toggle').addEventListener('click', toggleHistory);
+
+document.getElementById('int-send').addEventListener('click', sendMessage);
+
+document.getElementById('int-stop').addEventListener('click', cancelRequest);
+
+document.getElementById('btn-end').addEventListener('click', endConversation);
+
+document.getElementById('btn-copy').addEventListener('click', copyTranscript);
+
+document.getElementById('canvas-close').addEventListener('click', () => {
+  document.getElementById('canvas-overlay').classList.remove('open');
+  document.getElementById('canvas-iframe').src = '';
+});
+
+document.getElementById('canvas-overlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) {
+    document.getElementById('canvas-overlay').classList.remove('open');
+    document.getElementById('canvas-iframe').src = '';
+  }
+});
+
+const intInput = document.getElementById('int-input');
+
+intInput.addEventListener('input', () => {
+  // Auto-grow textarea
+  intInput.style.height = 'auto';
+  intInput.style.height = intInput.scrollHeight + 'px';
+  // Enable send button when there's text
+  const sendBtn = document.getElementById('int-send');
+  sendBtn.disabled = intInput.value.trim().length === 0 || state.wsStatus !== 'connected' || state.inFlight;
+});
+
+intInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+connect();
+runChecklist();
+</script>
+</body>
+</html>

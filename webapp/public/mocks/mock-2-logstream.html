@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HK — Mock 2: Log Stream</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f7f7f5;
+      --paper: #ffffff;
+      --border: #e8e8e4;
+      --border-strong: #d0d0cc;
+      --text: #1a1a18;
+      --text-mid: #888880;
+      --text-dim: #c0c0b8;
+      --accent: #1a1a18;
+      --green: #16875a;
+      --green-bg: #f0faf6;
+      --blue: #2563eb;
+      --blue-bg: #eff6ff;
+      --amber: #b45309;
+      --amber-bg: #fffbeb;
+      --purple: #7c3aed;
+      --purple-bg: #faf5ff;
+      --red: #dc2626;
+      --font: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      --font-ui: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-ui);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Header ── */
+    header {
+      height: 48px;
+      background: var(--paper);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .wordmark {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text);
+    }
+
+    .header-div { width: 1px; height: 18px; background: var(--border); }
+
+    /* Status indicator */
+    .agent-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-mid);
+    }
+
+    .status-light {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .status-light.idle { background: var(--text-dim); animation: none; }
+
+    /* Active channel pill */
+    .active-ch {
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .active-ch.phone { background: var(--green-bg); color: var(--green); }
+    .active-ch.idle  { background: var(--bg); color: var(--text-dim); }
+
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+    .hlink { font-size: 12px; color: var(--text-mid); cursor: pointer; text-decoration: none; }
+    .hlink:hover { color: var(--text); }
+
+    /* End button — right in header, clearly exceptional */
+    .btn-end-header {
+      padding: 5px 12px;
+      border-radius: 5px;
+      border: 1px solid rgba(220,38,38,0.3);
+      background: transparent;
+      color: var(--red);
+      font-size: 11px;
+      font-family: var(--font);
+      cursor: pointer;
+      letter-spacing: 0.04em;
+    }
+    .btn-end-header:hover { background: #fef2f2; border-color: var(--red); }
+
+    /* ── Body ── */
+    .body { flex: 1; display: flex; overflow: hidden; }
+
+    /* ── Left: stream ── */
+    .stream {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* History accordion — top of stream */
+    .hist-accordion {
+      border-bottom: 2px solid var(--border);
+      flex-shrink: 0;
+      background: var(--paper);
+    }
+
+    .hist-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 24px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .hist-bar:hover { background: var(--bg); }
+
+    .hist-chevron {
+      font-size: 10px;
+      color: var(--text-dim);
+      transition: transform 0.15s;
+      width: 10px;
+      display: inline-block;
+    }
+    .hist-accordion.open .hist-chevron { transform: rotate(90deg); }
+
+    .hist-bar-label { font-size: 12px; color: var(--text-mid); }
+    .hist-bar-count { font-size: 11px; color: var(--text-dim); }
+    .hist-bar-hint { font-size: 11px; color: var(--text-dim); margin-left: auto; }
+
+    .hist-entries {
+      display: none;
+      flex-direction: column;
+      border-top: 1px solid var(--border);
+    }
+    .hist-accordion.open .hist-entries { display: flex; }
+
+    .hist-entry {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 24px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .hist-entry:last-child { border-bottom: none; }
+    .hist-entry:hover { background: var(--bg); }
+
+    .he-id { font-family: var(--font); font-size: 10px; color: var(--text-dim); width: 65px; }
+    .he-summary { flex: 1; color: var(--text-mid); }
+    .he-ch { font-size: 12px; }
+    .he-when { font-size: 11px; color: var(--text-dim); }
+    .he-ro { font-size: 10px; color: var(--text-dim); padding: 1px 6px; border-radius: 3px; background: var(--bg); }
+
+    /* Stream content */
+    .stream-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+    }
+    .stream-content::-webkit-scrollbar { width: 0; }
+
+    /* Day header */
+    .day-header {
+      padding: 10px 24px;
+      font-size: 11px;
+      color: var(--text-dim);
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.05em;
+      font-family: var(--font);
+    }
+
+    /* Log line — the core unit */
+    .log-line {
+      display: flex;
+      align-items: baseline;
+      gap: 0;
+      padding: 0;
+      border-bottom: 1px solid var(--border);
+      min-height: 36px;
+      transition: background 0.08s;
+    }
+    .log-line:hover { background: #fafaf8; }
+    .log-line:last-child { border-bottom: none; }
+
+    /* Timestamp gutter */
+    .ll-ts {
+      width: 75px;
+      flex-shrink: 0;
+      padding: 10px 0 10px 24px;
+      font-family: var(--font);
+      font-size: 10px;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    /* Channel tag */
+    .ll-ch {
+      width: 52px;
+      flex-shrink: 0;
+      padding: 10px 8px;
+      font-family: var(--font);
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      text-align: center;
+    }
+    .ll-ch.phone { color: var(--green); }
+    .ll-ch.sms   { color: var(--blue); }
+    .ll-ch.tool  { color: var(--purple); }
+    .ll-ch.sys   { color: var(--text-dim); }
+    .ll-ch.web   { color: var(--text-mid); }
+
+    /* Role */
+    .ll-role {
+      width: 52px;
+      flex-shrink: 0;
+      padding: 10px 8px;
+      font-family: var(--font);
+      font-size: 10px;
+      letter-spacing: 0.04em;
+    }
+    .ll-role.caller { color: var(--amber); }
+    .ll-role.agent  { color: var(--text-mid); }
+    .ll-role.tool   { color: var(--purple); }
+    .ll-role.sys    { color: var(--text-dim); }
+
+    /* Message body */
+    .ll-body {
+      flex: 1;
+      padding: 10px 24px 10px 8px;
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.45;
+    }
+
+    .ll-body.sys { color: var(--text-mid); font-style: italic; font-size: 12px; }
+    .ll-body.tool-call { font-family: var(--font); font-size: 11px; }
+    .ll-body .tool-result { display: block; color: var(--text-mid); font-size: 10px; margin-top: 2px; }
+
+    /* Processing line */
+    .log-line.processing .ll-body {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-dim);
+      font-size: 11px;
+      font-family: var(--font);
+    }
+
+    .proc-dots span {
+      display: inline-block; width: 3px; height: 3px;
+      border-radius: 50%; background: var(--blue);
+      margin: 0 1px; animation: pd 1.2s infinite;
+    }
+    .proc-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .proc-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes pd {
+      0%, 80%, 100% { opacity: 0.2; }
+      40% { opacity: 1; }
+    }
+
+    /* ── Intervene bar ── */
+    .intervene-bar {
+      border-top: 2px solid var(--border);
+      padding: 12px 24px;
+      background: var(--paper);
+      flex-shrink: 0;
+    }
+
+    .int-label {
+      font-size: 10px;
+      font-family: var(--font);
+      color: var(--text-dim);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 7px;
+    }
+
+    .int-row { display: flex; gap: 8px; align-items: flex-end; }
+
+    .int-input {
+      flex: 1;
+      padding: 8px 14px;
+      border: 1.5px solid var(--border-strong);
+      border-radius: 6px;
+      background: var(--bg);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+      resize: none;
+      min-height: 36px;
+      max-height: 100px;
+      line-height: 1.5;
+      transition: border-color 0.15s;
+    }
+    .int-input:focus { border-color: var(--blue); background: var(--paper); }
+    .int-input::placeholder { color: var(--text-dim); }
+
+    .int-send {
+      padding: 8px 18px;
+      border-radius: 6px;
+      border: 1.5px solid var(--text);
+      background: var(--text);
+      color: var(--paper);
+      font-size: 12px;
+      font-family: var(--font-ui);
+      font-weight: 500;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.1s;
+    }
+    .int-send:hover { background: #333; border-color: #333; }
+
+    .int-stop {
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: 1.5px solid var(--border-strong);
+      background: transparent;
+      color: var(--text-mid);
+      font-size: 12px;
+      font-family: var(--font-ui);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .int-stop:hover { border-color: var(--amber); color: var(--amber); }
+
+    /* ── Right sidebar ── */
+    .sidebar {
+      width: 200px;
+      flex-shrink: 0;
+      border-left: 1px solid var(--border);
+      background: var(--paper);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .sb-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .sb-label { font-size: 10px; font-family: var(--font); color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+
+    /* Big state display */
+    .big-state {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--green);
+      line-height: 1;
+    }
+    .big-state.idle { color: var(--text-dim); }
+
+    .state-detail { font-size: 11px; color: var(--text-mid); margin-top: 4px; font-family: var(--font); }
+
+    /* Stat rows */
+    .sb-stat { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+    .sb-stat:last-child { border-bottom: none; }
+    .sb-stat-label { color: var(--text-mid); }
+    .sb-stat-val { font-family: var(--font); font-weight: 500; color: var(--text); }
+    .sb-stat-val.blue { color: var(--blue); }
+    .sb-stat-val.purple { color: var(--purple); }
+
+    .sb-channels { display: flex; flex-direction: column; gap: 5px; }
+
+    .sb-ch {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+    }
+    .sb-ch-name { display: flex; align-items: center; gap: 5px; color: var(--text-mid); }
+    .sb-ch-dot { width: 5px; height: 5px; border-radius: 50%; }
+    .sb-ch-dot.on { background: var(--green); }
+    .sb-ch-dot.off { background: var(--text-dim); }
+    .sb-ch-status { font-family: var(--font); font-size: 10px; color: var(--text-dim); }
+    .sb-ch-status.live { color: var(--green); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <span class="wordmark">HK</span>
+    <div class="header-div"></div>
+    <div class="agent-status">
+      <div class="status-light"></div>
+      active · on call
+    </div>
+    <div class="active-ch phone">📞 inbound</div>
+    <div class="header-right">
+      <a class="hlink">settings</a>
+      <a class="hlink">voice</a>
+      <a class="hlink">logs</a>
+      <div class="header-div"></div>
+      <button class="btn-end-header">⚠ end conversation</button>
+    </div>
+  </header>
+
+  <div class="body">
+
+    <div class="stream">
+
+      <!-- History accordion -->
+      <div class="hist-accordion">
+        <div class="hist-bar" onclick="this.parentElement.classList.toggle('open')">
+          <span class="hist-chevron">▶</span>
+          <span class="hist-bar-label">Previous conversations</span>
+          <span class="hist-bar-count">&nbsp;(3)</span>
+          <span class="hist-bar-hint">read-only archive</span>
+        </div>
+        <div class="hist-entries">
+          <div class="hist-entry">
+            <span class="he-id">conv-3a8f</span>
+            <span class="he-ch">📞</span>
+            <span class="he-summary">Scheduled appointment, asked about hours</span>
+            <span class="he-when">2h ago</span>
+            <span class="he-ro">read-only</span>
+          </div>
+          <div class="hist-entry">
+            <span class="he-id">conv-7c12</span>
+            <span class="he-ch">💬</span>
+            <span class="he-summary">Reported issue with order #4421</span>
+            <span class="he-when">4h ago</span>
+            <span class="he-ro">read-only</span>
+          </div>
+          <div class="hist-entry">
+            <span class="he-id">conv-1e90</span>
+            <span class="he-ch">📞</span>
+            <span class="he-summary">General enquiry, unresolved</span>
+            <span class="he-when">yesterday</span>
+            <span class="he-ro">read-only</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stream -->
+      <div class="stream-content">
+        <div class="day-header">9 Mar 2026 — current conversation</div>
+
+        <div class="log-line">
+          <span class="ll-ts">09:40:02</span>
+          <span class="ll-ch sys">sys</span>
+          <span class="ll-role sys">—</span>
+          <span class="ll-body sys">conversation opened · inbound call from +44 7700 900142</span>
+        </div>
+
+        <div class="log-line">
+          <span class="ll-ts">09:40:03</span>
+          <span class="ll-ch phone">phone</span>
+          <span class="ll-role caller">caller</span>
+          <span class="ll-body">Hi, I need to check on my delivery for order 8847</span>
+        </div>
+
+        <div class="log-line">
+          <span class="ll-ts">09:40:05</span>
+          <span class="ll-ch tool">tool</span>
+          <span class="ll-role tool">tool</span>
+          <span class="ll-body tool-call">
+            lookup_order(order_id: "8847")
+            <span class="tool-result">→ status: out-for-delivery · ETA 14:00–16:00</span>
+          </span>
+        </div>
+
+        <div class="log-line">
+          <span class="ll-ts">09:40:07</span>
+          <span class="ll-ch phone">phone</span>
+          <span class="ll-role agent">agent</span>
+          <span class="ll-body">Your order 8847 is out for delivery, arriving between 2pm and 4pm today.</span>
+        </div>
+
+        <div class="log-line">
+          <span class="ll-ts">09:40:14</span>
+          <span class="ll-ch phone">phone</span>
+          <span class="ll-role caller">caller</span>
+          <span class="ll-body">Can you send me a text with the delivery info?</span>
+        </div>
+
+        <div class="log-line">
+          <span class="ll-ts">09:40:15</span>
+          <span class="ll-ch tool">tool</span>
+          <span class="ll-role tool">tool</span>
+          <span class="ll-body tool-call">
+            send_sms(to: "+44 7700 900142", body: "Your order 8847 is out for delivery…")
+            <span class="tool-result">→ delivered</span>
+          </span>
+        </div>
+
+        <div class="log-line">
+          <span class="ll-ts">09:40:17</span>
+          <span class="ll-ch phone">phone</span>
+          <span class="ll-role agent">agent</span>
+          <span class="ll-body">Done — I've sent you a text with the delivery details.</span>
+        </div>
+
+        <div class="log-line">
+          <span class="ll-ts">09:42:29</span>
+          <span class="ll-ch phone">phone</span>
+          <span class="ll-role caller">caller</span>
+          <span class="ll-body">What else can you help me with?</span>
+        </div>
+
+        <div class="log-line processing">
+          <span class="ll-ts">09:42:31</span>
+          <span class="ll-ch sys">—</span>
+          <span class="ll-role sys">—</span>
+          <span class="ll-body">
+            <div class="proc-dots"><span></span><span></span><span></span></div>
+            processing
+          </span>
+        </div>
+
+      </div>
+
+      <!-- Intervene bar -->
+      <div class="intervene-bar">
+        <div class="int-label">intervene</div>
+        <div class="int-row">
+          <textarea class="int-input" placeholder="type to inject a message into the active conversation…" rows="1"></textarea>
+          <button class="int-stop">Stop</button>
+          <button class="int-send">Send</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right sidebar -->
+    <aside class="sidebar">
+      <div class="sb-section">
+        <div class="sb-label">state</div>
+        <div class="big-state">on call</div>
+        <div class="state-detail">+44 7700 900142<br>2 min 31 sec</div>
+      </div>
+
+      <div class="sb-section">
+        <div class="sb-label">conversation</div>
+        <div class="sb-stat"><span class="sb-stat-label">events</span><span class="sb-stat-val">9</span></div>
+        <div class="sb-stat"><span class="sb-stat-label">tool calls</span><span class="sb-stat-val purple">2</span></div>
+        <div class="sb-stat"><span class="sb-stat-label">channels</span><span class="sb-stat-val blue">2</span></div>
+        <div class="sb-stat"><span class="sb-stat-label">opened</span><span class="sb-stat-val">09:40:02</span></div>
+      </div>
+
+      <div class="sb-section">
+        <div class="sb-label">channels</div>
+        <div class="sb-channels">
+          <div class="sb-ch">
+            <span class="sb-ch-name"><span class="sb-ch-dot on"></span>phone</span>
+            <span class="sb-ch-status live">live</span>
+          </div>
+          <div class="sb-ch">
+            <span class="sb-ch-name"><span class="sb-ch-dot on"></span>sms</span>
+            <span class="sb-ch-status live">active</span>
+          </div>
+          <div class="sb-ch">
+            <span class="sb-ch-name"><span class="sb-ch-dot off"></span>email</span>
+            <span class="sb-ch-status">—</span>
+          </div>
+          <div class="sb-ch">
+            <span class="sb-ch-name"><span class="sb-ch-dot on"></span>web</span>
+            <span class="sb-ch-status live">this view</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+</body>
+</html>

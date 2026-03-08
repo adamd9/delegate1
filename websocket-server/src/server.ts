@@ -42,6 +42,13 @@ const app = express();
 app.use(cors({ origin: true }));
 app.options('*', cors({ origin: true }));
 
+// Serve the vanilla JS client (index.html) at higher priority than the Next.js export.
+// This overrides the root URL while letting Next.js pages (/settings, /voice, etc.) still work.
+const vanillaClientDir = join(__dirname, '../client');
+if (existsSync(vanillaClientDir)) {
+  app.use(express.static(vanillaClientDir, { extensions: ['html'] }));
+}
+
 // Serve the static Next.js export.
 // Production (dist/): files are at ../webapp-out (copied by CI build into the artifact).
 // Dev (src/ via ts-node): fall back to ../../webapp/out (the Next.js out dir at repo root).
