@@ -91,8 +91,8 @@ const TopBar = ({ children }: TopBarProps) => {
               Direct Voice
             </Link>
           </Button>
-          <Button variant="ghost" size="sm">
-            <Link
+          <Button variant="ghost" size="sm" asChild>
+            <a
               href="/miniapps/client_side_wake_word/index.html"
               className="flex items-center gap-2"
               target="_blank"
@@ -100,10 +100,10 @@ const TopBar = ({ children }: TopBarProps) => {
             >
               <Mic className="w-4 h-4" />
               Wakeword Demo
-            </Link>
+            </a>
           </Button>
-          <Button variant="ghost" size="sm">
-            <Link
+          <Button variant="ghost" size="sm" asChild>
+            <a
               href="/miniapps/wakeword_direct_voice/index.html"
               className="flex items-center gap-2"
               target="_blank"
@@ -111,10 +111,10 @@ const TopBar = ({ children }: TopBarProps) => {
             >
               <Mic className="w-4 h-4" />
               Wakeword Direct Voice
-            </Link>
+            </a>
           </Button>
-          <Button variant="ghost" size="sm">
-            <Link
+          <Button variant="ghost" size="sm" asChild>
+            <a
               href="/miniapps/voice_message_tester/index.html"
               className="flex items-center gap-2"
               target="_blank"
@@ -122,7 +122,7 @@ const TopBar = ({ children }: TopBarProps) => {
             >
               <Mic className="w-4 h-4" />
               Voice Message Tester
-            </Link>
+            </a>
           </Button>
         </div>
       </div>
