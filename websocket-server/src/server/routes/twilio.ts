@@ -5,6 +5,15 @@ import { setNumbers } from '../../smsState';
 import { createTwilioAccessToken, TwilioConfigError } from '../../services/twilioToken';
 import { processSmsWebhook } from '../../session/sms';
 
+function getTwilioClient() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  if (!accountSid || !authToken) return null;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const twilio = require('twilio');
+  return twilio(accountSid, authToken, { region: 'au1', edge: 'sydney' });
+}
+
 export function registerTwilioRoutes(app: Application, opts: { effectivePublicUrl: string; chatClients: Set<any>; logsClients: Set<any>; }) {
   const { effectivePublicUrl, chatClients, logsClients } = opts;
 
@@ -68,5 +77,47 @@ export function registerTwilioRoutes(app: Application, opts: { effectivePublicUr
 
     await processSmsWebhook({ messageText, from, to }, chatClients as any, logsClients as any);
     res.status(200).end();
+  });
+
+  // --- Frontend API helpers (migrated from Next.js /app/api) ---
+
+  // Check whether Twilio credentials are configured
+  app.get('/api/twilio', (_req: Request, res: Response) => {
+    const credentialsSet = Boolean(
+      process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+    );
+    res.json({ credentialsSet, timestamp: new Date().toISOString() });
+  });
+
+  // List Twilio phone numbers
+  app.get('/api/twilio/numbers', async (_req: Request, res: Response) => {
+    const client = getTwilioClient();
+    if (!client) {
+      res.json([]);
+      return;
+    }
+    try {
+      const numbers = await client.incomingPhoneNumbers.list({ limit: 20 });
+      res.json(numbers);
+    } catch (err: any) {
+      console.log('Phone number fetch failed (optional):', err?.message);
+      res.json([]);
+    }
+  });
+
+  // Update a Twilio phone number's voice URL
+  app.post('/api/twilio/numbers', async (req: Request, res: Response) => {
+    const client = getTwilioClient();
+    if (!client) {
+      res.status(500).json({ error: 'Twilio client not initialized' });
+      return;
+    }
+    const { phoneNumberSid, voiceUrl } = req.body as { phoneNumberSid: string; voiceUrl: string };
+    try {
+      const updated = await client.incomingPhoneNumbers(phoneNumberSid).update({ voiceUrl });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || 'Failed to update phone number' });
+    }
   });
 }

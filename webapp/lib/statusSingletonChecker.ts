@@ -78,7 +78,7 @@ this.emitter.emit('update', this.result);
     // 1. Check Twilio credentials
     let credRes, credData;
     try {
-      credRes = await fetch("/api/twilio");
+      credRes = await fetch(getBackendUrl() + "/api/twilio");
       credData = credRes.ok ? await credRes.json() : {};
       const hasCredentials = !!credData?.credentialsSet;
       checks.push({
@@ -95,7 +95,7 @@ this.emitter.emit('update', this.result);
     // 2. Check Twilio phone numbers
     let numbersRes, numbersData;
     try {
-      numbersRes = await fetch("/api/twilio/numbers");
+      numbersRes = await fetch(getBackendUrl() + "/api/twilio/numbers");
       numbersData = numbersRes.ok ? await numbersRes.json() : [];
       const hasPhone = Array.isArray(numbersData) && numbersData.length > 0;
       checks.push({

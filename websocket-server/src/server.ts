@@ -17,6 +17,7 @@ import { registerCanvasRoutes } from './server/routes/canvas';
 import { registerDeepgramRoutes } from './server/routes/deepgram';
 import { registerVoiceMessageRoutes } from './server/routes/voiceMessage';
 import { registerVoiceDefaultsRoutes } from './server/routes/voiceDefaults';
+import { registerOpenAiSessionRoute } from './server/routes/openaiSession';
 import { getConfig } from './server/config/env';
 import { registerHealthRoutes, setReady } from './server/routes/health';
 import { chatClients, logsClients } from './ws/clients';
@@ -119,6 +120,9 @@ registerAdaptationsRoutes(app);
 registerMcpConfigRoutes(app);
 // Voice defaults management API
 registerVoiceDefaultsRoutes(app);
+
+// OpenAI Realtime session token proxy
+registerOpenAiSessionRoute(app);
 
 // Access token handled in Twilio routes
 
