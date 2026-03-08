@@ -1,5 +1,3 @@
-export const dynamic = "force-dynamic";
-
 import LogViewer from "@/components/LogViewer";
 import { getBackendUrl } from "@/lib/get-backend-url";
 

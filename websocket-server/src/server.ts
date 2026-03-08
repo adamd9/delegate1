@@ -40,6 +40,10 @@ const SESSION_HISTORY_LIMIT = cfg.sessionHistoryLimit;
 const app = express();
 app.use(cors({ origin: true }));
 app.options('*', cors({ origin: true }));
+
+// Serve the static Next.js export (webapp/out) at the root.
+// Path is relative: works from both src/ (ts-node) and dist/ (compiled).
+app.use(express.static(join(__dirname, '../../webapp/out'), { extensions: ['html'] }));
 const server = http.createServer(app);
 
 // Track readiness across async startup steps so we can persist a startup note

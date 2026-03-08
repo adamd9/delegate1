@@ -397,7 +397,7 @@ export function EnhancedTranscript({
                         const direct = d?.url_d2_viewer as string | undefined;
                         const sid = d?.session_id as string | undefined;
                         const cid = d?.conversation_id as string | undefined;
-                        const derived = sid && cid ? `/thoughtflow/viewer/${sid}.${cid}` : undefined;
+                        const derived = sid && cid ? `/thoughtflow/viewer?id=${sid}.${cid}` : undefined;
                         const viewerHref = direct || derived;
                         return viewerHref ? (
                           <a href={viewerHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded border border-green-200 text-green-700 hover:bg-green-50" title="Open D2 in browser viewer">
