@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import WebSocket from 'ws';
 
-const FRONTEND_PORT = Number(process.env.FRONTEND_PORT || 3000);
+const FRONTEND_PORT = Number(process.env.FRONTEND_PORT || 8081);
 const BACKEND_PORT = Number(process.env.PORT || 8081);
 const UI_BASE = `http://localhost:${FRONTEND_PORT}`;
 const API_BASE = `http://localhost:${BACKEND_PORT}`;

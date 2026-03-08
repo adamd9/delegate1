@@ -37,7 +37,7 @@ jobs:
             fi
           fi
 
-  build-frontend:
+  build:
     needs: [precheck]
     if: needs.precheck.outputs.should_continue == 'true'
     runs-on: ubuntu-latest
@@ -54,43 +54,14 @@ jobs:
         working-directory: webapp
         run: npm ci
 
-      - name: Build webapp
+      - name: Build webapp (static export)
         working-directory: webapp
         env:
           NEXT_PUBLIC_REMOTE_BACKEND: ${{ github.ref_name == 'main' && 'https://hk.api.mdlg.dev' || 'https://hk-dev.api.mdlg.dev' }}
         run: npm run build
 
-      - name: List build output directories
-        run: ls -la webapp/.next       
-
-      - name: Upload webapp build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          if-no-files-found: error
-          include-hidden-files: true
-          name: webapp-build
-          path: |
-            webapp/.next
-            webapp/package.json
-            webapp/scripts
-            webapp/public
-
-      - name: Install dependencies (websocket-server)
-        working-directory: websocket-server
-        run: npm ci
-
-  build-backend:
-    needs: [precheck]
-    if: needs.precheck.outputs.should_continue == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
+      - name: Copy webapp static export into backend artifact path
+        run: cp -r webapp/out websocket-server/webapp-out
 
       - name: Install dependencies (backend)
         working-directory: websocket-server
@@ -100,10 +71,10 @@ jobs:
         working-directory: websocket-server
         run: npm run build
 
-      - name: List backend build output directories
-        run: ls -la websocket-server/dist
+      - name: List build outputs
+        run: ls -la websocket-server/dist && ls -la websocket-server/webapp-out
 
-      - name: Upload backend build artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
@@ -113,9 +84,10 @@ jobs:
             websocket-server/dist
             websocket-server/package.json
             websocket-server/scripts
+            websocket-server/webapp-out
 
   trigger-dockerserver-deploy:
-    needs: [precheck, build-frontend, build-backend]
+    needs: [precheck, build]
     if: needs.precheck.outputs.should_continue == 'true'
     runs-on: ubuntu-latest
     outputs:
@@ -163,36 +135,15 @@ jobs:
     steps:
       - name: Wait 5 minutes for deployment
         run: sleep 300
-      - name: Check backend API health
+      - name: Check backend health
         run: |
           for i in {1..30}; do
             if curl -sSf "https://${{ needs.trigger-dockerserver-deploy.outputs.api_domain }}/public-url"; then
-              echo "Backend API is up!"
+              echo "Backend is up!"
               exit 0
             fi
-            echo "Waiting for backend API..."
+            echo "Waiting for backend..."
             sleep 10
           done
-          echo "Backend API did not become available in time."
-          exit 1
-
-  wait-frontend-health:
-    needs: [precheck, trigger-dockerserver-deploy]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Wait 5 minutes for deployment
-        run: sleep 300
-      - name: Check frontend health
-        run: |
-          for i in {1..30}; do
-            if curl -sSf "https://${{ needs.trigger-dockerserver-deploy.outputs.domain }}/"; then
-              echo "Frontend is up!"
-              exit 0
-            fi
-            echo "Waiting for frontend..."
-            sleep 10
-          done
-          echo "Frontend did not become available in time."
-          exit 1
-
+          echo "Backend did not become available in time."
           exit 1

@@ -23,8 +23,14 @@ jobs:
         with:
           node-version: '24.x'
 
+      - name: Install dependencies and build webapp (static export)
+        env:
+          NEXT_PUBLIC_REMOTE_BACKEND: ${{ vars.NEXT_PUBLIC_REMOTE_BACKEND }}
+        run: |
+          cd webapp && npm install && npm run build
+
       - name: Install dependencies and build backend
-        run: |          
+        run: |
           cd websocket-server && npm install && npm run build
 
       - name: Prepare deployment package
@@ -33,6 +39,7 @@ jobs:
           cp -r websocket-server/dist deploy-backend/
           cp websocket-server/package.json deploy-backend/
           cp -r websocket-server/node_modules deploy-backend/
+          cp -r webapp/out deploy-backend/webapp-out
           cd deploy-backend && npm prune --omit=dev
 
       - name: Upload artifact for deployment job

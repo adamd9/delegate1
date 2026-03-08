@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from "dotenv";
 import http from "http";
 import { join } from "path";
+import { existsSync } from "fs";
 import cors from "cors";
 import { startEmailPolling } from './emailPoller';
 import { attachWebSockets } from './ws/attach';
@@ -41,9 +42,13 @@ const app = express();
 app.use(cors({ origin: true }));
 app.options('*', cors({ origin: true }));
 
-// Serve the static Next.js export (webapp/out) at the root.
-// Path is relative: works from both src/ (ts-node) and dist/ (compiled).
-app.use(express.static(join(__dirname, '../../webapp/out'), { extensions: ['html'] }));
+// Serve the static Next.js export.
+// Production (dist/): files are at ../webapp-out (copied by CI build into the artifact).
+// Dev (src/ via ts-node): fall back to ../../webapp/out (the Next.js out dir at repo root).
+const prodClientDir = join(__dirname, '../webapp-out');
+const devClientDir = join(__dirname, '../../webapp/out');
+const clientDir = existsSync(prodClientDir) ? prodClientDir : devClientDir;
+app.use(express.static(clientDir, { extensions: ['html'] }));
 const server = http.createServer(app);
 
 // Track readiness across async startup steps so we can persist a startup note

@@ -10,16 +10,12 @@
   "scripts": {
     "kill-ports": "bash scripts/kill-ports.sh",
     "predev": "npm run kill-ports",
-    "dev": "npm run kill-ports && concurrently -k \"npm run backend:dev\" \"npm run frontend:dev\"",
-    "dev:core": "concurrently -k \"npm run backend:dev\" \"npm run frontend:dev\"",
-    "prestart": "npm run kill-ports",
-    "start": "concurrently \"npm run backend:start\" \"npm run frontend:start\"",
-    "build": "npm run backend:build && npm run frontend:build",
+    "dev": "npm run kill-ports && npm run backend:dev",
+    "start": "npm run backend:start",
+    "build": "npm run frontend:build && npm run backend:build",
     "backend:dev": "cd websocket-server && npm run dev",
     "backend:start": "cd websocket-server && npm start",
     "backend:build": "cd websocket-server && npm run build",
-    "frontend:dev": "cd webapp && npm run dev",
-    "frontend:start": "cd webapp && npm start",
     "frontend:build": "cd webapp && npm run build",
     "install:all": "npm install",
     "test:e2e": "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npx -y @playwright/test@1.55.0 test",
@@ -38,7 +34,6 @@
     "ask:complex": "npm run ask -- \"Please escalate this to the supervisor and tell me our company policy on data privacy.\""
   },
   "devDependencies": {
-    "concurrently": "^8.2.2",
     "ws": "^8.18.0"
   },
   "keywords": [

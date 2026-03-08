@@ -4,9 +4,9 @@
 name: Build and deploy Node.js app to Azure Web App - hk-drop37
 
 on:
-  push:
-    branches:
-      - main
+  # Push trigger disabled — frontend is now served by the backend (hk-api-drop37).
+  # Keep workflow_dispatch so the Azure App can be redeployed manually if needed
+  # while the resource is being decommissioned.
   workflow_dispatch:
 
 jobs:

@@ -12,22 +12,21 @@ Delegate 1 is a single-session, multi-channel AI assistant (text, voice, phone) 
 
 ## Local development
 - Install deps: `npm run install:all`
-- Dev (frontend + backend): `npm run dev`
-- Backend only: `npm run backend:dev`
-- Frontend only: `npm run frontend:dev`
-- Build: `npm run build`
+- Dev (single process): `npm run dev`
+- Build (webapp then backend): `npm run build`
 - Note: never start or restart dev servers here; ask the user to do it.
 
 ## Deployment (GitHub Actions)
 - Trigger: pushes to any branch; main targets prod domains, other branches target dev domains.
 - Workflow: `.github/workflows/deploy.yml`.
-- Artifacts: frontend `webapp/.next` + `webapp/public` + `webapp/package.json`; backend `websocket-server/dist` + `websocket-server/package.json`.
+- Single build job: builds webapp static export (`next build` → `out/`), copies into backend as `websocket-server/webapp-out/`, then compiles backend TypeScript.
+- Artifact: `websocket-server/dist` + `websocket-server/webapp-out` + `websocket-server/package.json`.
 - Dispatch: `adamd9/docker-server-dev` repo event `deploy-hk` with frontend/backend domains.
-- Health checks: waits ~5 minutes, then polls `https://<api_domain>/public-url` and `https://<domain>/`.
+- Health check: waits ~5 minutes, then polls `https://<api_domain>/public-url`.
 
 ## Deployment runtime (Docker)
-- Frontend container: copies artifact into `/app/hk/webapp`, installs prod deps, runs `npm run start`.
-- Backend container: copies artifact into `/app/hk/websocket-server`, installs prod deps, runs `npm run start`.
+- Single backend container: copies artifact into `/app/hk/websocket-server`, installs prod deps, runs `npm run start`.
+- Express serves the static frontend from `websocket-server/webapp-out/` at the root URL.
 - Backend mounts a runtime-data volume; `RUNTIME_DATA_DIR` should point to that mount.
 
 ## Production logs
