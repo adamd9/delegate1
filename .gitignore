@@ -4,13 +4,13 @@ node_modules
 .env.published_app_logs
 generate-token.js
 .DS_Store
-websocket-server/session-data.json
-websocket-server/notes.json
-websocket-server/dist
+session-data.json
+notes.json
+dist
 scripts/localtunnel/*.log
 
 # runtime artifacts (ThoughtFlow, etc.)
-websocket-server/runtime-data/
+runtime-data/
 .ngrok
-websocket-server/adaptations.edits.json
+adaptations.edits.json
 .ngrok_cmd
