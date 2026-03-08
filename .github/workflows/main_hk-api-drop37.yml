@@ -23,31 +23,28 @@ jobs:
         with:
           node-version: '24.x'
 
-      - name: Install dependencies and build webapp (static export)
-        # NEXT_PUBLIC_REMOTE_BACKEND is intentionally not set here.
-        # Frontend and backend are the same server, so the app uses relative
-        # URLs (same-origin). No hostname needs to be baked into the build.
-        run: |
-          cd webapp && npm install && npm run build
+      - name: Install dependencies and build
+        run: npm install && npm run build
 
-      - name: Install dependencies and build backend
+      - name: Write build info
         run: |
-          cd websocket-server && npm install && npm run build
+          echo "{\"commitId\":\"$(git rev-parse --short HEAD)\",\"commitMessage\":$(git log -1 --pretty=%s | jq -Rs .)}" \
+            > client/build-info.json
 
       - name: Prepare deployment package
         run: |
-          mkdir -p deploy-backend
-          cp -r websocket-server/dist deploy-backend/
-          cp websocket-server/package.json deploy-backend/
-          cp -r websocket-server/node_modules deploy-backend/
-          cp -r webapp/out deploy-backend/webapp-out
-          cd deploy-backend && npm prune --omit=dev
+          mkdir -p deploy
+          cp -r dist deploy/
+          cp package.json deploy/
+          cp -r node_modules deploy/
+          cp -r client deploy/client
+          cd deploy && npm prune --omit=dev
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: deploy-backend
+          path: deploy
 
   deploy:
     runs-on: ubuntu-latest

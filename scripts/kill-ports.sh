@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PORTS=(3000 8081)
+PORTS=(8081)
 
 kill_pids() {
   local p="$1"

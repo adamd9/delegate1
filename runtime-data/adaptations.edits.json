@@ -1,0 +1,30 @@
+{
+  "adn.prompt.core.handleText": {
+    "title": "Core text prompt adaptation (handleTextChatMessage)",
+    "content": "",
+    "enabled": false,
+    "description": "Injected in chat.ts handleTextChatMessage() between context.preamble and base policy; recorded as prompt.adaptations step with adaptation_id.",
+    "updated_at": 1773010445553
+  },
+  "adn.prompt.core.toolConfirm": {
+    "title": "Tool confirmation prompt adaptation",
+    "content": "",
+    "enabled": false,
+    "description": "Used in functionCallExecutor confirmation Responses call after a tool is executed; emits prompt.adaptations (confirmation stage).",
+    "updated_at": 1773010445553
+  },
+  "adn.prompt.supervisor.initial": {
+    "title": "Supervisor initial prompt adaptation",
+    "content": "",
+    "enabled": false,
+    "description": "Prepended to the supervisor initial Responses request instructions; emits prompt.adaptations (supervisor initial).",
+    "updated_at": 1773010445553
+  },
+  "adn.prompt.supervisor.followup": {
+    "title": "Supervisor follow-up prompt adaptation",
+    "content": "",
+    "enabled": false,
+    "description": "Added as instructions to supervisor follow-up Responses request after tool outputs; emits prompt.adaptations (supervisor follow-up).",
+    "updated_at": 1773010445553
+  }
+}

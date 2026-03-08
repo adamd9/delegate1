@@ -4,16 +4,16 @@
 Delegate 1 is a single-session, multi-channel AI assistant (text, voice, phone) built around a backend-managed conversation thread. The repo is a Node/TS monorepo with a Next.js webapp and an Express/WebSocket backend, plus Twilio helper scripts.
 
 ## Repo map
-- `webapp/`: Next.js frontend UI.
-- `websocket-server/`: Express/WebSocket backend, session management, OpenAI Realtime, Twilio integration.
+- `src/`: Express/WebSocket backend source.
+- `client/`: Vanilla JS frontend (served as static files by Express).
 - `scripts/`: Twilio and debugging utilities.
 - `tests/`: Playwright E2E tests.
 - `docs/`: Architecture notes and thought-flow diagrams.
 
 ## Local development
-- Install deps: `npm run install:all`
-- Dev (single process): `npm run dev`
-- Build (webapp then backend): `npm run build`
+- Install deps: `npm install`
+- Dev: `npm run dev`
+- Build: `npm run build`
 - Note: never start or restart dev servers here; ask the user to do it.
 
 ## Deployment (GitHub Actions)
