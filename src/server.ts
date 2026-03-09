@@ -41,9 +41,7 @@ const app = express();
 app.use(cors({ origin: true }));
 app.options('*', cors({ origin: true }));
 
-// Serve the vanilla JS client
 const vanillaClientDir = join(__dirname, '../client');
-app.use(express.static(vanillaClientDir, { extensions: ['html'] }));
 
 const server = http.createServer(app);
 
@@ -128,6 +126,9 @@ registerVoiceDefaultsRoutes(app);
 
 // OpenAI Realtime session token proxy
 registerOpenAiSessionRoute(app);
+
+// Serve the vanilla JS client (after all API routes so they take priority)
+app.use(express.static(vanillaClientDir, { extensions: ['html'] }));
 
 // Access token handled in Twilio routes
 
