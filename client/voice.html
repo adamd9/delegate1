@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Voice · HK</title>
   <!-- Twilio Voice SDK via CDN -->
-  <script src="https://sdk.twilio.com/js/voice/releases/2.11.0/twilio.min.js"></script>
+  <script src="https://unpkg.com/@twilio/voice-sdk@2.11.0/dist/twilio.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -190,7 +190,7 @@
     addLog('Initializing Twilio Device…', 'info');
 
     // Twilio.Device is loaded from CDN and available as window.Twilio.Device
-    const TwilioDevice = (typeof Device !== 'undefined') ? Device : window?.Twilio?.Device;
+    const TwilioDevice = window?.Twilio?.Device;
     if (!TwilioDevice) {
       addLog('Twilio SDK not loaded', 'error');
       isConnecting = false;
