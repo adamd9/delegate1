@@ -14,6 +14,12 @@ export interface CompletedTurn {
   conversationId: string;
 }
 
+export interface CompletedConversation {
+  conversationId: string;
+  channel: Channel;
+  turns: Array<{ role: 'user' | 'assistant'; text: string }>;
+}
+
 /** Swappable backend interface — implement this to add a new memory provider */
 export interface MemoryBackend {
   /** Semantic search; returns formatted string of results, or null if nothing found / unavailable */

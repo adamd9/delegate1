@@ -806,16 +806,19 @@ function handleEvent(event) {
     }
 
     case 'memory.pending': {
-      addBreadcrumb(`🧠 Memory: fetching… (>${event.elapsed_ms}ms, response sent without it)`, { detail: 'Mem0 did not respond within the timeout. Will follow up when it arrives.' });
+      const isReplay = event.replay === true;
+      addBreadcrumb(`🧠 Memory: fetching… (>${event.elapsed_ms}ms, response sent without it)`, { detail: 'Mem0 did not respond within the timeout. Will follow up when it arrives.' }, isReplay, event.timestamp);
       break;
     }
 
     case 'memory.miss': {
-      addBreadcrumb('🧠 Memory: no relevant memories found', {});
+      const isReplay = event.replay === true;
+      addBreadcrumb('🧠 Memory: no relevant memories found', {}, isReplay, event.timestamp);
       break;
     }
 
     case 'memory.retrieved': {
+      const isReplay = event.replay === true;
       const count = event.count || 0;
       let label, detail;
       if (event.source === 'cache') {
@@ -828,13 +831,14 @@ function handleEvent(event) {
         label = `🧠 Memory: ${count} result(s) injected (${event.elapsed_ms}ms)`;
         detail = 'Injected into this response.';
       }
-      addBreadcrumb(label, { detail, preview: (event.preview || '').trim() });
+      addBreadcrumb(label, { detail, preview: (event.preview || '').trim() }, isReplay, event.timestamp);
       break;
     }
 
     case 'memory.stored': {
+      const isReplay = event.replay === true;
       const lines = (event.facts || '').trim().split('\n').filter(Boolean);
-      addBreadcrumb(`💾 Memory: ${lines.length} fact(s) stored`, { facts: event.facts, channel: event.channel });
+      addBreadcrumb(`💾 Memory: ${lines.length} fact(s) stored`, { facts: event.facts, channel: event.channel }, isReplay, event.timestamp);
       break;
     }
 
@@ -944,6 +948,7 @@ function addBreadcrumb(title, data, isHidden, timestamp) {
   const item = {
     id, type: 'BREADCRUMB', title, data: data || {},
     isHidden: !!isHidden,
+    isHistory: !!isHidden,   // history breadcrumbs start hidden; toggleHistory uses isHistory to render them
     ts: ts(), createdAt: (typeof timestamp === 'number' ? timestamp : Date.now()),
   };
   state.items.push(item);

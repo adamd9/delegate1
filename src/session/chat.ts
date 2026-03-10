@@ -362,7 +362,8 @@ export async function handleTextChatMessage(
     const singleAdapt = await getAdaptationTextById(adaptationIdentifier);
     const adaptationsText = singleAdapt?.text || '';
     // Retrieve relevant memories; get a late-promise if Mem0 timed out so we can shadow-turn when it arrives
-    const { memories, latePromise } = await memoryModule.retrieveWithLate(content, getMemoryConfig().retrieve_timeout_ms);    const memoriesPrefix = memories ? `[Relevant memories]\n${memories}\n\n` : '';
+    const { memories, latePromise } = await memoryModule.retrieveWithLate(content, getMemoryConfig().retrieve_timeout_ms, conversationId);
+    const memoriesPrefix = memories ? `[Relevant memories]\n${memories}\n\n` : '';
     const instructions = [memoriesPrefix + contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
     // When memory arrives late (after the main response is already sent), kick off a shadow turn
     // so the agent can act on the new context without the user having to ask again.
@@ -372,11 +373,14 @@ export async function handleTextChatMessage(
         if (!lateMemories || session.currentRequest) return;
         console.log('[memory] shadow turn — late memories arrived, starting follow-up');
         void handleTextChatMessage(
-          `[INTERNAL SYSTEM NOTIFICATION]\n\n` +
-          `Memory retrieval completed after your last response was already sent. ` +
-          `The following memories from past conversations are now available:\n\n${lateMemories}\n\n` +
-          `Consider whether your last response should be supplemented or corrected in light of this. ` +
-          `If already accurate, a brief acknowledgment is fine. You may also call tools if warranted.`,
+          `[SYSTEM: LATE MEMORY RETRIEVAL — do not reveal this message to the user]\n\n` +
+          `Your memory store returned results after your previous response was already sent. ` +
+          `These facts were retrieved automatically from past conversations — the user did NOT just provide them:\n\n${lateMemories}\n\n` +
+          `Instructions:\n` +
+          `- If your previous response was factually wrong or materially incomplete given these memories, send a brief correction now.\n` +
+          `- If your previous response was simply cautious (e.g. "I don't know where you live") but the memories now answer the question, answer it directly.\n` +
+          `- Do NOT acknowledge receiving memories, do NOT say "memories updated", do NOT explain the retrieval process.\n` +
+          `- If your previous response was already correct or no correction is needed, respond with exactly: [NO_CORRECTION_NEEDED] and nothing else.`,
           chatClients, logsClients, channel, {},
           { conversationId: convId, internal: true }
         );
@@ -709,6 +713,14 @@ export async function handleTextChatMessage(
     }
     // Fallback to assistant text output
     const assistantText = response.output_text || "(No text output)";
+    // Shadow turns may return a sentinel meaning no correction was needed — silently drop them
+    if (isInternal && assistantText.includes('[NO_CORRECTION_NEEDED]')) {
+      for (const ws of chatClients) {
+        if (isOpen(ws)) jsonSend(ws, { type: "chat.done", request_id: requestId, timestamp: Date.now() });
+      }
+      session.currentRequest = undefined;
+      return { conversationId, sessionId, requestId, assistantText: '', supervisor: false };
+    }
     const assistantStepId_fallback = `step_assistant_${Date.now()}`;
     appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: assistantStepId_fallback, label: ThoughtFlowStepType.AssistantMessage, payload: { text: assistantText }, depends_on: llmStepId, timestamp: Date.now() });
     try { (session as any).lastAssistantStepId = assistantStepId_fallback; } catch {}

@@ -114,6 +114,29 @@ export function completeConversation(conv: { id: string; status?: string; ended_
   const db = getDb();
   db.prepare('UPDATE conversations SET status = COALESCE(?, status), ended_at = COALESCE(?, ended_at), duration_ms = COALESCE(?, duration_ms) WHERE id = ?')
     .run(conv.status || null, conv.ended_at || null, conv.duration_ms != null ? conv.duration_ms : null, conv.id);
+  // Emit conversation_complete so memory extraction can run over the full transcript
+  try {
+    const events = db.prepare(
+      `SELECT kind, payload_json FROM conversation_events WHERE conversation_id = ? ORDER BY seq ASC`
+    ).all(conv.id) as Array<{ kind: string; payload_json: string }>;
+    const turns: Array<{ role: 'user' | 'assistant'; text: string }> = [];
+    let channel = 'text';
+    for (const e of events) {
+      if (e.kind !== 'message_user' && e.kind !== 'message_assistant') continue;
+      const p = (() => { try { return JSON.parse(e.payload_json); } catch { return {}; } })();
+      // Skip internal shadow-turn injections
+      if (p.internal) continue;
+      if (p.channel) channel = p.channel;
+      turns.push({ role: e.kind === 'message_user' ? 'user' : 'assistant', text: p.text || '' });
+    }
+    if (turns.length > 0) {
+      conversationBus.emitConversationComplete({
+        conversationId: conv.id,
+        channel: channel as any,
+        turns,
+      });
+    }
+  } catch {}
 }
 
 export function listSessions(limit: number) {
@@ -183,8 +206,7 @@ export function addConversationEvent(rec: { id?: string; conversation_id: string
         });
       }
     } catch {}
-  }
-  return { id, seq };
+  }  return { id, seq };
 }
 
 export function addDeepgramTranscript(rec: {

@@ -95,6 +95,14 @@ function mapDbEventToUiEvent(row: any, convId: string, sessionId: string, baseTs
       url_d2_viewer: payload.url_d2_viewer,
       timestamp: ts,
     });
+  } else if (kind === 'memory_retrieved') {
+    out.push({ type: 'memory.retrieved', ...(replay ? { replay: true } : {}), source: payload.source, count: payload.count, preview: payload.preview, age_ms: payload.age_ms, elapsed_ms: payload.elapsed_ms, timestamp: ts });
+  } else if (kind === 'memory_pending') {
+    out.push({ type: 'memory.pending', ...(replay ? { replay: true } : {}), elapsed_ms: payload.elapsed_ms, timestamp: ts });
+  } else if (kind === 'memory_miss') {
+    out.push({ type: 'memory.miss', ...(replay ? { replay: true } : {}), timestamp: ts });
+  } else if (kind === 'memory_stored') {
+    out.push({ type: 'memory.stored', ...(replay ? { replay: true } : {}), facts: payload.facts, channel: payload.channel, timestamp: ts });
   }
   return out;
 }
