@@ -260,7 +260,7 @@ function startHoldMusicLoop() {
   if (session.browserConn) sendBrowser();
 }
 
-function finalizeRun(status: 'error' | undefined = undefined) {
+export function finalizeRun(status: 'error' | undefined = undefined) {
   // For voice calls, finalize the sticky conversation when the call ends
   try {
     ensureSession();
@@ -512,7 +512,15 @@ export function processRealtimeModelEvent(
         console.log("[VOICE][USER][FINAL]", transcript);
         // Resolve pre-fetched memory (started on speech_started) or start fresh; inject via session.update if ready before response starts
         void ((): void => {
-          const memPromise = session.pendingMemoryPromise || memoryModule.retrieve(transcript, getMemoryConfig().retrieve_timeout_ms);
+          const convId = (session as any).currentConversationId as string | undefined;
+          const memCfg = getMemoryConfig();
+          // If pre-fetch resolved to null (cold cache, empty query), fall back to a real retrieval
+          // using the actual transcript so memories are available when the cache was cold.
+          const memPromise = session.pendingMemoryPromise
+            ? session.pendingMemoryPromise.then(cached =>
+                cached !== null ? cached : memoryModule.retrieve(transcript, memCfg.retrieve_timeout_ms, convId)
+              )
+            : memoryModule.retrieve(transcript, memCfg.retrieve_timeout_ms, convId);
           session.pendingMemoryPromise = undefined;
           memPromise.then(memories => {
             if (memories && isOpen(session.modelConn) && !session.responseStartTimestamp) {
@@ -606,7 +614,8 @@ export function processRealtimeModelEvent(
       // Pre-fetch memories while the user is speaking — will be awaited when transcript arrives
       try {
         const cfg = getMemoryConfig();
-        session.pendingMemoryPromise = memoryModule.retrieve('', cfg.retrieve_timeout_ms);
+        const convId = (session as any).currentConversationId as string | undefined;
+        session.pendingMemoryPromise = memoryModule.retrieve('', cfg.retrieve_timeout_ms, convId);
       } catch {}
       const modelConn = session.modelConn;
       if (isOpen(modelConn)) {
