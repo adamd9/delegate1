@@ -77,6 +77,8 @@ export interface Session {
     startedAt?: number;
     jsonlPath?: string;
   };
+  // Pre-fetched memory retrieval promise for voice (started on speech_started, awaited on transcript)
+  pendingMemoryPromise?: Promise<string | null>;
 }
 
 // Singleton session state

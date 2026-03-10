@@ -3,7 +3,6 @@ import { AgentConfig } from './types';
 import { sendCanvas } from '../tools/handlers/canvas';
 import { sendSmsTool } from '../tools/handlers/sms';
 import { sendEmailTool } from '../tools/handlers/email';
-import { memAddFunction, memSearchFunction } from '../tools/handlers/mem0';
 import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction, getNoteFunction } from '../tools/handlers/notes';
 import { hangupCallTool } from '../tools/handlers/hangup';
 import { agentPersonality } from "./personality";
@@ -55,16 +54,13 @@ Canvas tool:
 - There's no need to supply the link in the message back to the user unless it's being sent via SMS.
 
 Persistent memory:
-- Use local memory tools to store and recall durable user facts/preferences.
-- Tools: mem_add (store), mem_search (retrieve relevant facts). Treat all interactions as the same global user; channel may be included as metadata.
-- Briefly confirm with the user before storing new long-term facts when appropriate (unless the user has explicitly asked you to store something, then just store it without confirmation.).`,
+- Relevant memories from past conversations are automatically included in your context when available.
+- If you notice something important the user has shared (a preference, fact about themselves, a recurring need), you can acknowledge it naturally — memory is handled passively in the background.`,
   voice: agentPersonality.voice,
   tools: [
     sendCanvas,
     sendSmsTool,
     sendEmailTool,
-    memAddFunction,
-    memSearchFunction,
     createNoteFunction,
     listNotesFunction,
     updateNoteFunction,

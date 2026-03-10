@@ -1,6 +1,8 @@
 import Database from 'better-sqlite3';
 import { existsSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
+import { conversationBus } from '../memory/conversationBus';
+import type { Channel } from '../agentConfigs/context';
 
 // Resolve DB path for containerized deployments.
 // Use RUNTIME_DATA_DIR when provided (e.g., in Docker/K8s), otherwise use local dev default.
@@ -166,6 +168,22 @@ export function addConversationEvent(rec: { id?: string; conversation_id: string
       console.debug(`[ledger] event insert conv=${rec.conversation_id} id=${id} seq=${seq} kind=${rec.kind} ts=${created_at_ms}`);
     } catch {}
   }
+  // Emit turn_complete when an assistant message is committed — single hook point for all channels
+  if (rec.kind === 'message_assistant') {
+    try {
+      const userEvent = getLastUserEventForConversation(rec.conversation_id);
+      if (userEvent) {
+        const assistantPayload = rec.payload || {};
+        console.log(`[memory] turn_complete emit — conv: ${rec.conversation_id} channel: ${userEvent.channel || assistantPayload.channel}`);
+        conversationBus.emitTurnComplete({
+          userContent: userEvent.text || '',
+          assistantContent: assistantPayload.text || '',
+          channel: (userEvent.channel || assistantPayload.channel || 'text') as Channel,
+          conversationId: rec.conversation_id,
+        });
+      }
+    } catch {}
+  }
   return { id, seq };
 }
 
@@ -184,6 +202,16 @@ export function addDeepgramTranscript(rec: {
     'INSERT INTO deepgram_transcripts (id, created_at_ms, transcript, is_final, session_hint, meta_json) VALUES (?, ?, ?, ?, ?, ?)'
   ).run(id, created_at_ms, rec.transcript, rec.is_final ? 1 : 0, rec.session_hint || null, meta_json);
   return { id };
+}
+
+/** Returns the most recent message_user payload for a conversation (used by conversationBus hook). */
+function getLastUserEventForConversation(conversation_id: string): { text: string; channel: string } | null {
+  const db = getDb();
+  const row = db.prepare(
+    "SELECT payload_json FROM conversation_events WHERE conversation_id = ? AND kind = 'message_user' ORDER BY seq DESC LIMIT 1"
+  ).get(conversation_id) as { payload_json: string } | undefined;
+  if (!row) return null;
+  try { return JSON.parse(row.payload_json); } catch { return null; }
 }
 
 export function listConversationEvents(conversation_id: string) {

@@ -3,7 +3,6 @@ import { sendCanvas } from "../handlers/canvas";
 import { sendSmsTool } from "../handlers/sms";
 import { sendEmailTool } from "../handlers/email";
 import { getNextResponseFromSupervisorFunction } from "../handlers/supervisor-escalation";
-import { memAddFunction, memSearchFunction } from "../handlers/mem0";
 import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction, getNoteFunction } from "../handlers/notes";
 import { setVoiceNoiseModeTool } from "../handlers/voice-noise-mode";
 import { listAdaptationsFunction, getAdaptationFunction, updateAdaptationFunction, reloadAdaptationsFunction } from "../handlers/adaptations";
@@ -156,30 +155,5 @@ export function registerLocalTools() {
     ),
   ];
 
-  // Conditionally register Mem0 tools only when API key is configured
-  if (process.env.MEM0_API_KEY) {
-    tools.push(
-      wrap(
-        memAddFunction.schema.name,
-        memAddFunction.schema.description,
-        memAddFunction.schema.parameters,
-        'local',
-        ['local', 'base-default'],
-        (args) => memAddFunction.handler(args)
-      )
-    );
-    tools.push(
-      wrap(
-        memSearchFunction.schema.name,
-        memSearchFunction.schema.description,
-        memSearchFunction.schema.parameters,
-        'local',
-        ['local', 'base-default'],
-        (args) => memSearchFunction.handler(args)
-      )
-    );
-  } else {
-    console.warn('[tools] Skipping Mem0 tools: MEM0_API_KEY not set');
-  }
   registerTools(providerId, tools);
 }

@@ -805,6 +805,39 @@ function handleEvent(event) {
       break;
     }
 
+    case 'memory.pending': {
+      addBreadcrumb(`🧠 Memory: fetching… (>${event.elapsed_ms}ms, response sent without it)`, { detail: 'Mem0 did not respond within the timeout. Will follow up when it arrives.' });
+      break;
+    }
+
+    case 'memory.miss': {
+      addBreadcrumb('🧠 Memory: no relevant memories found', {});
+      break;
+    }
+
+    case 'memory.retrieved': {
+      const count = event.count || 0;
+      let label, detail;
+      if (event.source === 'cache') {
+        label = `🧠 Memory: ${count} result(s) injected (cache, ${event.age_ms}ms old)`;
+        detail = 'Injected into this response.';
+      } else if (event.source === 'late') {
+        label = `🧠 Memory: ${count} result(s) arrived — generating follow-up`;
+        detail = `Arrived ${event.elapsed_ms}ms after timeout. Shadow turn starting.`;
+      } else {
+        label = `🧠 Memory: ${count} result(s) injected (${event.elapsed_ms}ms)`;
+        detail = 'Injected into this response.';
+      }
+      addBreadcrumb(label, { detail, preview: (event.preview || '').trim() });
+      break;
+    }
+
+    case 'memory.stored': {
+      const lines = (event.facts || '').trim().split('\n').filter(Boolean);
+      addBreadcrumb(`💾 Memory: ${lines.length} fact(s) stored`, { facts: event.facts, channel: event.channel });
+      break;
+    }
+
     case 'chat.error': {
       const id = `error_${event.timestamp || Date.now()}`;
       addMessage(id, 'assistant', `❌ ${event.error || 'An error occurred'}`, 'text', false, false);

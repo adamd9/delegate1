@@ -11,6 +11,8 @@ import { addConversationEvent } from "../db/sqlite";
 import { chatClients, logsClients } from "../ws/clients";
 import { getChatVoiceConfig } from "../voice/voiceConfig";
 import { classifyOpenAIError } from "../services/openaiErrors";
+import { memoryModule } from '../memory';
+import { getMemoryConfig } from '../memory/memoryConfig';
 
 
 // Accumulator for assistant voice transcript text by item id (server logs only)
@@ -508,6 +510,24 @@ export function processRealtimeModelEvent(
       const transcript: string = (event.transcript || event.text || "").toString();
       if (transcript) {
         console.log("[VOICE][USER][FINAL]", transcript);
+        // Resolve pre-fetched memory (started on speech_started) or start fresh; inject via session.update if ready before response starts
+        void ((): void => {
+          const memPromise = session.pendingMemoryPromise || memoryModule.retrieve(transcript, getMemoryConfig().retrieve_timeout_ms);
+          session.pendingMemoryPromise = undefined;
+          memPromise.then(memories => {
+            if (memories && isOpen(session.modelConn) && !session.responseStartTimestamp) {
+              const cfg = buildRealtimeSessionConfig('voice', getAudioFormatForSession());
+              const memoriesPrefix = `[Relevant memories]\n${memories}\n\n`;
+              jsonSend(session.modelConn, {
+                type: 'session.update',
+                session: { ...cfg, instructions: memoriesPrefix + cfg.instructions },
+              });
+              console.debug('[memory] injected memories into voice session via session.update');
+            }
+          }).catch((e: any) => {
+            console.warn('[memory] voice retrieval/injection error:', e?.message || e);
+          });
+        })();
         const requestId = `req_${Date.now()}`;
         session.currentRequest = { id: requestId, channel: 'voice', startedAt: Date.now() } as any;
         ensureSession();
@@ -583,6 +603,11 @@ export function processRealtimeModelEvent(
       // We intentionally do this unconditionally for simpler, more reliable barge-in behavior.
       // If no response is active, the backend suppresses the harmless
       // response_cancel_not_active error.
+      // Pre-fetch memories while the user is speaking — will be awaited when transcript arrives
+      try {
+        const cfg = getMemoryConfig();
+        session.pendingMemoryPromise = memoryModule.retrieve('', cfg.retrieve_timeout_ms);
+      } catch {}
       const modelConn = session.modelConn;
       if (isOpen(modelConn)) {
         try {

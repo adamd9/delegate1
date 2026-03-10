@@ -17,6 +17,7 @@ import { registerCanvasRoutes } from './server/routes/canvas';
 import { registerDeepgramRoutes } from './server/routes/deepgram';
 import { registerVoiceMessageRoutes } from './server/routes/voiceMessage';
 import { registerVoiceDefaultsRoutes } from './server/routes/voiceDefaults';
+import { registerMemoryConfigRoutes } from './server/routes/memoryConfig';
 import { registerOpenAiSessionRoute } from './server/routes/openaiSession';
 import { getConfig } from './server/config/env';
 import { registerHealthRoutes, setReady } from './server/routes/health';
@@ -123,6 +124,8 @@ registerAdaptationsRoutes(app);
 registerMcpConfigRoutes(app);
 // Voice defaults management API
 registerVoiceDefaultsRoutes(app);
+// Memory config management API
+registerMemoryConfigRoutes(app);
 
 // OpenAI Realtime session token proxy
 registerOpenAiSessionRoute(app);

@@ -16,6 +16,8 @@ import { replayHistoryOnConnect } from './history';
 import { getAdaptationTextById } from '../adaptations';
 import { createOpenAIClient } from "../services/openaiClient";
 import { classifyOpenAIError } from "../services/openaiErrors";
+import { memoryModule } from '../memory';
+import { getMemoryConfig } from '../memory/memoryConfig';
 
 export function establishChatSocket(
   ws: WebSocket,
@@ -255,7 +257,7 @@ export async function handleTextChatMessage(
   logsClients: Set<WebSocket>,
   channel: Channel = 'text',
   metadata: { subject?: string } = {},
-  opts: { conversationId?: string } = {}
+  opts: { conversationId?: string; internal?: boolean } = {}
 ): Promise<ChatResult | undefined> {
   const { currentTime, timeZone } = getTimeContext();
   const context: Context = {
@@ -264,6 +266,7 @@ export async function handleTextChatMessage(
     timeZone,
   };
   try {
+    const isInternal = opts.internal === true;
     console.log("🔤 Processing text message:", content);
     // Create a new request id and mark as in-flight (cancel any previous text/sms request implicitly for safety)
     const requestId = `req_${Date.now()}`;
@@ -302,7 +305,7 @@ export async function handleTextChatMessage(
         return;
       }
     }
-    // Add user message to conversation history
+    // Add user message to conversation history (skip for internal shadow turns)
     const userMessage = {
       type: "user" as const,
       content: content,
@@ -313,37 +316,41 @@ export async function handleTextChatMessage(
     if (!session.conversationHistory) {
       session.conversationHistory = [];
     }
-    session.conversationHistory.push(userMessage);
-    try {
-      addConversationEvent({
-        conversation_id: conversationId,
-        kind: 'message_user',
-        payload: { text: content, channel, supervisor: false },
-        created_at_ms: userMessage.timestamp,
-      });
-    } catch {}
+    if (!isInternal) {
+      session.conversationHistory.push(userMessage);
+      try {
+        addConversationEvent({
+          conversation_id: conversationId,
+          kind: 'message_user',
+          payload: { text: content, channel, supervisor: false },
+          created_at_ms: userMessage.timestamp,
+        });
+      } catch {}
+    }
     // (Removed) Early user emit without metadata to avoid duplication. We will emit once below with meta.
     // Mark user message step as completed for clean duration computation
     appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: userStepId, timestamp: Date.now() });
-    // Emit user message to logs websocket with metadata so UI can show conversation/session IDs live
-    try {
-      for (const ws of logsClients) {
-        if (isOpen(ws))
-          jsonSend(ws, {
-            type: 'conversation.item.created',
-            session_id: sessionId,
-            conversation_id: conversationId,
-            item: {
-              id: `msg_${Date.now()}`,
-              type: 'message',
-              role: 'user',
-              content: [{ type: 'text', text: content }],
-              channel,
-            },
-            timestamp: Date.now(),
-          });
-      }
-    } catch {}
+    // Emit user message to logs websocket (skip for internal shadow turns — no user bubble)
+    if (!isInternal) {
+      try {
+        for (const ws of logsClients) {
+          if (isOpen(ws))
+            jsonSend(ws, {
+              type: 'conversation.item.created',
+              session_id: sessionId,
+              conversation_id: conversationId,
+              item: {
+                id: `msg_${Date.now()}`,
+                type: 'message',
+                role: 'user',
+                content: [{ type: 'text', text: content }],
+                channel,
+              },
+              timestamp: Date.now(),
+            });
+        }
+      } catch {}
+    }
     // Text channel: use registry-based tool resolution so allowNames/allowTags from agent-policies.json are respected
     const functionSchemas = getSchemasForAgent('base');
     console.log("🤖 Calling OpenAI Responses API for text response...");
@@ -354,7 +361,27 @@ export async function handleTextChatMessage(
     const adaptationIdentifier = 'adn.prompt.core.handleText';
     const singleAdapt = await getAdaptationTextById(adaptationIdentifier);
     const adaptationsText = singleAdapt?.text || '';
-    const instructions = [contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
+    // Retrieve relevant memories; get a late-promise if Mem0 timed out so we can shadow-turn when it arrives
+    const { memories, latePromise } = await memoryModule.retrieveWithLate(content, getMemoryConfig().retrieve_timeout_ms);    const memoriesPrefix = memories ? `[Relevant memories]\n${memories}\n\n` : '';
+    const instructions = [memoriesPrefix + contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
+    // When memory arrives late (after the main response is already sent), kick off a shadow turn
+    // so the agent can act on the new context without the user having to ask again.
+    const maybeShadowTurn = (convId: string) => {
+      if (!latePromise) return;
+      latePromise.then(lateMemories => {
+        if (!lateMemories || session.currentRequest) return;
+        console.log('[memory] shadow turn — late memories arrived, starting follow-up');
+        void handleTextChatMessage(
+          `[INTERNAL SYSTEM NOTIFICATION]\n\n` +
+          `Memory retrieval completed after your last response was already sent. ` +
+          `The following memories from past conversations are now available:\n\n${lateMemories}\n\n` +
+          `Consider whether your last response should be supplemented or corrected in light of this. ` +
+          `If already accurate, a brief acknowledgment is fine. You may also call tools if warranted.`,
+          chatClients, logsClients, channel, {},
+          { conversationId: convId, internal: true }
+        );
+      }).catch(e => console.warn('[memory] shadow turn error:', (e as any)?.message || e));
+    };
     // ThoughtFlow snapshots for long-lived prompt inputs (Approach B)
     const policyHash = Buffer.from(baseInstructions, 'utf8').toString('base64').slice(0, 12);
     const toolsHash = Buffer.from(JSON.stringify(functionSchemas), 'utf8').toString('base64').slice(0, 12);
@@ -586,6 +613,7 @@ export async function handleTextChatMessage(
               session.currentRequest = undefined;
               // No additional logs emit to avoid duplicate assistant messages; chat.response carries meta now.
               appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_handled, timestamp: Date.now() });
+              maybeShadowTurn(conversationId);
               return { conversationId, sessionId, requestId, assistantText: text, supervisor: true };
             }
           }
@@ -640,6 +668,7 @@ export async function handleTextChatMessage(
           session.currentRequest = undefined;
           // No logs emit; chat.response above includes meta to avoid duplication
           appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_supervisor, timestamp: Date.now() });
+          maybeShadowTurn(conversationId);
           return { conversationId, sessionId, requestId, assistantText: finalResponse, supervisor: true };
         }
       } catch (err: any) {
@@ -721,6 +750,7 @@ export async function handleTextChatMessage(
     session.currentRequest = undefined;
     // Do not emit a duplicate assistant message to logs; chat.response includes meta
     appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_fallback, timestamp: Date.now() });
+    maybeShadowTurn(conversationId);
     return { conversationId, sessionId, requestId, assistantText, supervisor: false };
   } catch (err) {
     const errInfo = classifyOpenAIError(err);

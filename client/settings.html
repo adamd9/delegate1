@@ -178,6 +178,7 @@
       <option value="catalog">Tools</option>
       <option value="adaptations">Adaptations</option>
       <option value="mcp">MCP Servers</option>
+      <option value="memory">Memory</option>
       <option value="maintenance">Maintenance</option>
       <option value="about">About</option>
     </select>
@@ -207,6 +208,10 @@
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
         MCP Servers
       </button>
+      <button class="sidebar-item" data-tab="memory">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        Memory
+      </button>
       <button class="sidebar-item" data-tab="maintenance">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
         Maintenance
@@ -227,7 +232,7 @@
 // ──────────────────────────────────────────────
 // Tab routing
 // ──────────────────────────────────────────────
-const TABS = ['logs','voice','catalog','adaptations','mcp','maintenance','about'];
+const TABS = ['logs','voice','catalog','adaptations','mcp','memory','maintenance','about'];
 let activeTab = null;
 
 function getInitialTab() {
@@ -274,6 +279,7 @@ function renderTab(tab) {
     case 'catalog':     renderCatalog(); break;
     case 'adaptations': renderAdaptations(); break;
     case 'mcp':         renderMcp(); break;
+    case 'memory':      renderMemory(); break;
     case 'maintenance': renderMaintenance(); break;
     case 'about':       renderAbout(); break;
   }
@@ -777,6 +783,90 @@ function renderMcp() {
     wrap.appendChild(el('iframe', {src:'/mcp-servers', title:'MCP Servers'}));
     body.appendChild(wrap);
   }));
+}
+
+// ──────────────────────────────────────────────
+// Memory
+// ──────────────────────────────────────────────
+let memoryConfig = null;
+
+function renderMemory() {
+  const c = card('Memory', body => {
+    body.innerHTML = '<div class="loading">Loading\u2026</div>';
+  });
+  content.appendChild(c);
+
+  fetch('/memory-config')
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(data => {
+      memoryConfig = data;
+      const body = c.querySelector('.card-body');
+      body.innerHTML = '';
+      body.appendChild(buildMemoryForm(data));
+    })
+    .catch(err => {
+      c.querySelector('.card-body').innerHTML = `<div class="error-msg">Failed to load: ${err.message}</div>`;
+    });
+}
+
+function buildMemoryForm(data) {
+  const frag = document.createDocumentFragment();
+  const fieldRow = el('div', {style: 'display:flex;flex-direction:column;gap:14px;max-width:420px'});
+
+  const timeoutWrap = el('div', {style: 'display:flex;flex-direction:column;gap:4px'});
+  timeoutWrap.appendChild(el('label', {style: 'font-size:13px;color:var(--text-muted)'}, 'Retrieval timeout (ms)'));
+  timeoutWrap.appendChild(el('small', {style: 'font-size:11px;color:var(--text-muted)'}, 'Max wait for memories before LLM call proceeds (100\u2013 10000)'));
+  const timeoutInput = el('input', {
+    type: 'number', min: '100', max: '10000', step: '100',
+    value: String(data.retrieve_timeout_ms),
+    style: 'width:130px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px'
+  });
+  timeoutInput.addEventListener('input', e => { memoryConfig.retrieve_timeout_ms = Number(e.target.value); });
+  timeoutWrap.appendChild(timeoutInput);
+  fieldRow.appendChild(timeoutWrap);
+
+  const modelWrap = el('div', {style: 'display:flex;flex-direction:column;gap:4px'});
+  modelWrap.appendChild(el('label', {style: 'font-size:13px;color:var(--text-muted)'}, 'Extraction model'));
+  modelWrap.appendChild(el('small', {style: 'font-size:11px;color:var(--text-muted)'}, 'LLM used to extract durable facts from completed turns'));
+  const modelInput = el('input', {
+    type: 'text', value: data.extraction_model,
+    style: 'width:240px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px'
+  });
+  modelInput.addEventListener('input', e => { memoryConfig.extraction_model = e.target.value; });
+  modelWrap.appendChild(modelInput);
+  fieldRow.appendChild(modelWrap);
+  frag.appendChild(fieldRow);
+
+  const saveRow = el('div', {style: 'display:flex;align-items:center;gap:12px;margin-top:20px'});
+  const saveBtn = el('button', {class: 'btn btn-primary'}, 'Save Changes');
+  const msg = el('span', {class: 'save-msg'});
+  saveRow.appendChild(saveBtn);
+  saveRow.appendChild(msg);
+  frag.appendChild(saveRow);
+
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    msg.className = 'save-msg'; msg.textContent = 'Saving\u2026';
+    try {
+      const res = await fetch('/memory-config', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(memoryConfig),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const result = await res.json();
+      memoryConfig = result.config;
+      msg.className = 'save-msg ok'; msg.textContent = 'Saved!';
+      setTimeout(() => { msg.textContent = ''; }, 2000);
+    } catch (err) {
+      msg.className = 'save-msg err'; msg.textContent = 'Error: ' + err.message;
+      setTimeout(() => { msg.textContent = ''; }, 3000);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  return frag;
 }
 
 // ──────────────────────────────────────────────
