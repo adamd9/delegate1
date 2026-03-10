@@ -155,6 +155,22 @@
     .btn-end:hover:not(:disabled) { border-color: rgba(248,113,113,0.6); background: rgba(248,113,113,0.18); }
     .btn-end:disabled { opacity: 0.4; cursor: default; }
 
+    .btn-end-confirm {
+      width: 100%; padding: 9px; border-radius: 6px;
+      border: 1px solid rgba(248,113,113,0.6);
+      background: rgba(248,113,113,0.18); color: var(--red);
+      font-size: 11px; font-family: var(--font); letter-spacing: 0.06em;
+      cursor: pointer; text-transform: uppercase;
+    }
+    .btn-end-confirm:hover { background: rgba(248,113,113,0.28); }
+    .btn-end-cancel {
+      width: 100%; padding: 9px; border-radius: 6px;
+      border: 1px solid var(--border2); background: transparent;
+      color: var(--text-mid); font-size: 11px; font-family: var(--font);
+      cursor: pointer;
+    }
+    .btn-end-cancel:hover { color: var(--text); background: var(--surface2); }
+
     .end-note { text-align: center; font-size: 10px; color: var(--text-dim); margin-top: 5px; font-family: var(--font); }
 
     /* ── Main ── */
@@ -429,9 +445,65 @@
     .canvas-close:hover { color: var(--text); }
 
     .canvas-iframe { flex: 1; border: none; background: white; }
+
+    /* ── Hamburger / mobile menu ── */
+    .menu-toggle {
+      display: none;
+      background: none; border: 1px solid var(--border2); border-radius: 4px;
+      color: var(--text-mid); font-size: 18px; line-height: 1;
+      padding: 4px 10px; cursor: pointer; flex-shrink: 0;
+    }
+    .menu-toggle:hover { color: var(--text); background: var(--surface2); }
+
+    .menu-backdrop {
+      display: none;
+      position: fixed; inset: 0; z-index: 199;
+      background: rgba(0,0,0,0.5);
+    }
+
+    /* ── Mobile breakpoint ── */
+    @media (max-width: 768px) {
+      .menu-toggle { display: flex; align-items: center; }
+
+      /* Slide-in drawer */
+      .left-panel {
+        position: fixed;
+        top: 0; left: -280px;
+        height: 100%; z-index: 200;
+        width: 260px;
+        transition: left 0.22s ease;
+        box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+      }
+      body.menu-open .left-panel { left: 0; }
+      body.menu-open .menu-backdrop { display: block; }
+
+      /* Main fills full width */
+      .main { width: 100%; }
+
+      /* Wider message bubbles */
+      .ev-bubble { max-width: 88%; }
+
+      /* Topbar compact */
+      .topbar { padding: 0 12px; gap: 8px; }
+      .conv-label {
+        font-size: 11px; overflow: hidden;
+        text-overflow: ellipsis; white-space: nowrap; max-width: 130px;
+      }
+
+      /* Intervene area — prevent iOS zoom and add touch targets */
+      .int-input { font-size: 16px; } /* 16px suppresses iOS auto-zoom on focus */
+      .int-send { padding: 10px 14px; }
+      .int-stop { padding: 10px 10px; }
+
+      /* Events area — tighten side padding */
+      .events { padding: 10px 12px; }
+    }
   </style>
 </head>
 <body>
+
+  <!-- Mobile drawer backdrop -->
+  <div class="menu-backdrop" id="menu-backdrop"></div>
 
   <!-- Left panel -->
   <div class="left-panel">
@@ -503,6 +575,10 @@
 
     <div class="end-zone">
       <button id="btn-end" class="btn-end" disabled>⚠ end conversation</button>
+      <div id="end-confirm" style="display:none; flex-direction:column; gap:6px;">
+        <button id="btn-end-yes" class="btn-end-confirm">yes, end conversation</button>
+        <button id="btn-end-cancel" class="btn-end-cancel">cancel</button>
+      </div>
       <div id="end-note" class="end-note">manual override · use sparingly</div>
     </div>
 
@@ -512,6 +588,7 @@
   <div class="main">
 
     <div class="topbar">
+      <button class="menu-toggle" id="menu-toggle" aria-label="Menu">&#9776;</button>
       <span class="conv-label">conversation <span id="conv-id-label" class="conv-id">—</span></span>
       <div id="live-chip" class="live-chip hidden">
         <div class="live-dot"></div>live
@@ -831,7 +908,7 @@ function handleEvent(event) {
         label = `🧠 Memory: ${count} result(s) injected (${event.elapsed_ms}ms)`;
         detail = 'Injected into this response.';
       }
-      addBreadcrumb(label, { detail, preview: (event.preview || '').trim() }, isReplay, event.timestamp);
+      addBreadcrumb(label, { detail, memories: (event.memories || event.preview || '').trim() }, isReplay, event.timestamp);
       break;
     }
 
@@ -1122,6 +1199,7 @@ function setWsStatus(status) {
     intInput.disabled = true;
     document.getElementById('int-send').disabled = true;
     document.getElementById('btn-end').disabled = true;
+    resetEndButton();
   } else {
     stateCard.classList.remove('active');
     stateMain.textContent = 'disconnected';
@@ -1132,6 +1210,7 @@ function setWsStatus(status) {
     intInput.disabled = true;
     document.getElementById('int-send').disabled = true;
     document.getElementById('btn-end').disabled = true;
+    resetEndButton();
   }
 
   updateInFlight();
@@ -1196,14 +1275,34 @@ function cancelRequest() {
   sendWs(msg);
 }
 
+function resetEndButton() {
+  const btnEnd = document.getElementById('btn-end');
+  const endConfirm = document.getElementById('end-confirm');
+  btnEnd.style.display = '';
+  endConfirm.style.display = 'none';
+  document.getElementById('end-note').textContent = 'manual override · use sparingly';
+}
+
 function endConversation() {
-  if (!confirm('End the current conversation? This is a manual override and cannot be undone.')) return;
+  // Show inline confirm state instead of native confirm() (iOS-safe)
+  document.getElementById('btn-end').style.display = 'none';
+  const endConfirm = document.getElementById('end-confirm');
+  endConfirm.style.display = 'flex';
+}
+
+function endConversationConfirmed() {
+  resetEndButton();
   const ws = new WebSocket(wsUrl('/chat'));
   ws.onopen = () => {
     ws.send(JSON.stringify({ type: 'conversation.end', conversation_id: state.currentConversationId }));
     setTimeout(() => ws.close(), 300);
   };
-  ws.onerror = () => alert('Failed to send end conversation command.');
+  ws.onerror = () => {
+    document.getElementById('end-note').textContent = '⚠ failed to send — check connection';
+    setTimeout(() => {
+      document.getElementById('end-note').textContent = 'manual override · use sparingly';
+    }, 3000);
+  };
 }
 
 function copyTranscript() {
@@ -1297,6 +1396,15 @@ document.getElementById('int-send').addEventListener('click', sendMessage);
 document.getElementById('int-stop').addEventListener('click', cancelRequest);
 
 document.getElementById('btn-end').addEventListener('click', endConversation);
+document.getElementById('btn-end-yes').addEventListener('click', endConversationConfirmed);
+document.getElementById('btn-end-cancel').addEventListener('click', resetEndButton);
+
+// Mobile hamburger menu
+document.getElementById('menu-toggle').addEventListener('click', () => document.body.classList.toggle('menu-open'));
+document.getElementById('menu-backdrop').addEventListener('click', () => document.body.classList.remove('menu-open'));
+document.querySelectorAll('.lp-navitem').forEach(a =>
+  a.addEventListener('click', () => document.body.classList.remove('menu-open'))
+);
 
 document.getElementById('btn-copy').addEventListener('click', copyTranscript);
 

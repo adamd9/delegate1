@@ -74,7 +74,7 @@ class MemoryModule {
       const lines = this._cachedMemories.split('\n').filter(Boolean);
       console.log(`[memory] retrieve — cache hit (age: ${ageMs}ms), returning immediately`);
       const cachets = Date.now();
-      this._broadcast({ type: 'memory.retrieved', count: lines.length, preview: this._cachedMemories.slice(0, 300), source: 'cache', age_ms: ageMs, timestamp: cachets });
+      this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: this._cachedMemories, source: 'cache', age_ms: ageMs, timestamp: cachets });
       if (conversationId) {
         this._persist(conversationId, 'memory_retrieved', { source: 'cache', count: lines.length, age_ms: ageMs }, cachets);
         this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'cache', count: lines.length }, cachets);
@@ -104,7 +104,7 @@ class MemoryModule {
               // Response already sent — let the user know memory is primed for next turn
               console.log(`[memory] retrieve — late result (${lines.length} result(s)), broadcasting for UI`);
               const latets = Date.now();
-              this._broadcast({ type: 'memory.retrieved', count: lines.length, preview: result.slice(0, 300), source: 'late', elapsed_ms: latets - start, timestamp: latets });
+              this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: result, source: 'late', elapsed_ms: latets - start, timestamp: latets });
               if (conversationId) {
                 this._persist(conversationId, 'memory_retrieved', { source: 'late', count: lines.length, elapsed_ms: latets - start }, latets);
                 this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'late', count: lines.length }, latets);
@@ -147,7 +147,7 @@ class MemoryModule {
       const lines = result.split('\n').filter(Boolean);
       const freshts = Date.now();
       console.log(`[memory] retrieve — got ${lines.length} result(s) in ${freshts - start}ms`);
-      this._broadcast({ type: 'memory.retrieved', count: lines.length, preview: result.slice(0, 300), source: 'fresh', elapsed_ms: freshts - start, timestamp: freshts });
+      this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: result, source: 'fresh', elapsed_ms: freshts - start, timestamp: freshts });
       if (conversationId) {
         this._persist(conversationId, 'memory_retrieved', { source: 'fresh', count: lines.length, elapsed_ms: freshts - start }, freshts);
         this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'fresh', count: lines.length }, freshts);
