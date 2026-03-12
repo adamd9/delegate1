@@ -11,7 +11,7 @@ import {
   closeAllConnections,
   closeModel,
 } from "./state";
-import { processRealtimeModelEvent, buildRealtimeSessionConfig } from "./call";
+import { processRealtimeModelEvent, buildRealtimeSessionConfig, finalizeRun } from "./call";
 import { getChatVoiceConfig } from "../voice/voiceConfig";
 import { classifyOpenAIError } from "../services/openaiErrors";
 import { getVoiceModePreset } from "../voice/voiceDefaults";
@@ -51,6 +51,7 @@ export function establishBrowserCallSocket(ws: WebSocket, openAIApiKey: string) 
       const r = reason?.toString?.() || '';
       console.warn('[ws][browser-call] websocket closed', { code, reason: r });
     } catch {}
+    finalizeRun();
     try {
       endSession();
     } catch {}
@@ -192,6 +193,7 @@ export function processBrowserCallEvent(data: RawData) {
     }
     case "close": {
       console.info("\ud83c\udf10 Browser call closed");
+      finalizeRun();
       closeAllConnections();
       try {
         endSession();
