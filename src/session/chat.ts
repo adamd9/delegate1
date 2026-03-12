@@ -105,7 +105,7 @@ export async function processChatSocketMessage(
         const conversations: any[] = dbListConversations(limit) || [];
         console.debug(`[history.request] limit=${limit} conversations=${conversations.length}`);
         // Only include ended conversations for history; exclude any active/un-ended runs
-        const include = conversations.filter((c: any) => Boolean(c.ended_at));
+        const include = conversations.filter((c: any) => Boolean(c.ended_at)).reverse();
         if (requester && isOpen(requester)) {
           jsonSend(requester, { type: 'history.header', count: include.length });
         }

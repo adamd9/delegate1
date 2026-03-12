@@ -6,6 +6,12 @@ export function registerThoughtflowRoutes(app: Application) {
   // Allow webapp (different origin) to fetch artifacts
   app.use('/thoughtflow', cors());
 
+  // Redirect path-based viewer URLs to query-param format
+  app.get('/thoughtflow/viewer/:id', (req: Request, res: Response) => {
+    const id = (req.params as any).id as string;
+    res.redirect(`/thoughtflow/viewer?id=${encodeURIComponent(id)}`);
+  });
+
   // ThoughtFlow D2 raw route: force text/plain inline for immediate viewing
   app.get('/thoughtflow/raw/:id.d2', (req: Request, res: Response) => {
     try {

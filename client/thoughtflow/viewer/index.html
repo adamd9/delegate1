@@ -64,7 +64,8 @@
 
 <script>
   const params = new URLSearchParams(location.search);
-  const id = params.get('id') || '';
+  // Support both ?id=... and /thoughtflow/viewer/<id> path-based URLs
+  const id = params.get('id') || location.pathname.replace(/^\/thoughtflow\/viewer\/?/, '') || '';
   const backendBase = '';  // same-origin
 
   document.getElementById('id-label').textContent = id ? `${id}.d2` : '';

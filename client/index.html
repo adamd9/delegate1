@@ -669,6 +669,14 @@ function ts() {
   const ms = String(now.getMilliseconds()).padStart(3,'0');
   return `${hh}:${mm}:${ss}.${ms}`;
 }
+function tsFromEpoch(epochMs) {
+  const d = new Date(epochMs);
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  const ss = String(d.getSeconds()).padStart(2,'0');
+  const ms = String(d.getMilliseconds()).padStart(3,'0');
+  return `${hh}:${mm}:${ss}.${ms}`;
+}
 
 function esc(str) {
   if (!str) return '';
@@ -999,7 +1007,8 @@ function addMessage(id, role, text, channel, supervisor, isHistory, convId, time
     id, type: 'MESSAGE', role, title: text,
     channel: channel || 'text', supervisor: supervisor || false,
     isHistory: !!isHistory, convId: convId || null,
-    ts: ts(), createdAt: (typeof timestamp === 'number' ? timestamp : Date.now()),
+    ts: (typeof timestamp === 'number' ? tsFromEpoch(timestamp) : ts()),
+    createdAt: (typeof timestamp === 'number' ? timestamp : Date.now()),
     isHidden: isHistory && !state.historyExpanded,
   };
   state.items.push(item);
@@ -1039,7 +1048,8 @@ function addBreadcrumb(title, data, isHidden, timestamp) {
     id, type: 'BREADCRUMB', title, data: data || {},
     isHidden: !!isHidden,
     isHistory: !!isHidden,   // history breadcrumbs start hidden; toggleHistory uses isHistory to render them
-    ts: ts(), createdAt: (typeof timestamp === 'number' ? timestamp : Date.now()),
+    ts: (typeof timestamp === 'number' ? tsFromEpoch(timestamp) : ts()),
+    createdAt: (typeof timestamp === 'number' ? timestamp : Date.now()),
   };
   state.items.push(item);
   if (!item.isHidden) renderItem(item);
@@ -1099,7 +1109,7 @@ function toggleHistory() {
     const eventsEl = document.getElementById('events');
     state.items
       .filter(i => i.isHistory)
-      .sort((a, b) => a.createdAt - b.createdAt)
+      .sort((a, b) => b.createdAt - a.createdAt)
       .forEach(item => {
         if (!document.getElementById(`ev-${item.id}`)) renderItem(item, true);
       });
@@ -1148,6 +1158,17 @@ function renderItem(item, prepend) {
           <div class="tool-ev-title">${esc(item.title)}</div>
         </div>
         <button onclick="openNote(${JSON.stringify(item.data).replace(/"/g,'&quot;')})" style="padding:3px 8px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--accent);font-size:10px;font-family:var(--font);cursor:pointer;">open</button>
+        <span class="tool-ev-ts">${esc(item.ts)}</span>
+      `;
+    } else if (item.data && item.data.url_d2_viewer) {
+      // ThoughtFlow breadcrumbs get a clickable "view" link
+      const viewerUrl = item.data.url_d2_viewer;
+      el.innerHTML = `
+        <span class="tool-ev-icon">🔷</span>
+        <div class="tool-ev-body">
+          <div class="tool-ev-title">${esc(item.title)}</div>
+        </div>
+        <a href="${esc(viewerUrl)}" target="_blank" rel="noopener" style="padding:3px 8px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--accent);font-size:10px;font-family:var(--font);cursor:pointer;text-decoration:none;" onclick="event.stopPropagation();">view</a>
         <span class="tool-ev-ts">${esc(item.ts)}</span>
       `;
     } else {

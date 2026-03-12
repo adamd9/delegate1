@@ -140,7 +140,7 @@ export function replayHistoryOnConnect(ws: WebSocket) {
     if (isOpen(ws)) jsonSend(ws, { type: 'history.header', count: ended.length });
 
     // Replay ended runs under history (replay: true)
-    for (const conv of ended) {
+    for (const conv of ended.slice().reverse()) {
       const convId = conv.id;
       const events = listConversationEvents(convId) as any[];
       const base = (Array.isArray(events) && events.length > 0 && events[0].created_at_ms) || Date.now();

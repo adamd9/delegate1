@@ -76,7 +76,7 @@ export function appendEvent(event: any) {
             const url_json = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.json`;
             const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.d2`;
             const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${baseName}.d2`;
-            const url_d2_viewer = `/thoughtflow/viewer/${baseName}`; // point viewer to this conversation's artifact id
+            const url_d2_viewer = `/thoughtflow/viewer?id=${encodeURIComponent(baseName)}`;
             const lastTs = getLastEventTimestampForConversation(convId) || Date.now();
             addConversationEvent({
               id: `ti_tf_conv_${convId}`,
@@ -372,7 +372,7 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
           const url_json = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.json`;
           const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.d2`;
           const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${baseName}.d2`;
-          const url_d2_viewer = `/thoughtflow/viewer/${baseName}`;
+          const url_d2_viewer = `/thoughtflow/viewer?id=${encodeURIComponent(baseName)}`;
           const lastTs = getLastEventTimestampForConversation(convId) || Date.now();
           addConversationEvent({
             id: `ti_tf_conv_${convId}`,
