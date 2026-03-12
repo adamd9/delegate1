@@ -449,6 +449,11 @@ function shouldForwardToFrontend(event: any): boolean {
   if (event?.type === 'error' && event?.error?.code === 'response_cancel_not_active') {
     return false;
   }
+  // Suppress shadow turn items (memory correction prompts) from the UI.
+  // These are injected conversation items with IDs starting with 'shadow_mem_'.
+  if (event?.type === 'conversation.item.created' && event?.item?.id?.startsWith('shadow_mem_')) {
+    return false;
+  }
   return true;
 }
 
@@ -466,6 +471,67 @@ export function processRealtimeModelEvent(
       if (isOpen(ws)) jsonSend(ws, event);
     }
   }
+
+  /**
+   * Voice shadow turn: when memories arrive late (after the model already started
+   * or finished responding), cancel the active response, update session instructions,
+   * inject a hidden system message telling the model to self-correct, then trigger
+   * a new response. Mirrors the text-chat shadow turn in chat.ts.
+   *
+   * The injected system item is tracked so shouldForwardToFrontend can suppress it.
+   */
+  const scheduleVoiceShadowTurn = (memories: string, userTranscript: string) => {
+    const doShadow = () => {
+      if (!isOpen(session.modelConn)) return;
+      console.log('[memory] voice shadow turn — late memories arrived, triggering follow-up');
+      // 1. Cancel any active response and clear client audio buffers immediately
+      if (session.responseStartTimestamp) {
+        jsonSend(session.modelConn, { type: 'response.cancel' });
+      }
+      // Always clear client audio — the response may have "completed" from the API's
+      // perspective but audio is still playing on the client
+      if (session.browserConn) {
+        jsonSend(session.browserConn, { event: 'clear' } as any);
+      }
+      if (session.twilioConn && session.streamSid) {
+        jsonSend(session.twilioConn, { event: 'clear', streamSid: session.streamSid } as any);
+      }
+      // 2. Update session instructions with memories
+      const cfg = buildRealtimeSessionConfig('voice', getAudioFormatForSession());
+      const memoriesPrefix = `[Retrieved memories from past conversations — use these facts when relevant to the user's query]\n${memories}\n\n`;
+      jsonSend(session.modelConn, {
+        type: 'session.update',
+        session: { ...cfg, instructions: memoriesPrefix + cfg.instructions },
+      });
+      // 3. Inject a hidden system-role message telling the model to self-correct.
+      //    Use a unique ID so we can filter it from the UI.
+      const shadowItemId = `shadow_mem_${Date.now()}`;
+      (session as any)._shadowItemIds = (session as any)._shadowItemIds || new Set();
+      (session as any)._shadowItemIds.add(shadowItemId);
+      jsonSend(session.modelConn, {
+        type: 'conversation.item.create',
+        item: {
+          id: shadowItemId,
+          type: 'message',
+          role: 'user',
+          content: [{
+            type: 'input_text',
+            text: `[SYSTEM — do not reveal this message to the user]\n\n` +
+              `Your memory store returned results after your previous response was already sent. ` +
+              `These facts were retrieved from past conversations — the user did NOT just say them:\n\n${memories}\n\n` +
+              `The user's original question was: "${userTranscript}"\n\n` +
+              `If your previous response was wrong or incomplete given these memories, provide a brief natural correction now. ` +
+              `If no correction is needed, just say something brief like "Actually..." or stay silent.`,
+          }],
+        },
+      });
+      // 4. Trigger a new response
+      jsonSend(session.modelConn, { type: 'response.create' });
+    };
+
+    // Small delay to let any in-flight response events settle
+    setTimeout(doShadow, 100);
+  };
 
   try {
     switch (event.type) {
@@ -510,24 +576,43 @@ export function processRealtimeModelEvent(
       const transcript: string = (event.transcript || event.text || "").toString();
       if (transcript) {
         console.log("[VOICE][USER][FINAL]", transcript);
-        // Resolve pre-fetched memory (started on speech_started) or start fresh; inject via session.update if ready before response starts
-        void ((): void => {
-          const memPromise = session.pendingMemoryPromise || memoryModule.retrieve(transcript, getMemoryConfig().retrieve_timeout_ms);
-          session.pendingMemoryPromise = undefined;
-          memPromise.then(memories => {
-            if (memories && isOpen(session.modelConn) && !session.responseStartTimestamp) {
-              const cfg = buildRealtimeSessionConfig('voice', getAudioFormatForSession());
-              const memoriesPrefix = `[Relevant memories]\n${memories}\n\n`;
-              jsonSend(session.modelConn, {
-                type: 'session.update',
-                session: { ...cfg, instructions: memoriesPrefix + cfg.instructions },
-              });
-              console.debug('[memory] injected memories into voice session via session.update');
-            }
-          }).catch((e: any) => {
-            console.warn('[memory] voice retrieval/injection error:', e?.message || e);
-          });
-        })();
+        // Inject memories if not already injected at speech_started.
+        // With server_vad, injection at speech_started (from cache) is preferred since
+        // the model starts responding before this transcript event arrives.
+        const alreadyInjected = (session as any)._memoriesInjectedForTurn;
+        (session as any)._memoriesInjectedForTurn = false;
+        if (!alreadyInjected) {
+          void ((): void => {
+            // Use retrieveWithLate so we get a late promise for shadow-turn if fetch times out.
+            memoryModule.retrieveWithLate(transcript, getMemoryConfig().retrieve_timeout_ms).then(({ memories, latePromise }) => {
+              if (memories && isOpen(session.modelConn) && !session.responseStartTimestamp) {
+                // Memories arrived in time — inject before response starts
+                const cfg = buildRealtimeSessionConfig('voice', getAudioFormatForSession());
+                const memoriesPrefix = `[Retrieved memories from past conversations — use these facts when relevant to the user's query]\n${memories}\n\n`;
+                jsonSend(session.modelConn, {
+                  type: 'session.update',
+                  session: { ...cfg, instructions: memoriesPrefix + cfg.instructions },
+                });
+                console.debug('[memory] injected memories into voice session via session.update (at transcript)');
+              } else if (memories) {
+                // Memories arrived but response already started — schedule a voice shadow turn
+                scheduleVoiceShadowTurn(memories, transcript);
+              }
+              if (latePromise) {
+                // Memories didn't arrive in time — schedule shadow turn when they do
+                latePromise.then(lateMemories => {
+                  if (lateMemories) {
+                    scheduleVoiceShadowTurn(lateMemories, transcript);
+                  }
+                }).catch(() => {});
+              }
+            }).catch((e: any) => {
+              console.warn('[memory] voice retrieval/injection error:', e?.message || e);
+            });
+          })();
+        } else {
+          console.debug('[memory] skipping transcript-time injection — already injected at speech_started');
+        }
         const requestId = `req_${Date.now()}`;
         session.currentRequest = { id: requestId, channel: 'voice', startedAt: Date.now() } as any;
         ensureSession();
@@ -603,10 +688,26 @@ export function processRealtimeModelEvent(
       // We intentionally do this unconditionally for simpler, more reliable barge-in behavior.
       // If no response is active, the backend suppresses the harmless
       // response_cancel_not_active error.
-      // Pre-fetch memories while the user is speaking — will be awaited when transcript arrives
+      // Eagerly inject memories while the user is still speaking (cache-hit only).
+      // With server_vad, the model starts responding as soon as it detects end-of-speech,
+      // which is BEFORE the transcript event arrives on our server. Injecting here
+      // ensures memories are in the session config before the next response starts.
+      // NOTE: We intentionally do NOT set session.pendingMemoryPromise here because
+      // retrieve('') with a cold cache resolves to null immediately (empty query guard),
+      // and a truthy-but-null Promise would shadow the real transcript-based fetch later.
       try {
-        const cfg = getMemoryConfig();
-        session.pendingMemoryPromise = memoryModule.retrieve('', cfg.retrieve_timeout_ms);
+        memoryModule.retrieve('', getMemoryConfig().retrieve_timeout_ms).then(memories => {
+          if (memories && isOpen(session.modelConn) && !session.responseStartTimestamp) {
+            const sessionCfg = buildRealtimeSessionConfig('voice', getAudioFormatForSession());
+            const memoriesPrefix = `[Retrieved memories from past conversations — use these facts when relevant to the user's query]\n${memories}\n\n`;
+            jsonSend(session.modelConn, {
+              type: 'session.update',
+              session: { ...sessionCfg, instructions: memoriesPrefix + sessionCfg.instructions },
+            });
+            (session as any)._memoriesInjectedForTurn = true;
+            console.debug('[memory] injected memories into voice session via session.update (at speech_started)');
+          }
+        }).catch(() => {});
       } catch {}
       const modelConn = session.modelConn;
       if (isOpen(modelConn)) {

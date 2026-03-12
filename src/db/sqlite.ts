@@ -111,11 +111,10 @@ export function upsertConversation(conv: { id: string; session_id: string; chann
 }
 
 export function completeConversation(conv: { id: string; status?: string; ended_at?: string; duration_ms?: number; }) {
-  const db = getDb();
-  db.prepare('UPDATE conversations SET status = COALESCE(?, status), ended_at = COALESCE(?, ended_at), duration_ms = COALESCE(?, duration_ms) WHERE id = ?')
-    .run(conv.status || null, conv.ended_at || null, conv.duration_ms != null ? conv.duration_ms : null, conv.id);
+  updateConversationStatus(conv);
   // Emit conversation_complete so memory extraction can run over the full transcript
   try {
+    const db = getDb();
     const events = db.prepare(
       `SELECT kind, payload_json FROM conversation_events WHERE conversation_id = ? ORDER BY seq ASC`
     ).all(conv.id) as Array<{ kind: string; payload_json: string }>;
@@ -137,6 +136,14 @@ export function completeConversation(conv: { id: string; status?: string; ended_
       });
     }
   } catch {}
+}
+
+/** Update conversation status in DB without emitting the conversation bus event.
+ *  Used by observability/thoughtflow for bookkeeping without triggering memory extraction. */
+export function updateConversationStatus(conv: { id: string; status?: string; ended_at?: string; duration_ms?: number; }) {
+  const db = getDb();
+  db.prepare('UPDATE conversations SET status = COALESCE(?, status), ended_at = COALESCE(?, ended_at), duration_ms = COALESCE(?, duration_ms) WHERE id = ?')
+    .run(conv.status || null, conv.ended_at || null, conv.duration_ms != null ? conv.duration_ms : null, conv.id);
 }
 
 export function listSessions(limit: number) {

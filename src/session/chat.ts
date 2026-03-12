@@ -176,9 +176,10 @@ export async function processChatSocketMessage(
                 timestamp: ts,
               } as any;
               if (requester && isOpen(requester)) jsonSend(requester, evt);
-            } else if (kind === 'canvas') {
+            } else if (kind === 'canvas' || kind === 'note_created') {
+              // Backward compat: old 'canvas' events mapped to chat.note alongside new 'note_created' events
               const evt = {
-                type: 'chat.canvas',
+                type: 'chat.note',
                 replay: true,
                 session_id: conv.session_id,
                 conversation_id: convId,
@@ -186,6 +187,7 @@ export async function processChatSocketMessage(
                 title: payload.title,
                 timestamp: ts,
                 id: payload.id,
+                url: payload.url,
               } as any;
               if (requester && isOpen(requester)) jsonSend(requester, evt);
             } else if (kind === 'thoughtflow_artifacts') {
@@ -363,7 +365,7 @@ export async function handleTextChatMessage(
     const adaptationsText = singleAdapt?.text || '';
     // Retrieve relevant memories; get a late-promise if Mem0 timed out so we can shadow-turn when it arrives
     const { memories, latePromise } = await memoryModule.retrieveWithLate(content, getMemoryConfig().retrieve_timeout_ms, conversationId);
-    const memoriesPrefix = memories ? `[Relevant memories]\n${memories}\n\n` : '';
+    const memoriesPrefix = memories ? `[Retrieved memories from past conversations — use these facts when relevant to the user's query]\n${memories}\n\n` : '';
     const instructions = [memoriesPrefix + contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
     // When memory arrives late (after the main response is already sent), kick off a shadow turn
     // so the agent can act on the new context without the user having to ask again.
@@ -534,7 +536,7 @@ export async function handleTextChatMessage(
             reasoning: getAgent('base').reasoning || { effort: 'low' },
             previous_response_id: response.id,
             instructions:
-              "Using the supervisor's result, provide a concise plain-text answer in two or three sentences. If important details would be lost, use the sendCanvas tool to deliver the full response.",
+              "Using the supervisor's result, provide a concise plain-text answer in two or three sentences. If important details would be lost, use the create_note tool to deliver the full response.",
             input: [
               {
                 type: "function_call_output" as const,
@@ -562,7 +564,7 @@ export async function handleTextChatMessage(
           session.previousResponseId = followUpResponse.id;
           const fuFunctionCalls = followUpResponse.output?.filter((o: any) => o.type === "function_call");
           if (fuFunctionCalls && fuFunctionCalls.length > 0) {
-            // Delegate to orchestrator to execute one function_call (canvas preferred) and optionally confirm
+            // Delegate to orchestrator to execute one function_call (note preferred) and optionally confirm
             const { handled, confirmText, confirmResponseId, executedCall } = await executeFunctionCalls(
               fuFunctionCalls,
               {

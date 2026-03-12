@@ -1,5 +1,4 @@
 import { registerTools, ToolOrigin } from "../registry";
-import { sendCanvas } from "../handlers/canvas";
 import { sendSmsTool } from "../handlers/sms";
 import { sendEmailTool } from "../handlers/email";
 import { getNextResponseFromSupervisorFunction } from "../handlers/supervisor-escalation";
@@ -40,14 +39,6 @@ export function registerLocalTools() {
       'local',
       ['local', 'base-default'],
       (args) => getNextResponseFromSupervisorFunction.handler(args)
-    ),
-    wrap(
-      sendCanvas.schema.name,
-      sendCanvas.schema.description,
-      sendCanvas.schema.parameters,
-      'local',
-      ['local', 'base-default'],
-      (args) => sendCanvas.handler(args)
     ),
     wrap(
       sendSmsTool.schema.name,

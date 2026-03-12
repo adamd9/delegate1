@@ -55,11 +55,11 @@ Chat protocol: client sends `{ type: 'chat.message', content }`, server responds
 
 ### Database
 
-SQLite via `better-sqlite3` (`src/db/sqlite.ts`). Key tables: `sessions`, `conversations`, `conversation_events` (event ledger), `canvases`, `thoughtflow_artifacts`. Database file lives at `runtime-data/db/assistant.sqlite` (or `$RUNTIME_DATA_DIR/db/assistant.sqlite`).
+SQLite via `better-sqlite3` (`src/db/sqlite.ts`). Key tables: `sessions`, `conversations`, `conversation_events` (event ledger), `thoughtflow_artifacts`. Database file lives at `runtime-data/db/assistant.sqlite` (or `$RUNTIME_DATA_DIR/db/assistant.sqlite`).
 
 ### Runtime Data
 
-`runtime-data/` (overridable via `RUNTIME_DATA_DIR` env var) stores all persistent non-database state: `notes.json`, `mcp-servers.json`, `agent-policies.json`, `adaptations.edits.json`, `voice-presets/`, `canvas-artifacts/`, and `thoughtflow/` observability data. Every module resolves its storage path using the same pattern:
+`runtime-data/` (overridable via `RUNTIME_DATA_DIR` env var) stores all persistent non-database state: `notes.json`, `mcp-servers.json`, `agent-policies.json`, `adaptations.edits.json`, `voice-presets/`, and `thoughtflow/` observability data. Every module resolves its storage path using the same pattern:
 
 ```typescript
 const dir = process.env.RUNTIME_DATA_DIR

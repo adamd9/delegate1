@@ -409,17 +409,17 @@
     .int-stop:hover:not(:disabled) { border-color: var(--amber); color: var(--amber); }
     .int-stop:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    /* Canvas overlay */
-    .canvas-overlay {
+    /* Note overlay */
+    .note-overlay {
       display: none;
       position: fixed; inset: 0;
       background: rgba(0,0,0,0.7);
       z-index: 100;
       align-items: center; justify-content: center;
     }
-    .canvas-overlay.open { display: flex; }
+    .note-overlay.open { display: flex; }
 
-    .canvas-panel {
+    .note-panel {
       background: var(--surface);
       border: 1px solid var(--border2);
       border-radius: 12px;
@@ -429,22 +429,22 @@
       overflow: hidden;
     }
 
-    .canvas-header {
+    .note-header {
       display: flex; align-items: center; justify-content: space-between;
       padding: 12px 16px; border-bottom: 1px solid var(--border);
     }
 
-    .canvas-title { font-size: 13px; color: var(--text); font-weight: 500; }
+    .note-title { font-size: 13px; color: var(--text); font-weight: 500; }
 
-    .canvas-close {
+    .note-close {
       padding: 4px 10px; border-radius: 4px;
       border: 1px solid var(--border2); background: transparent;
       color: var(--text-mid); font-size: 11px;
       font-family: var(--font); cursor: pointer;
     }
-    .canvas-close:hover { color: var(--text); }
+    .note-close:hover { color: var(--text); }
 
-    .canvas-iframe { flex: 1; border: none; background: white; }
+    .note-iframe { flex: 1; border: none; background: white; }
 
     /* ── Hamburger / mobile menu ── */
     .menu-toggle {
@@ -554,6 +554,7 @@
 
     <div class="lp-label">navigate</div>
     <div class="lp-nav">
+      <a class="lp-navitem" href="/notes-list"><span class="ni-icon">📌</span> Notes</a>
       <a class="lp-navitem" href="/settings"><span class="ni-icon">⚙</span> Settings</a>
       <a class="lp-navitem" href="/voice" target="_blank" rel="noopener noreferrer"><span class="ni-icon">📞</span> Twilio Voice</a>
       <a class="lp-navitem" href="/voice-direct" target="_blank" rel="noopener noreferrer"><span class="ni-icon">📡</span> Direct Voice</a>
@@ -627,14 +628,14 @@
 
   </div>
 
-  <!-- Canvas overlay -->
-  <div id="canvas-overlay" class="canvas-overlay">
-    <div class="canvas-panel">
-      <div class="canvas-header">
-        <span id="canvas-title" class="canvas-title"></span>
-        <button class="canvas-close" id="canvas-close">close</button>
+  <!-- Note overlay -->
+  <div id="note-overlay" class="note-overlay">
+    <div class="note-panel">
+      <div class="note-header">
+        <span id="note-title" class="note-title"></span>
+        <button class="note-close" id="note-close">close</button>
       </div>
-      <iframe id="canvas-iframe" class="canvas-iframe"></iframe>
+      <iframe id="note-iframe" class="note-iframe"></iframe>
     </div>
   </div>
 
@@ -874,11 +875,23 @@ function handleEvent(event) {
       break;
     }
 
-    case 'chat.canvas': {
+    case 'chat.note': {
       const isReplay = event.replay === true;
-      addBreadcrumb('📝 Canvas response', { content: event.content, title: event.title, timestamp: event.timestamp }, isReplay, event.timestamp);
+      addBreadcrumb('📌 Note created', { content: event.content, title: event.title, timestamp: event.timestamp }, isReplay, event.timestamp);
       // Also show open button
-      if (event.url || event.content) addCanvasEvent(event);
+      if (event.url || event.content) addNoteEvent(event);
+      break;
+    }
+
+    case 'chat.note.updated': {
+      const isReplay = event.replay === true;
+      addBreadcrumb('📌 Note updated: ' + (event.title || ''), { id: event.id, title: event.title }, isReplay, event.timestamp);
+      break;
+    }
+
+    case 'chat.note.deleted': {
+      const isReplay = event.replay === true;
+      addBreadcrumb('📌 Note deleted', { id: event.id }, isReplay, event.timestamp);
       break;
     }
 
@@ -1042,12 +1055,12 @@ function addSysEvent(text) {
   scrollToBottom();
 }
 
-function addCanvasEvent(event) {
-  const id = `canvas-${Date.now()}`;
+function addNoteEvent(event) {
+  const id = `note-${Date.now()}`;
   const item = {
     id, type: 'BREADCRUMB',
-    title: `📄 Canvas: ${event.title || 'untitled'}`,
-    data: { _canvas: true, url: event.url, content: event.content, title: event.title },
+    title: `📌 Note: ${event.title || 'untitled'}`,
+    data: { _note: true, url: event.url, content: event.content, title: event.title },
     isHidden: false, ts: ts(), createdAt: Date.now(),
   };
   state.items.push(item);
@@ -1127,14 +1140,14 @@ function renderItem(item, prepend) {
     el.id = `ev-${item.id}`;
     el.className = 'tool-ev';
 
-    // Canvas breadcrumbs get a special open button
-    if (item.data && item.data._canvas) {
+    // Note breadcrumbs get a special open button
+    if (item.data && item.data._note) {
       el.innerHTML = `
-        <span class="tool-ev-icon">📄</span>
+        <span class="tool-ev-icon">📌</span>
         <div class="tool-ev-body">
           <div class="tool-ev-title">${esc(item.title)}</div>
         </div>
-        <button onclick="openCanvas(${JSON.stringify(item.data).replace(/"/g,'&quot;')})" style="padding:3px 8px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--accent);font-size:10px;font-family:var(--font);cursor:pointer;">open</button>
+        <button onclick="openNote(${JSON.stringify(item.data).replace(/"/g,'&quot;')})" style="padding:3px 8px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--accent);font-size:10px;font-family:var(--font);cursor:pointer;">open</button>
         <span class="tool-ev-ts">${esc(item.ts)}</span>
       `;
     } else {
@@ -1322,11 +1335,11 @@ function copyTranscript() {
   });
 }
 
-function openCanvas(data) {
-  const overlay = document.getElementById('canvas-overlay');
-  const iframe = document.getElementById('canvas-iframe');
-  const title = document.getElementById('canvas-title');
-  title.textContent = data.title || 'Canvas';
+function openNote(data) {
+  const overlay = document.getElementById('note-overlay');
+  const iframe = document.getElementById('note-iframe');
+  const title = document.getElementById('note-title');
+  title.textContent = data.title || 'Note';
   if (data.url) {
     iframe.src = data.url;
   } else if (data.content) {
@@ -1408,15 +1421,15 @@ document.querySelectorAll('.lp-navitem').forEach(a =>
 
 document.getElementById('btn-copy').addEventListener('click', copyTranscript);
 
-document.getElementById('canvas-close').addEventListener('click', () => {
-  document.getElementById('canvas-overlay').classList.remove('open');
-  document.getElementById('canvas-iframe').src = '';
+document.getElementById('note-close').addEventListener('click', () => {
+  document.getElementById('note-overlay').classList.remove('open');
+  document.getElementById('note-iframe').src = '';
 });
 
-document.getElementById('canvas-overlay').addEventListener('click', (e) => {
+document.getElementById('note-overlay').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) {
-    document.getElementById('canvas-overlay').classList.remove('open');
-    document.getElementById('canvas-iframe').src = '';
+    document.getElementById('note-overlay').classList.remove('open');
+    document.getElementById('note-iframe').src = '';
   }
 });
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Canvas Viewer · HK</title>
+  <title>Note Viewer · HK</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #fff; display: flex; flex-direction: column; height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; font-size: 13px; }
@@ -33,7 +33,7 @@
   <header>
     <button class="hdr-btn" id="back-btn" onclick="window.history.back()">← back</button>
     <div class="title-block">
-      <div class="title-sub">Canvas</div>
+      <div class="title-sub">Note</div>
       <div class="title-main" id="title-el">viewer</div>
     </div>
     <div class="spacer"></div>
@@ -42,7 +42,7 @@
     <button class="hdr-btn" id="copy-btn">⧉ copy link</button>
   </header>
   <main id="main-content">
-    <div class="empty" id="empty-msg">No canvas URL provided. Append ?url=… to the address.</div>
+    <div class="empty" id="empty-msg">No note URL provided. Append ?url=… to the address.</div>
   </main>
 
 <script>
@@ -51,7 +51,7 @@
   const title = params.get('title') || '';
 
   document.getElementById('title-el').textContent = title || url || 'viewer';
-  document.title = (title || 'Canvas') + ' · HK';
+  document.title = (title || 'Note') + ' · HK';
 
   if (url) {
     document.getElementById('empty-msg').style.display = 'none';
@@ -64,7 +64,7 @@
       iframe.src = url + (key ? `#reload=${key}` : '');
       iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms allow-popups');
       iframe.setAttribute('referrerpolicy', 'no-referrer');
-      iframe.title = title || 'Canvas';
+      iframe.title = title || 'Note';
       main.appendChild(iframe);
     }
     buildIframe();

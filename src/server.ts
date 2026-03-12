@@ -13,7 +13,7 @@ import { registerLogsRoutes } from './server/routes/logs';
 import { registerSessionRoutes } from './server/routes/session';
 import { registerAdaptationsRoutes } from './server/routes/adaptations';
 import { registerMcpConfigRoutes } from './server/routes/mcpConfig';
-import { registerCanvasRoutes } from './server/routes/canvas';
+import { registerNotesRoutes } from './server/routes/notes';
 import { registerDeepgramRoutes } from './server/routes/deepgram';
 import { registerVoiceMessageRoutes } from './server/routes/voiceMessage';
 import { registerVoiceDefaultsRoutes } from './server/routes/voiceDefaults';
@@ -107,8 +107,8 @@ registerConversationRoutes(app, { defaultLimit: SESSION_HISTORY_LIMIT });
 
 // (removed /sms/debug temporary diagnostics)
 
-// Canvas route
-registerCanvasRoutes(app);
+// Notes route (public note rendering)
+registerNotesRoutes(app);
 
 // Deepgram auth routes
 registerDeepgramRoutes(app);

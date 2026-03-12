@@ -69,9 +69,10 @@ function mapDbEventToUiEvent(row: any, convId: string, sessionId: string, baseTs
       },
       timestamp: ts,
     });
-  } else if (kind === 'canvas') {
+  } else if (kind === 'canvas' || kind === 'note_created') {
+    // Backward compat: old 'canvas' events mapped to chat.note alongside new 'note_created' events
     out.push({
-      type: 'chat.canvas',
+      type: 'chat.note',
       ...(replay ? { replay: true } : {}),
       session_id: sessionId,
       conversation_id: convId,
@@ -79,6 +80,27 @@ function mapDbEventToUiEvent(row: any, convId: string, sessionId: string, baseTs
       title: payload.title,
       timestamp: ts,
       id: payload.id,
+      url: payload.url,
+    });
+  } else if (kind === 'note_updated') {
+    out.push({
+      type: 'chat.note.updated',
+      ...(replay ? { replay: true } : {}),
+      session_id: sessionId,
+      conversation_id: convId,
+      id: payload.id,
+      title: payload.title,
+      url: payload.url,
+      timestamp: ts,
+    });
+  } else if (kind === 'note_deleted') {
+    out.push({
+      type: 'chat.note.deleted',
+      ...(replay ? { replay: true } : {}),
+      session_id: sessionId,
+      conversation_id: convId,
+      id: payload.id,
+      timestamp: ts,
     });
   } else if (kind === 'thoughtflow_artifacts') {
     out.push({

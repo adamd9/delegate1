@@ -182,9 +182,9 @@ export async function executeFunctionCalls(
 ): Promise<{ handled: boolean; confirmText?: string; confirmResponseId?: string; executedCall?: FunctionCallItem }>
 {
   if (!calls || calls.length === 0) return { handled: false };
-  // Prefer canvas if present; else first call
-  const canvas = calls.find(c => c.name === 'send_canvas');
-  const next = canvas || calls[0];
+  // Prefer create_note if present; else first call
+  const noteCall = calls.find(c => c.name === 'create_note');
+  const next = noteCall || calls[0];
   const result = await executeFunctionCall(next, ctx);
 
   // Optional chat confirmation step
@@ -231,8 +231,8 @@ export async function executeFunctionCalls(
         { type: 'function_call_output', call_id: next.call_id, output: typeof result === 'string' ? result : JSON.stringify(result) },
       ],
       instructions: (() => {
-        const baseInstr = next.name === 'send_canvas'
-          ? 'Provide a concise plain-text confirmation (1-2 sentences) that the canvas has been sent, optionally summarizing what was included.'
+        const baseInstr = next.name === 'create_note'
+          ? 'Provide a concise plain-text confirmation (1-2 sentences) that the note has been created, optionally summarizing what was included.'
           : 'Provide a concise plain-text confirmation (1-2 sentences) that the requested action has been performed successfully.';
         return [confirmAdaptText, baseInstr].filter(Boolean).join('\n');
       })(),

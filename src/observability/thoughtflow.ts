@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs';
 import { randomUUID } from 'crypto';
 import { join, sep } from 'path';
 import { session } from '../session/state';
-import { upsertSession, finalizeSession, upsertConversation, completeConversation, addConversationEvent, getLastEventTimestampForConversation, upsertThoughtflowArtifact } from '../db/sqlite';
+import { upsertSession, finalizeSession, upsertConversation, updateConversationStatus, addConversationEvent, getLastEventTimestampForConversation, upsertThoughtflowArtifact } from '../db/sqlite';
 
 // Explicit step types for ThoughtFlow events
 export enum ThoughtFlowStepType {
@@ -65,7 +65,7 @@ export function appendEvent(event: any) {
           const convId = event.conversation_id;
           const isAborted = (t === 'run.aborted' || t === 'conversation.aborted');
           const status = (event.status as any) || (isAborted ? 'aborted' : 'completed');
-          completeConversation({ id: convId, status, ended_at: event.ended_at });
+          updateConversationStatus({ id: convId, status, ended_at: event.ended_at });
           // Generate per-conversation ThoughtFlow artifacts at completion
           try {
             const { artifactId } = writeConversationArtifacts(sid, convId);
@@ -360,7 +360,7 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
         const convId = c.conversation_id;
         if (!convId) continue;
         try {
-          completeConversation({ id: convId, status: c.status, ended_at: c.ended_at, duration_ms: c.duration_ms });
+          updateConversationStatus({ id: convId, status: c.status, ended_at: c.ended_at, duration_ms: c.duration_ms });
         } catch {}
         // Best-effort: ensure per-conversation ThoughtFlow artifact links exist (if not already added during conversation.completed)
         try {

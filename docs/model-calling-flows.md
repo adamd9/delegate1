@@ -89,7 +89,7 @@ sequenceDiagram
 - __Entry__: Web chat sends `chat.message` over WS.
 - __Model__: OpenAI Responses API (`responses.create`) with `gpt-5-mini`.
 - __Threading__: Uses `previous_response_id` to maintain context across turns.
-- __Tools__: If model returns a `function_call`, server executes handler and sends a follow-up `responses.create` with `function_call_output`. Special handling for `send_canvas` to broadcast rich content and then confirm.
+- __Tools__: If model returns a `function_call`, server executes handler and sends a follow-up `responses.create` with `function_call_output`. Special handling for `create_note` to broadcast rich content and then confirm.
 
 ```mermaid
 sequenceDiagram
@@ -109,8 +109,8 @@ sequenceDiagram
     Server->>OpenAI: responses.create({ previous_response_id, input: function_call_output, tools })
     OpenAI-->>Server: follow-up output (may include tool calls)
 
-    alt send_canvas detected
-      Server->>Server: execute local send_canvas tool (broadcast canvas)
+    alt create_note detected
+      Server->>Server: execute local create_note tool (broadcast note)
       Server->>OpenAI: responses.create(confirm tool execution)
       OpenAI-->>Server: confirmation text
       Server-->>Web: chat.response (confirmation)
@@ -137,7 +137,7 @@ sequenceDiagram
 - __Text chat (`gpt-5-mini`)__
   - Cost-effective, fast text model for chat UX.
   - Pairs well with the Responses API’s tool-calling and `previous_response_id` threading.
-  - Supervisor-friendly: easy to run a tool call, feed `function_call_output`, then elicit a concise final answer or trigger UI-specific tools like `send_canvas`.
+  - Supervisor-friendly: easy to run a tool call, feed `function_call_output`, then elicit a concise final answer or trigger UI-specific tools like `create_note`.
 
 ## Key Code Touchpoints
 

@@ -1,6 +1,6 @@
 import type { Application, Request, Response } from 'express';
 import { marked } from 'marked';
-import { getCanvas } from '../../canvasStore';
+import { getNote, listNotes, createNote, updateNote, deleteNote } from '../../noteStore';
 
 function escapeHtml(input: string): string {
   return input
@@ -69,13 +69,12 @@ marked.setOptions({
   renderer,
 });
 
-function renderCanvasHtmlPage({ title, content, timestamp }: { title: string; content: string; timestamp: number }) {
+function renderNoteHtmlPage({ title, content, timestamp }: { title: string; content: string; timestamp: number }) {
   const rendered = marked.parse(content ?? '');
-  const safeTitle = escapeHtml(title || 'Canvas');
+  const safeTitle = escapeHtml(title || 'Note');
   const iso = new Date(timestamp || Date.now()).toISOString();
   const safeIso = escapeHtml(iso);
 
-  // Minimal, GitHub-esque markdown typography without external assets.
   const styles = `
     :root {
       --bg: #f6f8fa;
@@ -202,10 +201,9 @@ function renderCanvasHtmlPage({ title, content, timestamp }: { title: string; co
 </html>`;
 }
 
-export function registerCanvasRoutes(app: Application) {
-  // Endpoint to serve stored canvas content as HTML
-  app.get('/canvas/:id', async (req: Request, res: Response) => {
-    const data = await getCanvas((req.params as any).id);
+export function registerNotesRoutes(app: Application) {
+  app.get('/notes/:id', async (req: Request, res: Response) => {
+    const data = await getNote((req.params as any).id);
     if (!data) {
       res.status(404).send('Not found');
       return;
@@ -227,9 +225,63 @@ export function registerCanvasRoutes(app: Application) {
       ].join('; ')
     );
 
-    const title = typeof (data as any).title === 'string' && (data as any).title.trim() ? (data as any).title.trim() : 'Canvas';
-    const content = typeof (data as any).content === 'string' ? (data as any).content : '';
-    const timestamp = typeof (data as any).timestamp === 'number' ? (data as any).timestamp : Date.now();
-    res.send(renderCanvasHtmlPage({ title, content, timestamp }));
+    const title = typeof data.title === 'string' && data.title.trim() ? data.title.trim() : 'Note';
+    const content = typeof data.content === 'string' ? data.content : '';
+    const timestamp = typeof data.timestamp === 'number' ? data.timestamp : Date.now();
+    res.send(renderNoteHtmlPage({ title, content, timestamp }));
+  });
+
+  // ── REST API for notes CRUD ──
+
+  app.get('/api/notes', async (_req: Request, res: Response) => {
+    try {
+      const query = typeof _req.query.q === 'string' ? _req.query.q : undefined;
+      const notes = await listNotes({ query });
+      res.json(notes);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to list notes' });
+    }
+  });
+
+  app.get('/api/notes/:id', async (req: Request, res: Response) => {
+    try {
+      const note = await getNote((req.params as any).id);
+      if (!note) { res.status(404).json({ error: 'not_found' }); return; }
+      res.json(note);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to get note' });
+    }
+  });
+
+  app.post('/api/notes', async (req: Request, res: Response) => {
+    try {
+      const { title, content } = req.body || {};
+      if (!title || !content) { res.status(400).json({ error: 'title and content required' }); return; }
+      const note = await createNote(title, content);
+      res.status(201).json(note);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to create note' });
+    }
+  });
+
+  app.put('/api/notes/:id', async (req: Request, res: Response) => {
+    try {
+      const { title, content } = req.body || {};
+      const note = await updateNote((req.params as any).id, { title, content });
+      if (!note) { res.status(404).json({ error: 'not_found' }); return; }
+      res.json(note);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to update note' });
+    }
+  });
+
+  app.delete('/api/notes/:id', async (req: Request, res: Response) => {
+    try {
+      const ok = await deleteNote((req.params as any).id);
+      if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
+      res.json({ status: 'deleted' });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to delete note' });
+    }
   });
 }

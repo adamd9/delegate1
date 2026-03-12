@@ -11,8 +11,8 @@ export type ConversationItem =
       supervisor?: boolean;
     }
   | {
-      type: 'canvas';
-      content: string; // URL to stored canvas
+      type: 'note';
+      content: string; // URL to stored note
       title?: string;
       timestamp: number;
       id: string;

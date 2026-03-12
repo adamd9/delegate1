@@ -158,6 +158,7 @@ class MemoryModule {
 
   private _kickBackgroundRefresh(backend: import('./types').MemoryBackend, query: string): void {
     if (this._inflightRetrieve) return; // already refreshing
+    if (!query.trim()) return; // skip refresh with empty query — Mem0 rejects blank queries
     this._inflightRetrieve = backend.retrieve(query, 5)
       .then(result => {
         this._inflightRetrieve = null;

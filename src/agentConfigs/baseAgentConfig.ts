@@ -1,6 +1,5 @@
 import { AgentConfig } from './types';
 // import { getWeatherFunction } from '../tools/handlers/weather';
-import { sendCanvas } from '../tools/handlers/canvas';
 import { sendSmsTool } from '../tools/handlers/sms';
 import { sendEmailTool } from '../tools/handlers/email';
 import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction, getNoteFunction } from '../tools/handlers/notes';
@@ -30,10 +29,10 @@ When escalating, call getNextResponseFromSupervisor with:
 - context: a concise summary of the conversation so far and constraints (include channel). Do NOT inject assumptions about what credentials, permissions, accounts, or providers the supervisor might need — the supervisor has its own tools with their own descriptions and will determine requirements from those.
 - reasoning_type: one of 'research', 'analysis', 'problem_solving', or 'general'
 
-Keep responses concise—no more than two or three sentences. If that would omit important details, provide the most pertinent in the response then also call the send_canvas tool to share the full response to the user.
+Keep responses concise—no more than two or three sentences. If that would omit important details, provide the most pertinent in the response then also call create_note to share the full response to the user.
 
-In particular, if you need to output URLs or other details that are too long for a voice response, use the send_canvas tool to share the full response.
-If the current channel is voice, after calling send_canvas also call send_sms with the canvas link so the user receives it via text. Use send_sms for any other helpful text follow ups as well.
+In particular, if you need to output URLs or other details that are too long for a voice response, use create_note to share the full response.
+If the current channel is voice, after calling create_note also call send_sms with the note link so the user receives it via text. Use send_sms for any other helpful text follow ups as well.
 
 Be conversational and natural in speech. When invoking tools or waiting on longer operations, provide a brief, natural backchannel once at the start (e.g., "One moment…", "Let me check that…"). Keep it short, avoid repetition, and stop as soon as the tool output is ready or the user begins speaking.
 
@@ -51,14 +50,13 @@ Unclear audio:
   - "I only heard part of that. What did you say after ___?"
 
 Canvas tool:
-- There's no need to supply the link in the message back to the user unless it's being sent via SMS.
+- There's no need to supply the note link in the message back to the user unless it's being sent via SMS.
 
 Persistent memory:
 - Relevant memories from past conversations are automatically included in your context when available.
 - If you notice something important the user has shared (a preference, fact about themselves, a recurring need), you can acknowledge it naturally — memory is handled passively in the background.`,
   voice: agentPersonality.voice,
   tools: [
-    sendCanvas,
     sendSmsTool,
     sendEmailTool,
     createNoteFunction,
