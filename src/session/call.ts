@@ -584,7 +584,7 @@ export function processRealtimeModelEvent(
         if (!alreadyInjected) {
           void ((): void => {
             // Use retrieveWithLate so we get a late promise for shadow-turn if fetch times out.
-            memoryModule.retrieveWithLate(transcript, getMemoryConfig().retrieve_timeout_ms).then(({ memories, latePromise }) => {
+            memoryModule.retrieveWithLate(transcript, getMemoryConfig().retrieve_timeout_ms).then(({ memories, newMemories, latePromise }) => {
               if (memories && isOpen(session.modelConn) && !session.responseStartTimestamp) {
                 // Memories arrived in time — inject before response starts
                 const cfg = buildRealtimeSessionConfig('voice', getAudioFormatForSession());
@@ -596,13 +596,14 @@ export function processRealtimeModelEvent(
                 console.debug('[memory] injected memories into voice session via session.update (at transcript)');
               } else if (memories) {
                 // Memories arrived but response already started — schedule a voice shadow turn
-                scheduleVoiceShadowTurn(memories, transcript);
+                // Only interrupt if there are genuinely new items
+                if (newMemories) scheduleVoiceShadowTurn(memories, transcript);
               }
               if (latePromise) {
-                // Memories didn't arrive in time — schedule shadow turn when they do
-                latePromise.then(lateMemories => {
-                  if (lateMemories) {
-                    scheduleVoiceShadowTurn(lateMemories, transcript);
+                // Memories didn't arrive in time — schedule shadow turn when they do (only for new items)
+                latePromise.then(lateResult => {
+                  if (lateResult.newMemories) {
+                    scheduleVoiceShadowTurn(lateResult.memories || lateResult.newMemories, transcript);
                   }
                 }).catch(() => {});
               }
