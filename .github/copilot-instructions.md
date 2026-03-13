@@ -12,8 +12,10 @@ Delegate 1 is a single-session, multi-channel AI assistant (text, voice, phone) 
 - **Run all E2E tests**: `npm run test:e2e` (requires backend running + valid OpenAI key)
 - **Run a single E2E test**: `npx @playwright/test@1.55.0 test tests/e2e/<filename>.spec.ts`
 - **Run a single test by name**: `npx @playwright/test@1.55.0 test -g "test name pattern"`
+- **Run unit tests**: `npm run test:unit` (runs `ts-node tests/unit/memory-deduplicator.test.ts`)
+- **Run voice tests**: `npm run test:voice` (runs `ts-node src/voice/voicePipeline.test.ts`)
 
-There is no linter configured.
+Unit tests use plain Node `assert` — there is no test framework (no Jest/Vitest). There is no linter configured.
 
 ## Architecture
 
@@ -66,6 +68,10 @@ const dir = process.env.RUNTIME_DATA_DIR
   ? path.join(process.env.RUNTIME_DATA_DIR, 'subdir')
   : path.join(__dirname, '...', 'runtime-data', 'subdir');
 ```
+
+### Memory System
+
+The memory module (`src/memory/`) manages persistent user context across conversations. It includes an adaptive backend, Mem0 integration, a conversation bus for real-time memory extraction, and a deduplicator (`src/memory/deduplicator.ts`) that suppresses repeated memory insertions. Memory config is managed at runtime via `runtime-data/` and the settings UI.
 
 ## Key Conventions
 

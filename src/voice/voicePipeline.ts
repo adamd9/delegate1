@@ -87,10 +87,41 @@ export function resolveAudioInput(mime?: string, filename?: string): AudioInputD
   return { kind: "unsupported", ext, mime: cleanMime };
 }
 
+function looksLikeBase64Content(buf: Buffer): boolean {
+  if (buf.length < 16) return false;
+  const sample = buf.slice(0, Math.min(buf.length, 256)).toString("ascii").replace(/\s+/g, "");
+  if (sample.length < 16 || sample.length % 4 !== 0) return false;
+  return /^[A-Za-z0-9+/=]+$/.test(sample);
+}
+
 export async function normalizeAudioForStt(inputPath: string, mime?: string, filename?: string): Promise<string> {
   const decision = resolveAudioInput(mime, filename);
-  if (decision.kind === "supported") return inputPath;
-  throw new VoiceMessageError(415, "unsupported_audio", "Unsupported audio type");
+  if (decision.kind !== "supported") {
+    throw new VoiceMessageError(415, "unsupported_audio", "Unsupported audio type");
+  }
+
+  // Detect and decode base64-encoded audio files.
+  // Some clients (e.g. ZeppOS) may embed base64 text in the multipart file part
+  // instead of raw binary bytes. If detected, decode to a new file.
+  const headerBuf = Buffer.alloc(256);
+  const fd = fs.openSync(inputPath, "r");
+  const bytesRead = fs.readSync(fd, headerBuf, 0, 256, 0);
+  fs.closeSync(fd);
+  const sample = headerBuf.slice(0, bytesRead);
+
+  if (looksLikeBase64Content(sample)) {
+    const raw = fs.readFileSync(inputPath, "ascii").replace(/\s+/g, "");
+    const decoded = Buffer.from(raw, "base64");
+    const decodedPath = inputPath + ".decoded";
+    fs.writeFileSync(decodedPath, decoded);
+    console.info("[voice-message] decoded base64 audio payload", {
+      original_size: raw.length,
+      decoded_size: decoded.length,
+    });
+    return decodedPath;
+  }
+
+  return inputPath;
 }
 
 export async function transcribeAudio(pathForStt: string, openaiClient?: OpenAI) {
