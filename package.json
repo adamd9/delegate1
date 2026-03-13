@@ -13,6 +13,7 @@
     "test:e2e": "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npx -y @playwright/test@1.55.0 test",
     "test:e2e:headed": "npx -y @playwright/test@1.55.0 test --headed",
     "test:voice": "ts-node src/voice/voicePipeline.test.ts",
+    "test:unit": "ts-node tests/unit/memory-deduplicator.test.ts",
     "clean": "rm -rf node_modules dist",
     "script:token": "node scripts/twilio/generate-token.js",
     "script:list-apps": "node scripts/twilio/list-twiml-apps.js",

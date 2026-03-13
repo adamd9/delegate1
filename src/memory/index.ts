@@ -6,6 +6,7 @@ import { createOpenAIClient } from '../services/openaiClient';
 import { chatClients } from '../ws/clients';
 import { addConversationEvent } from '../db/sqlite';
 import { appendEvent, ensureSession } from '../observability/thoughtflow';
+import { MemoryDeduplicator, formatMemoryItems } from './deduplicator';
 
 const EXTRACTION_SYSTEM_PROMPT = `You extract durable personal facts about the USER from a completed conversation.
 
@@ -21,10 +22,13 @@ class MemoryModule {
   private _cachedMemories: string | null = null;
   private _cacheUpdatedAt: number = 0;
   private _inflightRetrieve: Promise<string | null> | null = null;
+  private _dedup: MemoryDeduplicator = new MemoryDeduplicator();
 
   constructor() {
     conversationBus.onConversationComplete((conv) => {
       this._extractAndStore(conv).catch(() => {});
+      // Reset deduplicator state so the next conversation starts fresh
+      this._dedup.reset();
     });
   }
 
@@ -221,19 +225,99 @@ class MemoryModule {
     }
   }
   /**
-   * Like retrieve() but also returns the still-running Mem0 promise if we timed out,
-   * so callers can schedule a shadow turn when memories arrive late.
+   * Like retrieve() but also:
+   * - applies deduplication (new items vs. previously surfaced items)
+   * - returns the still-running Mem0 promise if we timed out, so callers can
+   *   schedule a shadow turn — but only when genuinely new items arrive.
    */
   async retrieveWithLate(query: string, timeoutMs?: number, conversationId?: string): Promise<{
+    /** All memories (new + known) — for system-prompt context */
     memories: string | null;
-    latePromise: Promise<string | null> | null;
+    /** Only items not previously surfaced — use to decide whether to interrupt */
+    newMemories: string | null;
+    /** Resolves when late memories arrive; null when memories came on time */
+    latePromise: Promise<{ memories: string | null; newMemories: string | null }> | null;
   }> {
-    const memories = await this.retrieve(query, timeoutMs, conversationId);
-    if (memories !== null) return { memories, latePromise: null };
-    // Timed out (or empty query / no backend) — capture any still-running fetch
-    const latePromise = this._inflightRetrieve; // still set when we raced and lost
-    return { memories: null, latePromise };
-  }}
+    // Sync dedup config from runtime config before each lookup
+    const cfg = getMemoryConfig();
+    this._dedup.configure({
+      enabled: cfg.dedup_enabled,
+      expiryTurns: cfg.dedup_expiry_turns,
+      expiryMs: cfg.dedup_expiry_ms,
+      strictness: cfg.dedup_strictness,
+    });
+    this._dedup.advanceTurn();
+
+    const rawMemories = await this.retrieve(query, timeoutMs, conversationId);
+
+    if (rawMemories !== null) {
+      const dedupResult = this._dedup.deduplicate(rawMemories);
+      const memories = dedupResult.allItems.length > 0 ? formatMemoryItems(dedupResult.allItems) : null;
+      const newMemories = dedupResult.newItems.length > 0 ? formatMemoryItems(dedupResult.newItems) : null;
+      this._dedup.markSurfaced(dedupResult.newItems);
+      this._persistDedupLog(dedupResult, conversationId);
+      return { memories, newMemories, latePromise: null };
+    }
+
+    // Timed out — capture any still-running fetch and wrap with dedup
+    const inflightRef = this._inflightRetrieve;
+    if (!inflightRef) {
+      return { memories: null, newMemories: null, latePromise: null };
+    }
+
+    const latePromise: Promise<{ memories: string | null; newMemories: string | null }> =
+      inflightRef.then(lateRaw => {
+        if (!lateRaw) return { memories: null, newMemories: null };
+        const dedupResult = this._dedup.deduplicate(lateRaw);
+        const memories = dedupResult.allItems.length > 0 ? formatMemoryItems(dedupResult.allItems) : null;
+        const newMemories = dedupResult.newItems.length > 0 ? formatMemoryItems(dedupResult.newItems) : null;
+        this._dedup.markSurfaced(dedupResult.newItems);
+        this._persistDedupLog(dedupResult, conversationId);
+        return { memories, newMemories };
+      });
+
+    return { memories: null, newMemories: null, latePromise };
+  }
+
+  /**
+   * Expose dedup metrics for observability / API consumers.
+   */
+  getDedupMetrics() {
+    return this._dedup.getMetrics();
+  }
+
+  /**
+   * Force immediate re-surfacing of all suppressed memories.
+   * Call when the user explicitly requests memory recall.
+   */
+  clearDedupState(): void {
+    this._dedup.clearAll();
+  }
+
+  private _persistDedupLog(
+    result: import('./deduplicator').DeduplicationResult,
+    conversationId?: string
+  ): void {
+    if (!conversationId) return;
+    try {
+      const ts = Date.now();
+      addConversationEvent({
+        conversation_id: conversationId,
+        kind: 'memory_dedup',
+        payload: {
+          turn: this._dedup.currentTurn,
+          total: result.allItems.length,
+          new: result.newItems.length,
+          known: result.knownItems.length,
+          suppressed: result.suppressed,
+          elapsed_ms: result.elapsedMs,
+          log: result.log,
+        },
+        created_at_ms: ts,
+      });
+    } catch {}
+  }
+}
 
 /** Singleton instance */
 export const memoryModule = new MemoryModule();

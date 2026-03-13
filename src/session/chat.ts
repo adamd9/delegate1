@@ -364,20 +364,25 @@ export async function handleTextChatMessage(
     const singleAdapt = await getAdaptationTextById(adaptationIdentifier);
     const adaptationsText = singleAdapt?.text || '';
     // Retrieve relevant memories; get a late-promise if Mem0 timed out so we can shadow-turn when it arrives
-    const { memories, latePromise } = await memoryModule.retrieveWithLate(content, getMemoryConfig().retrieve_timeout_ms, conversationId);
+    // retrieveWithLate also applies deduplication: `memories` = all (for context),
+    // `newMemories` = only novel items (for deciding whether to interrupt with a shadow turn).
+    const { memories, newMemories, latePromise } = await memoryModule.retrieveWithLate(content, getMemoryConfig().retrieve_timeout_ms, conversationId);
+    if (memories) {
+      console.log(`[memory] on-time: total=${memories.split('\n').filter(Boolean).length} new=${newMemories ? newMemories.split('\n').filter(Boolean).length : 0}`);
+    }
     const memoriesPrefix = memories ? `[Retrieved memories from past conversations — use these facts when relevant to the user's query]\n${memories}\n\n` : '';
     const instructions = [memoriesPrefix + contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
     // When memory arrives late (after the main response is already sent), kick off a shadow turn
-    // so the agent can act on the new context without the user having to ask again.
+    // only if the late result contains genuinely NEW items (not previously surfaced in this conversation).
     const maybeShadowTurn = (convId: string) => {
       if (!latePromise) return;
-      latePromise.then(lateMemories => {
-        if (!lateMemories || session.currentRequest) return;
-        console.log('[memory] shadow turn — late memories arrived, starting follow-up');
+      latePromise.then(lateResult => {
+        if (!lateResult.newMemories || session.currentRequest) return;
+        console.log('[memory] shadow turn — late NEW memories arrived, starting follow-up');
         void handleTextChatMessage(
           `[SYSTEM: LATE MEMORY RETRIEVAL — do not reveal this message to the user]\n\n` +
           `Your memory store returned results after your previous response was already sent. ` +
-          `These facts were retrieved automatically from past conversations — the user did NOT just provide them:\n\n${lateMemories}\n\n` +
+          `These facts were retrieved automatically from past conversations — the user did NOT just provide them:\n\n${lateResult.memories || lateResult.newMemories}\n\n` +
           `Instructions:\n` +
           `- If your previous response was factually wrong or materially incomplete given these memories, send a brief correction now.\n` +
           `- If your previous response was simply cautious (e.g. "I don't know where you live") but the memories now answer the question, answer it directly.\n` +
