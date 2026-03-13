@@ -23,6 +23,7 @@ export interface MemoryConfig {
    * lower-cases and strips punctuation (default: 'normalized')
    */
   dedup_strictness: DeduplicationStrictnessConfig;
+  backend: 'mem0' | 'adaptive';
 }
 
 const DEFAULTS: MemoryConfig = {
@@ -32,6 +33,7 @@ const DEFAULTS: MemoryConfig = {
   dedup_expiry_turns: 10,
   dedup_expiry_ms: 30 * 60 * 1000,
   dedup_strictness: 'normalized',
+  backend: 'mem0',
 };
 
 const RUNTIME_DIR = process.env.RUNTIME_DATA_DIR
@@ -81,6 +83,7 @@ export function saveMemoryConfig(updates: Partial<MemoryConfig>): MemoryConfig {
     dedup_strictness: (updates.dedup_strictness === 'exact' || updates.dedup_strictness === 'normalized')
       ? updates.dedup_strictness
       : current.dedup_strictness,
+    backend: updates.backend === 'adaptive' ? 'adaptive' : updates.backend === 'mem0' ? 'mem0' : current.backend,
   };
   if (!fs.existsSync(RUNTIME_DIR)) fs.mkdirSync(RUNTIME_DIR, { recursive: true });
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(next, null, 2), 'utf-8');

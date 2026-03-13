@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, appendFileSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, appendFileSync, readFileSync, readdirSync } from 'fs';
 import { randomUUID } from 'crypto';
 import { join, sep } from 'path';
 import { session } from '../session/state';
@@ -118,9 +118,31 @@ function persistThoughtflowArtifacts(opts: { artifactId: string; sessionId: stri
 
 function writeConversationArtifacts(sessionId: string, conversationId: string): { artifactId: string } {
   const tf = (session.thoughtflow ||= {} as any);
-  const jsonlPath = join(BASE_DIR, `${sessionId}.jsonl`);
-  const raw = readFileSync(jsonlPath, 'utf8');
-  const lines = raw.split(/\n+/).filter(Boolean);
+  // Read events from ALL NDJSON files, not just the current session's file.
+  // Conversations can span server restarts — steps logged under one session,
+  // completion under another. Collect matching events from every ledger file.
+  let lines: string[] = [];
+  try {
+    const files = readdirSync(BASE_DIR).filter(f => f.endsWith('.jsonl')).sort();
+    for (const f of files) {
+      try {
+        const raw = readFileSync(join(BASE_DIR, f), 'utf8');
+        const fileLines = raw.split(/\n+/).filter(Boolean);
+        // Only include lines that reference this conversation (or session-level events from the target session)
+        for (const line of fileLines) {
+          if (line.includes(conversationId) || line.includes(sessionId)) {
+            lines.push(line);
+          }
+        }
+      } catch {}
+    }
+  } catch {
+    // Fallback to current session file only
+    const jsonlPath = join(BASE_DIR, `${sessionId}.jsonl`);
+    if (existsSync(jsonlPath)) {
+      lines = readFileSync(jsonlPath, 'utf8').split(/\n+/).filter(Boolean);
+    }
+  }
   type Step = {
     step_id: string;
     label?: string;

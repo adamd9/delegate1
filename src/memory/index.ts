@@ -94,7 +94,7 @@ class MemoryModule {
 
     const start = Date.now();
 
-    // Start (or reuse) the in-flight Mem0 fetch; it always runs to completion so it can populate the cache
+    // Start (or reuse) the in-flight backend fetch; it always runs to completion so it can populate the cache
     let timedOut = false;
     if (!this._inflightRetrieve) {
       this._inflightRetrieve = backend.retrieve(query, 5)
@@ -105,7 +105,6 @@ class MemoryModule {
             this._cacheUpdatedAt = Date.now();
             const lines = result.split('\n').filter(Boolean);
             if (timedOut) {
-              // Response already sent — let the user know memory is primed for next turn
               console.log(`[memory] retrieve — late result (${lines.length} result(s)), broadcasting for UI`);
               const latets = Date.now();
               this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: result, source: 'late', elapsed_ms: latets - start, timestamp: latets });
@@ -117,7 +116,7 @@ class MemoryModule {
               console.log(`[memory] retrieve — cache populated (${lines.length} result(s), will be used next turn)`);
             }
           } else {
-            console.log('[memory] retrieve — Mem0 returned no results (cache stays cold)');
+            console.log('[memory] retrieve — backend returned no results (cache stays cold)');
             if (timedOut) {
               const missts = Date.now();
               this._broadcast({ type: 'memory.miss', timestamp: missts });
@@ -128,17 +127,21 @@ class MemoryModule {
         })
         .catch(e => {
           this._inflightRetrieve = null;
-          console.warn('[memory] retrieve — Mem0 fetch error:', e?.message || e);
+          console.warn('[memory] retrieve — backend fetch error:', e?.message || e);
           return null;
         });
     }
 
-    const timeoutPromise = new Promise<null>((resolve) =>
-      setTimeout(() => resolve(null), effectiveTimeout)
+    // Use a sentinel so we can distinguish "backend returned null (no results)" from "timeout fired"
+    const TIMEOUT = Symbol('timeout');
+    const timeoutPromise = new Promise<typeof TIMEOUT>((resolve) =>
+      setTimeout(() => resolve(TIMEOUT), effectiveTimeout)
     );
 
-    const result = await Promise.race([this._inflightRetrieve, timeoutPromise]);
-    if (result === null) {
+    const raceResult = await Promise.race([this._inflightRetrieve!, timeoutPromise]);
+
+    if (raceResult === TIMEOUT) {
+      // Genuine timeout — backend is still running in background
       timedOut = true;
       const pendingts = Date.now();
       console.log(`[memory] retrieve — timed out after ${pendingts - start}ms; fetch continues in background for next turn`);
@@ -147,7 +150,12 @@ class MemoryModule {
         this._persist(conversationId, 'memory_pending', { elapsed_ms: effectiveTimeout }, pendingts);
         this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'timeout', elapsed_ms: effectiveTimeout }, pendingts);
       }
-    } else {
+      return null;
+    }
+
+    // Backend completed (result is string | null)
+    const result = raceResult as string | null;
+    if (result !== null) {
       const lines = result.split('\n').filter(Boolean);
       const freshts = Date.now();
       console.log(`[memory] retrieve — got ${lines.length} result(s) in ${freshts - start}ms`);
@@ -155,6 +163,15 @@ class MemoryModule {
       if (conversationId) {
         this._persist(conversationId, 'memory_retrieved', { source: 'fresh', count: lines.length, elapsed_ms: freshts - start }, freshts);
         this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'fresh', count: lines.length }, freshts);
+      }
+    } else {
+      // Backend returned null — no matching memories (not a timeout)
+      const missts = Date.now();
+      console.log(`[memory] retrieve — no matching memories (${missts - start}ms)`);
+      this._broadcast({ type: 'memory.miss', timestamp: missts });
+      if (conversationId) {
+        this._persist(conversationId, 'memory_miss', {}, missts);
+        this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'miss', elapsed_ms: missts - start }, missts);
       }
     }
     return result;

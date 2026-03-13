@@ -112,6 +112,11 @@
     .btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 6px; }
 
     /* ── Catalog ── */
+    .tool-jump-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 8px 0; }
+    .filter-label { font-size: 11px; font-weight: 600; color: var(--text-mid); margin-right: 2px; }
+    .filter-btn { font-size: 11px; padding: 4px 12px; border-radius: 12px; border: 1px solid var(--border); background: transparent; color: var(--text-mid); cursor: pointer; transition: all 0.15s; }
+    .filter-btn:hover { border-color: var(--accent); color: var(--text); background: rgba(129,140,248,0.08); }
+    .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .tool-list { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
     .tool-item { padding: 12px 14px; border-bottom: 1px solid var(--border); }
     .tool-item:last-child { border-bottom: none; }
@@ -292,7 +297,10 @@ function el(tag, props = {}, ...children) {
   const e = document.createElement(tag);
   Object.entries(props).forEach(([k, v]) => {
     if (k === 'class') e.className = v;
-    else if (k === 'style') Object.assign(e.style, v);
+    else if (k === 'style') {
+      if (typeof v === 'string') e.setAttribute('style', v);
+      else Object.assign(e.style, v);
+    }
     else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
     else e.setAttribute(k, v);
   });
@@ -568,13 +576,27 @@ function renderCatalog() {
 function buildCatalogUI() {
   content.innerHTML = '';
 
+  // Jump-to shortcuts
+  const jumpBar = el('div', {class:'tool-jump-bar'});
+  const jumpLabel = el('span', {class:'filter-label'}, 'Jump to:');
+  jumpBar.appendChild(jumpLabel);
+  [['all-tools', 'All Tools'], ...sortedAgents().map(id => [`agent-sec-${id}`, formatAgentLabel(id)])].forEach(([target, label]) => {
+    const btn = el('button', {class:'filter-btn'}, label);
+    btn.addEventListener('click', () => {
+      const el = document.getElementById(target);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    jumpBar.appendChild(btn);
+  });
+  content.appendChild(jumpBar);
+
   // Tool catalogue card
   const tc = card('Registered Tools', body => {
     if (catalogTools.length === 0) {
       body.appendChild(el('div', {class:'empty-msg'}, 'No tools discovered.'));
       return;
     }
-    const list = el('div', {class:'tool-list'});
+    const list = el('div', {class:'tool-list', id:'all-tools'});
     catalogTools.forEach(tool => {
       const item = el('div', {class:'tool-item'});
       const row1 = el('div', {style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:'8px',flexWrap:'wrap'}});
@@ -594,21 +616,16 @@ function buildCatalogUI() {
   content.appendChild(tc);
 
   // Agent sections
-  const ac = card('Agents', body => {
-    if (!Object.keys(agentsInfo).length) {
-      body.appendChild(el('div', {class:'empty-msg'}, 'No agents found.'));
-      return;
-    }
-    const wrap = el('div', {style:{display:'flex',flexDirection:'column',gap:'14px'}});
-    sortedAgents().forEach(id => buildAgentSection(wrap, id));
-    body.appendChild(wrap);
+  sortedAgents().forEach(id => {
+    const ac = card(formatAgentLabel(id) + ' Agent', body => {
+      buildAgentSection(body, id);
+    });
+    ac.id = `agent-sec-${id}`;
+    content.appendChild(ac);
   });
-  content.appendChild(ac);
 }
 
 function buildAgentSection(container, agentId) {
-  const sec = el('div', {class:'agent-section', id:`agent-sec-${agentId}`});
-  sec.appendChild(el('div', {class:'agent-header'}, formatAgentLabel(agentId) + ' Agent'));
   const body = el('div', {class:'agent-body'});
 
   const entry = agentsInfo[agentId] ?? {};
@@ -649,8 +666,7 @@ function buildAgentSection(container, agentId) {
     body.appendChild(sd);
   }
 
-  sec.appendChild(body);
-  container.appendChild(sec);
+  container.appendChild(body);
 }
 
 function renderAllowNames(wrap, agentId) {
@@ -812,6 +828,26 @@ function renderMemory() {
 function buildMemoryForm(data) {
   const frag = document.createDocumentFragment();
   const fieldRow = el('div', {style: 'display:flex;flex-direction:column;gap:14px;max-width:420px'});
+
+  // Backend toggle
+  const backendWrap = el('div', {style: 'display:flex;flex-direction:column;gap:4px'});
+  backendWrap.appendChild(el('label', {style: 'font-size:13px;color:var(--text-muted)'}, 'Memory backend'));
+  backendWrap.appendChild(el('small', {style: 'font-size:11px;color:var(--text-muted)'}, 'Mem0 uses a hosted cloud service. Adaptive uses local SQLite with embeddings, strength scoring, and consolidation.'));
+  const toggleRow = el('div', {style: 'display:flex;gap:6px;margin-top:4px'});
+  ['mem0', 'adaptive'].forEach(val => {
+    const btn = el('button', {
+      class: 'filter-btn' + (data.backend === val ? ' active' : ''),
+      style: 'padding:5px 16px;font-size:12px',
+    }, val === 'mem0' ? 'Mem0' : 'Adaptive');
+    btn.addEventListener('click', () => {
+      memoryConfig.backend = val;
+      toggleRow.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    toggleRow.appendChild(btn);
+  });
+  backendWrap.appendChild(toggleRow);
+  fieldRow.appendChild(backendWrap);
 
   const timeoutWrap = el('div', {style: 'display:flex;flex-direction:column;gap:4px'});
   timeoutWrap.appendChild(el('label', {style: 'font-size:13px;color:var(--text-muted)'}, 'Retrieval timeout (ms)'));

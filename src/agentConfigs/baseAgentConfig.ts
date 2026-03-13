@@ -7,6 +7,8 @@ import { hangupCallTool } from '../tools/handlers/hangup';
 import { agentPersonality } from "./personality";
 import { listAdaptationsFunction, getAdaptationFunction, updateAdaptationFunction, reloadAdaptationsFunction } from '../tools/handlers/adaptations';
 import { setVoiceNoiseModeTool } from '../tools/handlers/voice-noise-mode';
+import { listGithubReposFunction, createGithubIssueFunction, startCopilotAgentSessionFunction } from '../tools/handlers/github';
+import { retrieveMemoryFunction, storeMemoryFunction } from '../tools/handlers/memory';
 
 // Base Agent Configuration
 export const baseAgentConfig: AgentConfig = {
@@ -52,6 +54,13 @@ Unclear audio:
 Canvas tool:
 - There's no need to supply the note link in the message back to the user unless it's being sent via SMS.
 
+GitHub tools:
+- Use list_github_repos to discover the user's repositories (can filter by org).
+- Use create_github_issue to file issues on any accessible repo.
+- Use start_copilot_agent_session to create an issue assigned to the Copilot coding agent — this starts an automated coding session on the target repo.
+- When the user wants to kick off a coding task, use start_copilot_agent_session. When they want a regular issue, use create_github_issue.
+- If the user doesn't specify which repo, call list_github_repos first to help them pick one.
+
 Persistent memory:
 - Relevant memories from past conversations are automatically included in your context when available.
 - If you notice something important the user has shared (a preference, fact about themselves, a recurring need), you can acknowledge it naturally — memory is handled passively in the background.`,
@@ -71,6 +80,13 @@ Persistent memory:
     reloadAdaptationsFunction,
     hangupCallTool,
     setVoiceNoiseModeTool,
+    // GitHub interaction tools
+    listGithubReposFunction,
+    createGithubIssueFunction,
+    startCopilotAgentSessionFunction,
+    // Explicit memory tools (adaptive backend only)
+    retrieveMemoryFunction,
+    storeMemoryFunction,
   ],
   // Text (Responses API) model for chat interactions
   textModel: "gpt-5-mini",

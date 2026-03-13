@@ -6,6 +6,8 @@ import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFu
 import { setVoiceNoiseModeTool } from "../handlers/voice-noise-mode";
 import { listAdaptationsFunction, getAdaptationFunction, updateAdaptationFunction, reloadAdaptationsFunction } from "../handlers/adaptations";
 import { hangupCallTool } from "../handlers/hangup";
+import { listGithubReposFunction, createGithubIssueFunction, startCopilotAgentSessionFunction } from "../handlers/github";
+import { retrieveMemoryFunction, storeMemoryFunction } from "../handlers/memory";
 
 function wrap(name: string, description: string, parameters: any, origin: ToolOrigin, tags: string[], handler: (args: any) => Promise<any>) {
   return {
@@ -143,6 +145,46 @@ export function registerLocalTools() {
       'local',
       ['local', 'base-default'],
       (args) => hangupCallTool.handler(args)
+    ),
+    wrap(
+      listGithubReposFunction.schema.name,
+      listGithubReposFunction.schema.description,
+      listGithubReposFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => listGithubReposFunction.handler(args)
+    ),
+    wrap(
+      createGithubIssueFunction.schema.name,
+      createGithubIssueFunction.schema.description,
+      createGithubIssueFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => createGithubIssueFunction.handler(args)
+    ),
+    wrap(
+      startCopilotAgentSessionFunction.schema.name,
+      startCopilotAgentSessionFunction.schema.description,
+      startCopilotAgentSessionFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => startCopilotAgentSessionFunction.handler(args)
+    ),
+    wrap(
+      retrieveMemoryFunction.schema.name,
+      retrieveMemoryFunction.schema.description,
+      retrieveMemoryFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => retrieveMemoryFunction.handler(args)
+    ),
+    wrap(
+      storeMemoryFunction.schema.name,
+      storeMemoryFunction.schema.description,
+      storeMemoryFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => storeMemoryFunction.handler(args)
     ),
   ];
 

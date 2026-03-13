@@ -1,5 +1,6 @@
 import type { Application, Request, Response } from 'express';
 import { getMemoryConfig, saveMemoryConfig } from '../../memory/memoryConfig';
+import { resetMemoryBackend } from '../../memory/backends';
 
 export function registerMemoryConfigRoutes(app: Application) {
   app.get('/memory-config', (_req: Request, res: Response) => {
@@ -17,7 +18,12 @@ export function registerMemoryConfigRoutes(app: Application) {
       if (!body || typeof body !== 'object') {
         return res.status(400).json({ error: 'Body must be a JSON object' });
       }
+      const prev = getMemoryConfig();
       const saved = saveMemoryConfig(body);
+      // Reset the backend singleton if the backend selection changed
+      if (saved.backend !== prev.backend) {
+        resetMemoryBackend();
+      }
       res.json({ status: 'ok', config: saved });
     } catch (err: any) {
       console.error('[memory-config] PUT error', err);

@@ -905,7 +905,7 @@ function handleEvent(event) {
 
     case 'memory.pending': {
       const isReplay = event.replay === true;
-      addBreadcrumb(`🧠 Memory: fetching… (>${event.elapsed_ms}ms, response sent without it)`, { detail: 'Mem0 did not respond within the timeout. Will follow up when it arrives.' }, isReplay, event.timestamp);
+      addBreadcrumb(`🧠 Memory: fetching… (>${event.elapsed_ms}ms, response sent without it)`, { detail: 'Memory backend did not respond within the timeout. Will follow up when it arrives.' }, isReplay, event.timestamp);
       break;
     }
 
