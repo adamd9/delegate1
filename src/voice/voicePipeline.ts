@@ -126,6 +126,138 @@ function detectMagicLabel(buf: Buffer): string {
   return "unknown";
 }
 
+// ---------------------------------------------------------------------------
+// ZeppOS proprietary Opus format: 4-byte big-endian length-prefixed raw
+// Opus frames. ffmpeg cannot read this directly — we parse the frames and
+// wrap them in a valid Ogg/Opus container so ffmpeg can transcode.
+// ---------------------------------------------------------------------------
+
+// Ogg CRC-32 (polynomial 0x04c11db7, no reflection, no final XOR)
+const oggCrcTable = new Uint32Array(256);
+(function initOggCrc() {
+  for (let i = 0; i < 256; i++) {
+    let r = i << 24;
+    for (let j = 0; j < 8; j++) {
+      r = (r & 0x80000000) ? ((r << 1) ^ 0x04c11db7) : (r << 1);
+    }
+    oggCrcTable[i] = r >>> 0;
+  }
+})();
+
+function oggCrc32(data: Buffer): number {
+  let crc = 0;
+  for (let i = 0; i < data.length; i++) {
+    crc = ((crc << 8) ^ oggCrcTable[((crc >>> 24) ^ data[i]) & 0xff]) >>> 0;
+  }
+  return crc;
+}
+
+function createOggPage(
+  packetData: Buffer,
+  granulePos: number,
+  headerType: number,
+  serialNumber: number,
+  pageSequence: number,
+): Buffer {
+  const numSegments = Math.floor(packetData.length / 255) + 1;
+  const segmentTable = Buffer.alloc(numSegments);
+  for (let i = 0; i < numSegments - 1; i++) segmentTable[i] = 255;
+  segmentTable[numSegments - 1] = packetData.length % 255;
+
+  const headerSize = 27 + numSegments;
+  const page = Buffer.alloc(headerSize + packetData.length);
+
+  page.write("OggS", 0);
+  page[4] = 0; // stream structure version
+  page[5] = headerType;
+  page.writeUInt32LE(granulePos >>> 0, 6);
+  page.writeUInt32LE(0, 10); // granule high bits
+  page.writeUInt32LE(serialNumber, 14);
+  page.writeUInt32LE(pageSequence, 18);
+  page.writeUInt32LE(0, 22); // CRC placeholder
+  page[26] = numSegments;
+  segmentTable.copy(page, 27);
+  packetData.copy(page, headerSize);
+
+  page.writeUInt32LE(oggCrc32(page), 22);
+  return page;
+}
+
+function looksLikeZeppOpus(buf: Buffer): boolean {
+  if (buf.length < 12) return false;
+  const frame1Len = buf.readUInt32BE(0);
+  // Opus frames: 1–1275 bytes (RFC 6716)
+  if (frame1Len < 1 || frame1Len > 1275) return false;
+  if (4 + frame1Len + 4 > buf.length) return false;
+  const frame2Len = buf.readUInt32BE(4 + frame1Len);
+  return frame2Len >= 1 && frame2Len <= 1275;
+}
+
+function parseZeppOpusFrames(data: Buffer): Buffer[] {
+  const frames: Buffer[] = [];
+  let offset = 0;
+  while (offset + 4 <= data.length) {
+    const len = data.readUInt32BE(offset);
+    offset += 4;
+    if (len === 0 || len > 1275 || offset + len > data.length) break;
+    frames.push(data.slice(offset, offset + len));
+    offset += len;
+  }
+  return frames;
+}
+
+function wrapZeppOpusInOgg(inputPath: string): string {
+  const raw = fs.readFileSync(inputPath);
+  const frames = parseZeppOpusFrames(raw);
+
+  if (frames.length < 2) {
+    throw new Error(`Only ${frames.length} Opus frames found — not a valid ZeppOS recording`);
+  }
+
+  const serialNumber = 0x5a455050; // "ZEPP"
+  const pages: Buffer[] = [];
+
+  // OpusHead (19 bytes, mono, 48 kHz internal)
+  const opusHead = Buffer.alloc(19);
+  opusHead.write("OpusHead", 0);
+  opusHead[8] = 1;  // version
+  opusHead[9] = 1;  // channels (mono)
+  opusHead.writeUInt16LE(3840, 10); // pre-skip (80 ms)
+  opusHead.writeUInt32LE(16000, 12); // original sample rate hint
+  opusHead.writeInt16LE(0, 16); // output gain
+  opusHead[18] = 0; // mapping family
+  pages.push(createOggPage(opusHead, 0, 0x02, serialNumber, 0)); // BOS
+
+  // OpusTags
+  const vendor = "ZeppOS";
+  const opusTags = Buffer.alloc(8 + 4 + vendor.length + 4);
+  opusTags.write("OpusTags", 0);
+  opusTags.writeUInt32LE(vendor.length, 8);
+  opusTags.write(vendor, 12);
+  opusTags.writeUInt32LE(0, 12 + vendor.length); // no user comments
+  pages.push(createOggPage(opusTags, 0, 0x00, serialNumber, 1));
+
+  // Audio pages — one Opus frame per page, 20 ms = 960 samples at 48 kHz
+  let granule = 0;
+  for (let i = 0; i < frames.length; i++) {
+    granule += 960;
+    const type = i === frames.length - 1 ? 0x04 : 0x00; // EOS on last
+    pages.push(createOggPage(frames[i], granule, type, serialNumber, i + 2));
+  }
+
+  const outputPath = inputPath.replace(/\.[^.]+$/, "") + ".ogg";
+  fs.writeFileSync(outputPath, Buffer.concat(pages));
+
+  console.info("[voice-message] wrapped ZeppOS Opus in Ogg", {
+    frames: frames.length,
+    input_size: raw.length,
+    output_size: fs.statSync(outputPath).size,
+    duration_estimate_ms: frames.length * 20,
+  });
+
+  return outputPath;
+}
+
 function transcodeToWav(inputPath: string): string {
   if (!ffmpegPath) {
     throw new VoiceMessageError(415, "unsupported_audio",
@@ -195,14 +327,27 @@ export async function normalizeAudioForStt(inputPath: string, mime?: string, fil
     return inputPath;
   }
 
-  // Unknown format (e.g. ZeppOS proprietary Opus) — transcode to WAV via ffmpeg
+  // Unknown format — check for ZeppOS proprietary Opus (length-prefixed frames)
   const magic = detectMagicLabel(sample);
-  console.info("[voice-message] unknown audio format, transcoding to WAV", {
+  console.info("[voice-message] unknown audio format, attempting transcoding", {
     magic,
     hex_prefix: sample.slice(0, 16).toString("hex"),
     mime,
     filename,
+    looks_zepp_opus: looksLikeZeppOpus(sample),
   });
+
+  if (looksLikeZeppOpus(sample)) {
+    // Wrap length-prefixed Opus frames in Ogg container, then transcode
+    const oggPath = wrapZeppOpusInOgg(inputPath);
+    try {
+      const wavPath = transcodeToWav(oggPath);
+      return wavPath;
+    } finally {
+      try { fs.unlinkSync(oggPath); } catch {}
+    }
+  }
+
   return transcodeToWav(inputPath);
 }
 
