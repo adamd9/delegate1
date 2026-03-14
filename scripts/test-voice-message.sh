@@ -8,7 +8,7 @@
 # Examples:
 #   ./scripts/test-voice-message.sh                           # generate a silent WAV, send to localhost
 #   ./scripts/test-voice-message.sh recording.opus            # send a real file to localhost
-#   ./scripts/test-voice-message.sh recording.opus https://hk.api.mdlg.dev  # send to prod
+#   ./scripts/test-voice-message.sh recording.opus https://hk.drop37.com  # send to prod
 #
 # The script generates a short silent WAV if no file is provided, sends it to
 # the voice-message endpoint, and prints the response with timing info.

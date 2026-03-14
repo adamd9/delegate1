@@ -1,8 +1,17 @@
 import { extname } from "path";
 import fs from "fs";
+import { execFileSync } from "child_process";
 import OpenAI from "openai";
 import { createOpenAIClient } from "../services/openaiClient";
 import { getChatVoiceConfig } from "./voiceConfig";
+
+// ffmpeg-static provides a bundled ffmpeg binary path
+let ffmpegPath: string | null = null;
+try {
+  ffmpegPath = require("ffmpeg-static");
+} catch {
+  // ffmpeg-static not installed — transcoding unavailable
+}
 
 export class VoiceMessageError extends Error {
   status: number;
@@ -94,21 +103,70 @@ function looksLikeBase64Content(buf: Buffer): boolean {
   return /^[A-Za-z0-9+/=]+$/.test(sample);
 }
 
+const KNOWN_MAGIC: Array<{ test: (buf: Buffer) => boolean; label: string }> = [
+  { test: (b) => b.slice(0, 4).toString("ascii") === "OggS", label: "OggS" },
+  { test: (b) => b.slice(0, 4).toString("ascii") === "RIFF", label: "RIFF" },
+  { test: (b) => b.slice(0, 3).toString("ascii") === "ID3", label: "ID3" },
+  { test: (b) => b.slice(0, 4).toString("ascii") === "fLaC", label: "fLaC" },
+  { test: (b) => b.slice(0, 4).toString("hex") === "1a45dfa3", label: "EBML" },
+  { test: (b) => b.length >= 8 && b.slice(4, 8).toString("ascii") === "ftyp", label: "ftyp" },
+  { test: (b) => (b[0] === 0xff && (b[1] & 0xe0) === 0xe0), label: "MP3sync" },
+];
+
+function hasKnownMagic(buf: Buffer): boolean {
+  if (buf.length < 4) return false;
+  return KNOWN_MAGIC.some((m) => m.test(buf));
+}
+
+function detectMagicLabel(buf: Buffer): string {
+  if (buf.length < 4) return "unknown";
+  for (const m of KNOWN_MAGIC) {
+    if (m.test(buf)) return m.label;
+  }
+  return "unknown";
+}
+
+function transcodeToWav(inputPath: string): string {
+  if (!ffmpegPath) {
+    throw new VoiceMessageError(415, "unsupported_audio",
+      "Audio format not recognized and ffmpeg is not available for transcoding");
+  }
+  const outputPath = inputPath + ".wav";
+  try {
+    execFileSync(ffmpegPath, [
+      "-y", "-i", inputPath,
+      "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le",
+      "-f", "wav", outputPath,
+    ], { timeout: 15000, stdio: "pipe" });
+    const stat = fs.statSync(outputPath);
+    console.info("[voice-message] transcoded to WAV", {
+      input: inputPath,
+      output_size: stat.size,
+    });
+    return outputPath;
+  } catch (err: any) {
+    console.error("[voice-message] ffmpeg transcode failed", err?.stderr?.toString() || err?.message);
+    // Clean up partial output
+    try { fs.unlinkSync(outputPath); } catch {}
+    throw new VoiceMessageError(415, "unsupported_audio",
+      "Audio format not recognized and transcoding failed");
+  }
+}
+
 export async function normalizeAudioForStt(inputPath: string, mime?: string, filename?: string): Promise<string> {
   const decision = resolveAudioInput(mime, filename);
   if (decision.kind !== "supported") {
     throw new VoiceMessageError(415, "unsupported_audio", "Unsupported audio type");
   }
 
-  // Detect and decode base64-encoded audio files.
-  // Some clients (e.g. ZeppOS) may embed base64 text in the multipart file part
-  // instead of raw binary bytes. If detected, decode to a new file.
+  // Read file header for format detection
   const headerBuf = Buffer.alloc(256);
   const fd = fs.openSync(inputPath, "r");
   const bytesRead = fs.readSync(fd, headerBuf, 0, 256, 0);
   fs.closeSync(fd);
   const sample = headerBuf.slice(0, bytesRead);
 
+  // Detect and decode base64-encoded audio files.
   if (looksLikeBase64Content(sample)) {
     const raw = fs.readFileSync(inputPath, "ascii").replace(/\s+/g, "");
     const decoded = Buffer.from(raw, "base64");
@@ -118,10 +176,34 @@ export async function normalizeAudioForStt(inputPath: string, mime?: string, fil
       original_size: raw.length,
       decoded_size: decoded.length,
     });
-    return decodedPath;
+    // Re-check the decoded content's magic bytes
+    const decodedSample = decoded.slice(0, Math.min(decoded.length, 16));
+    if (hasKnownMagic(decodedSample)) {
+      return decodedPath;
+    }
+    // Decoded content also has unknown format — transcode it
+    console.info("[voice-message] decoded audio has unknown format, transcoding", {
+      magic: decodedSample.slice(0, 4).toString("hex"),
+    });
+    const wavPath = transcodeToWav(decodedPath);
+    try { fs.unlinkSync(decodedPath); } catch {}
+    return wavPath;
   }
 
-  return inputPath;
+  // If file has a recognized audio magic header, use it directly
+  if (hasKnownMagic(sample)) {
+    return inputPath;
+  }
+
+  // Unknown format (e.g. ZeppOS proprietary Opus) — transcode to WAV via ffmpeg
+  const magic = detectMagicLabel(sample);
+  console.info("[voice-message] unknown audio format, transcoding to WAV", {
+    magic,
+    hex_prefix: sample.slice(0, 16).toString("hex"),
+    mime,
+    filename,
+  });
+  return transcodeToWav(inputPath);
 }
 
 export async function transcribeAudio(pathForStt: string, openaiClient?: OpenAI) {

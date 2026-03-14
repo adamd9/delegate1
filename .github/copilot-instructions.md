@@ -84,4 +84,4 @@ The memory module (`src/memory/`) manages persistent user context across convers
 
 ## Deployment
 
-GitHub Actions workflow (`.github/workflows/deploy.yml`): pushes to `main` deploy to prod domains, other branches to dev domains. The build produces `dist/` + assets, dispatches to `adamd9/docker-server-dev` for Docker deployment. Production logs: `scripts/published_app_logs.sh`.
+GitHub Actions workflow (`.github/workflows/deploy.yml`): pushes to `main` deploy to prod domains, other branches to dev domains. The build produces `dist/` + assets, dispatches to `adamd9/docker-server-dev` for Docker deployment. Production logs: `scripts/hk_app_logs.sh` (Azure App Service, requires `az login`).
