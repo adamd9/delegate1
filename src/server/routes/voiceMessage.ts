@@ -253,6 +253,17 @@ export function registerVoiceMessageRoutes(app: Application) {
           timestamp: new Date().toISOString(),
         }, null, 2));
         console.info("[voice-message] debug capture saved", { path: debugPath, size: file.size });
+        // Log integrity checksum to compare with page/app-side values
+        const rawBuf = fs.readFileSync(inputPath);
+        let serverChecksum = 0;
+        for (let i = 0; i < rawBuf.length; i++) {
+          serverChecksum = (serverChecksum + rawBuf[i]) & 0xffffffff;
+        }
+        console.info("[voice-message] integrity check", {
+          size: rawBuf.length,
+          hex32: rawBuf.slice(0, 32).toString("hex"),
+          checksum: serverChecksum,
+        });
         // Keep only latest 3 captures
         const allFiles = fs.readdirSync(VOICE_DEBUG_DIR).filter(f => !f.endsWith(".json")).sort();
         while (allFiles.length > 3) {
