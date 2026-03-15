@@ -183,13 +183,17 @@ function createOggPage(
   return page;
 }
 
+// ZeppOS Opus container: [4B BE length][N bytes frame][4B gap] repeated,
+// with the last frame having NO trailing gap.  Discovered by capturing
+// a real recording from the watch (test/fixtures/zepp_recording_sample.opus).
 function looksLikeZeppOpus(buf: Buffer): boolean {
   if (buf.length < 12) return false;
   const frame1Len = buf.readUInt32BE(0);
-  // Opus frames: 1–1275 bytes (RFC 6716)
   if (frame1Len < 1 || frame1Len > 1275) return false;
-  if (4 + frame1Len + 4 > buf.length) return false;
-  const frame2Len = buf.readUInt32BE(4 + frame1Len);
+  // After frame data there is a 4-byte gap, then the next length
+  const frame2Offset = 4 + frame1Len + 4; // length + data + gap
+  if (frame2Offset + 4 > buf.length) return false;
+  const frame2Len = buf.readUInt32BE(frame2Offset);
   return frame2Len >= 1 && frame2Len <= 1275;
 }
 
@@ -198,10 +202,13 @@ function parseZeppOpusFrames(data: Buffer): Buffer[] {
   let offset = 0;
   while (offset + 4 <= data.length) {
     const len = data.readUInt32BE(offset);
-    offset += 4;
-    if (len === 0 || len > 1275 || offset + len > data.length) break;
-    frames.push(data.slice(offset, offset + len));
-    offset += len;
+    if (len === 0 || len > 1275 || offset + 4 + len > data.length) break;
+    frames.push(data.slice(offset + 4, offset + 4 + len));
+    const end = offset + 4 + len;
+    if (end === data.length) {
+      break; // last frame has no trailing gap
+    }
+    offset = end + 4; // skip 4-byte gap
   }
   return frames;
 }
