@@ -153,7 +153,46 @@ function finalizeConversation(conversationId: string) {
   } catch {}
 }
 
+const VOICE_DEBUG_DIR = join(tmpdir(), "voice-debug");
+
 export function registerVoiceMessageRoutes(app: Application) {
+  // Debug endpoint: download the last captured raw audio upload
+  app.get("/api/voice/debug-capture", (_req: Request, res: Response) => {
+    try {
+      if (!fs.existsSync(VOICE_DEBUG_DIR)) {
+        return res.status(404).json({ error: "no_capture", message: "No captured files yet" });
+      }
+      const files = fs.readdirSync(VOICE_DEBUG_DIR)
+        .filter(f => !f.endsWith(".json"))
+        .sort()
+        .reverse();
+      if (files.length === 0) {
+        return res.status(404).json({ error: "no_capture", message: "No captured files yet" });
+      }
+      const latest = files[0];
+      const filePath = join(VOICE_DEBUG_DIR, latest);
+      const metaPath = filePath + ".json";
+      const meta = fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, "utf8")) : {};
+
+      // If ?hex=1, return hex dump instead of binary
+      if (_req.query.hex) {
+        const raw = fs.readFileSync(filePath);
+        return res.json({
+          filename: latest,
+          size: raw.length,
+          hex: raw.toString("hex"),
+          meta,
+        });
+      }
+
+      res.setHeader("Content-Disposition", `attachment; filename="${latest}"`);
+      res.setHeader("Content-Type", "application/octet-stream");
+      fs.createReadStream(filePath).pipe(res);
+    } catch (err: any) {
+      res.status(500).json({ error: "debug_error", message: err?.message });
+    }
+  });
+
   const storage = multer.diskStorage({
     destination: (req, _file, cb) => {
       const dir = (req as UploadRequest).uploadDir || tmpdir();
@@ -199,6 +238,31 @@ export function registerVoiceMessageRoutes(app: Application) {
 
       const file = requireAudioFile((req as any).file as Express.Multer.File | undefined) as Express.Multer.File;
       inputPath = file.path;
+
+      // Save a debug copy of the raw upload for analysis
+      try {
+        fs.mkdirSync(VOICE_DEBUG_DIR, { recursive: true });
+        const debugName = `${Date.now()}_${file.originalname || "audio"}`;
+        const debugPath = join(VOICE_DEBUG_DIR, debugName);
+        fs.copyFileSync(inputPath, debugPath);
+        fs.writeFileSync(debugPath + ".json", JSON.stringify({
+          originalname: file.originalname,
+          mimetype: file.mimetype,
+          size: file.size,
+          encoding: file.encoding,
+          timestamp: new Date().toISOString(),
+        }, null, 2));
+        console.info("[voice-message] debug capture saved", { path: debugPath, size: file.size });
+        // Keep only latest 3 captures
+        const allFiles = fs.readdirSync(VOICE_DEBUG_DIR).filter(f => !f.endsWith(".json")).sort();
+        while (allFiles.length > 3) {
+          const old = allFiles.shift()!;
+          try { fs.unlinkSync(join(VOICE_DEBUG_DIR, old)); } catch {}
+          try { fs.unlinkSync(join(VOICE_DEBUG_DIR, old + ".json")); } catch {}
+        }
+      } catch (debugErr: any) {
+        console.warn("[voice-message] debug capture failed", debugErr?.message);
+      }
 
       try {
         const fd = fs.openSync(inputPath, "r");
