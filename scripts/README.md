@@ -2,6 +2,22 @@
 
 This directory contains utility scripts for managing Twilio Voice integration and debugging.
 
+## 🌐 Production App Logs (Azure)
+
+### `hk_app_logs.sh` - Azure App Service log fetcher
+Fetch logs for the HK production app (hk.drop37.com) hosted on Azure App Service. Requires `az login`.
+
+```bash
+# Show app state and URL
+./scripts/hk_app_logs.sh ps
+
+# Download and print last N lines of container logs (default: 50)
+./scripts/hk_app_logs.sh logs [--lines N]
+
+# Stream live container logs
+./scripts/hk_app_logs.sh tail
+```
+
 ## 📁 Directory Structure
 
 ### `/twilio/` - Twilio Management Scripts

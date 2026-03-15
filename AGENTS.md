@@ -30,7 +30,7 @@ Delegate 1 is a single-session, multi-channel AI assistant (text, voice, phone) 
 - Backend mounts a runtime-data volume; `RUNTIME_DATA_DIR` should point to that mount.
 
 ## Production logs
-- Use `scripts/published_app_logs.sh` to fetch Docker logs from the published prod/dev apps (requires a configured `.env.published_app_logs`).
+- Use `scripts/hk_app_logs.sh` to fetch Azure App Service logs for the production app (hk.drop37.com). Requires `az login` (Azure CLI). Commands: `ps`, `logs [--lines N]`, `tail`.
 
 ## Environment/config
 - `websocket-server/.env`: `OPENAI_API_KEY`, Twilio creds, `PUBLIC_URL` for webhook/ngrok.
