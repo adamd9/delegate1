@@ -155,7 +155,7 @@
       // Validate JSON before sending
       JSON.parse(text);
       const res = await fetch('/api/mcp/config', {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       });
