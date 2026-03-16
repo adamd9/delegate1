@@ -363,20 +363,14 @@ export async function handleTextChatMessage(
     const adaptationIdentifier = 'adn.prompt.core.handleText';
     const singleAdapt = await getAdaptationTextById(adaptationIdentifier);
     const adaptationsText = singleAdapt?.text || '';
-    // Retrieve relevant memories; get a late-promise if Mem0 timed out so we can shadow-turn when it arrives
-    // retrieveWithLate also applies deduplication: `memories` = all (for context),
-    // `newMemories` = only novel items (for deciding whether to interrupt with a shadow turn).
-    const { memories, newMemories, latePromise } = await memoryModule.retrieveWithLate(content, getMemoryConfig().retrieve_timeout_ms, conversationId);
-    if (memories) {
-      console.log(`[memory] on-time: total=${memories.split('\n').filter(Boolean).length} new=${newMemories ? newMemories.split('\n').filter(Boolean).length : 0}`);
-    }
-    const memoriesPrefix = memories ? `[Retrieved memories from past conversations — use these facts when relevant to the user's query]\n${memories}\n\n` : '';
-    const instructions = [memoriesPrefix + contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
-    // When memory arrives late (after the main response is already sent), kick off a shadow turn
-    // only if the late result contains genuinely NEW items (not previously surfaced in this conversation).
-    const maybeShadowTurn = (convId: string) => {
-      if (!latePromise) return;
-      latePromise.then(lateResult => {
+    // Retrieve relevant memories with deduplication applied.
+    // `memories` = all (for context), `newMemories` = only novel items.
+    // If retrieval times out, the onLateArrival callback triggers a shadow turn
+    // when genuinely new items arrive.
+    const { memories, newMemories } = await memoryModule.retrieveWithLate(content, {
+      timeoutMs: getMemoryConfig().retrieve_timeout_ms,
+      conversationId,
+      onLateArrival: (lateResult) => {
         if (!lateResult.newMemories || session.currentRequest) return;
         console.log('[memory] shadow turn — late NEW memories arrived, starting follow-up');
         void handleTextChatMessage(
@@ -389,10 +383,15 @@ export async function handleTextChatMessage(
           `- Do NOT acknowledge receiving memories, do NOT say "memories updated", do NOT explain the retrieval process.\n` +
           `- If your previous response was already correct or no correction is needed, respond with exactly: [NO_CORRECTION_NEEDED] and nothing else.`,
           chatClients, logsClients, channel, {},
-          { conversationId: convId, internal: true }
+          { conversationId, internal: true }
         );
-      }).catch(e => console.warn('[memory] shadow turn error:', (e as any)?.message || e));
-    };
+      },
+    });
+    if (memories) {
+      console.log(`[memory] on-time: total=${memories.split('\n').filter(Boolean).length} new=${newMemories ? newMemories.split('\n').filter(Boolean).length : 0}`);
+    }
+    const memoriesPrefix = memories ? `[Retrieved memories from past conversations — use these facts when relevant to the user's query]\n${memories}\n\n` : '';
+    const instructions = [memoriesPrefix + contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
     // ThoughtFlow snapshots for long-lived prompt inputs (Approach B)
     const policyHash = Buffer.from(baseInstructions, 'utf8').toString('base64').slice(0, 12);
     const toolsHash = Buffer.from(JSON.stringify(functionSchemas), 'utf8').toString('base64').slice(0, 12);
@@ -624,7 +623,6 @@ export async function handleTextChatMessage(
               session.currentRequest = undefined;
               // No additional logs emit to avoid duplicate assistant messages; chat.response carries meta now.
               appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_handled, timestamp: Date.now() });
-              maybeShadowTurn(conversationId);
               return { conversationId, sessionId, requestId, assistantText: text, supervisor: true };
             }
           }
@@ -679,7 +677,6 @@ export async function handleTextChatMessage(
           session.currentRequest = undefined;
           // No logs emit; chat.response above includes meta to avoid duplication
           appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_supervisor, timestamp: Date.now() });
-          maybeShadowTurn(conversationId);
           return { conversationId, sessionId, requestId, assistantText: finalResponse, supervisor: true };
         }
       } catch (err: any) {
@@ -769,7 +766,6 @@ export async function handleTextChatMessage(
     session.currentRequest = undefined;
     // Do not emit a duplicate assistant message to logs; chat.response includes meta
     appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_fallback, timestamp: Date.now() });
-    maybeShadowTurn(conversationId);
     return { conversationId, sessionId, requestId, assistantText, supervisor: false };
   } catch (err) {
     const errInfo = classifyOpenAIError(err);

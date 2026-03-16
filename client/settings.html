@@ -920,7 +920,7 @@ function renderMaintenance() {
       resetStatus === 'done'      ? 'Reset Complete ✓' :
       resetStatus === 'error'     ? 'Reset Failed' : 'Reset All Sessions');
     btn.disabled = resetStatus === 'resetting';
-    btn.addEventListener('click', doReset.bind(null, c));
+    btn.addEventListener('click', () => doReset(c));
     body.appendChild(btn);
   });
   content.appendChild(c);

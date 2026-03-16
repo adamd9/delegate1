@@ -242,19 +242,27 @@ class MemoryModule {
     }
   }
   /**
-   * Like retrieve() but also:
-   * - applies deduplication (new items vs. previously surfaced items)
-   * - returns the still-running Mem0 promise if we timed out, so callers can
-   *   schedule a shadow turn — but only when genuinely new items arrive.
+   * Retrieve memories with deduplication applied.
+   *
+   * Returns the recall result (all context + novel-only items). If the backend
+   * times out and an `onLateArrival` callback is provided, the memory module
+   * will invoke it when the fetch completes — callers supply their
+   * channel-specific reaction (e.g. shadow turn) without needing to manage
+   * the late-promise themselves.
    */
-  async retrieveWithLate(query: string, timeoutMs?: number, conversationId?: string): Promise<{
+  async retrieveWithLate(query: string, opts?: {
+    timeoutMs?: number;
+    conversationId?: string;
+    /** Called when memories arrive after the initial timeout. */
+    onLateArrival?: (result: { memories: string | null; newMemories: string | null }) => void;
+  }): Promise<{
     /** All memories (new + known) — for system-prompt context */
     memories: string | null;
-    /** Only items not previously surfaced — use to decide whether to interrupt */
+    /** Only items not previously surfaced — for deciding whether to interrupt */
     newMemories: string | null;
-    /** Resolves when late memories arrive; null when memories came on time */
-    latePromise: Promise<{ memories: string | null; newMemories: string | null }> | null;
   }> {
+    const { timeoutMs, conversationId, onLateArrival } = opts ?? {};
+
     // Sync dedup config from runtime config before each lookup
     const cfg = getMemoryConfig();
     this._dedup.configure({
@@ -273,27 +281,24 @@ class MemoryModule {
       const newMemories = dedupResult.newItems.length > 0 ? formatMemoryItems(dedupResult.newItems) : null;
       this._dedup.markSurfaced(dedupResult.newItems);
       this._persistDedupLog(dedupResult, conversationId);
-      return { memories, newMemories, latePromise: null };
+      return { memories, newMemories };
     }
 
-    // Timed out — capture any still-running fetch and wrap with dedup
+    // Timed out — wire up late-arrival callback if the fetch is still in-flight
     const inflightRef = this._inflightRetrieve;
-    if (!inflightRef) {
-      return { memories: null, newMemories: null, latePromise: null };
-    }
-
-    const latePromise: Promise<{ memories: string | null; newMemories: string | null }> =
+    if (inflightRef && onLateArrival) {
       inflightRef.then(lateRaw => {
-        if (!lateRaw) return { memories: null, newMemories: null };
+        if (!lateRaw) return;
         const dedupResult = this._dedup.deduplicate(lateRaw);
         const memories = dedupResult.allItems.length > 0 ? formatMemoryItems(dedupResult.allItems) : null;
         const newMemories = dedupResult.newItems.length > 0 ? formatMemoryItems(dedupResult.newItems) : null;
         this._dedup.markSurfaced(dedupResult.newItems);
         this._persistDedupLog(dedupResult, conversationId);
-        return { memories, newMemories };
-      });
+        onLateArrival({ memories, newMemories });
+      }).catch(e => console.warn('[memory] late-arrival callback error:', (e as any)?.message || e));
+    }
 
-    return { memories: null, newMemories: null, latePromise };
+    return { memories: null, newMemories: null };
   }
 
   /**
@@ -309,6 +314,16 @@ class MemoryModule {
    */
   clearDedupState(): void {
     this._dedup.clearAll();
+  }
+
+  /**
+   * Clear in-memory cache so the next retrieval fetches fresh data from the backend.
+   * Call on session reset or backend switch.
+   */
+  clearCache(): void {
+    this._cachedMemories = null;
+    this._cacheUpdatedAt = 0;
+    this._dedup.reset();
   }
 
   private _persistDedupLog(

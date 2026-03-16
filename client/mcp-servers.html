@@ -123,7 +123,7 @@
   async function load() {
     setNotice(null);
     try {
-      const res = await fetch('/api/mcp-config');
+      const res = await fetch('/api/mcp/config');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const editor = document.getElementById('config-editor');
@@ -154,7 +154,7 @@
       const text = document.getElementById('config-editor').value;
       // Validate JSON before sending
       JSON.parse(text);
-      const res = await fetch('/api/mcp-config', {
+      const res = await fetch('/api/mcp/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),

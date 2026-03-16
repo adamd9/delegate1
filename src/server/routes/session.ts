@@ -1,6 +1,7 @@
 import type { Application, Request, Response } from 'express';
 import { WebSocket } from 'ws';
 import { session as stateSession, closeAllConnections, jsonSend, isOpen } from '../../session/state';
+import { memoryModule } from '../../memory';
 
 export function registerSessionRoutes(app: Application, opts: { chatClients: Set<WebSocket>; logsClients: Set<WebSocket>; }) {
   const { chatClients, logsClients } = opts;
@@ -47,6 +48,7 @@ export function registerSessionRoutes(app: Application, opts: { chatClients: Set
       if (chatHistory) {
         (stateSession as any).conversationHistory = [];
         (stateSession as any).previousResponseId = undefined;
+        memoryModule.clearCache();
         result.chatHistoryCleared = true;
       }
 

@@ -21,6 +21,7 @@ import { registerMemoryConfigRoutes } from './server/routes/memoryConfig';
 import { registerOpenAiSessionRoute } from './server/routes/openaiSession';
 import { getConfig } from './server/config/env';
 import { registerHealthRoutes, setReady } from './server/routes/health';
+import { registerBuildInfoRoutes } from './server/routes/buildInfo';
 import { chatClients, logsClients } from './ws/clients';
 import { finalizeOpenSessionsOnStartup } from './server/startup/finalize';
 import { initToolsAndRegistry } from './server/startup/init';
@@ -89,6 +90,9 @@ app.use(express.json());
 
 // Health endpoints
 registerHealthRoutes(app);
+
+// Build info endpoint
+registerBuildInfoRoutes(app);
 
 // Thoughtflow artifacts and debug endpoints
 registerThoughtflowRoutes(app);

@@ -583,8 +583,15 @@ export function processRealtimeModelEvent(
         (session as any)._memoriesInjectedForTurn = false;
         if (!alreadyInjected) {
           void ((): void => {
-            // Use retrieveWithLate so we get a late promise for shadow-turn if fetch times out.
-            memoryModule.retrieveWithLate(transcript, getMemoryConfig().retrieve_timeout_ms).then(({ memories, newMemories, latePromise }) => {
+            // Use retrieveWithLate so late memories trigger a shadow turn via callback.
+            memoryModule.retrieveWithLate(transcript, {
+              timeoutMs: getMemoryConfig().retrieve_timeout_ms,
+              onLateArrival: (lateResult) => {
+                if (lateResult.newMemories) {
+                  scheduleVoiceShadowTurn(lateResult.memories || lateResult.newMemories, transcript);
+                }
+              },
+            }).then(({ memories, newMemories }) => {
               if (memories && isOpen(session.modelConn) && !session.responseStartTimestamp) {
                 // Memories arrived in time — inject before response starts
                 const cfg = buildRealtimeSessionConfig('voice', getAudioFormatForSession());
@@ -594,18 +601,9 @@ export function processRealtimeModelEvent(
                   session: { ...cfg, instructions: memoriesPrefix + cfg.instructions },
                 });
                 console.debug('[memory] injected memories into voice session via session.update (at transcript)');
-              } else if (memories) {
+              } else if (memories && newMemories) {
                 // Memories arrived but response already started — schedule a voice shadow turn
-                // Only interrupt if there are genuinely new items
-                if (newMemories) scheduleVoiceShadowTurn(memories, transcript);
-              }
-              if (latePromise) {
-                // Memories didn't arrive in time — schedule shadow turn when they do (only for new items)
-                latePromise.then(lateResult => {
-                  if (lateResult.newMemories) {
-                    scheduleVoiceShadowTurn(lateResult.memories || lateResult.newMemories, transcript);
-                  }
-                }).catch(() => {});
+                scheduleVoiceShadowTurn(memories, transcript);
               }
             }).catch((e: any) => {
               console.warn('[memory] voice retrieval/injection error:', e?.message || e);
