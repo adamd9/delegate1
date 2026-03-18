@@ -28,8 +28,9 @@ jobs:
 
       - name: Write build info
         run: |
-          echo "{\"commitId\":\"$(git rev-parse --short HEAD)\",\"commitMessage\":$(git log -1 --pretty=%s | jq -Rs .)}" \
-            > client/build-info.json
+          BUILD_INFO="{\"commitId\":\"$(git rev-parse --short HEAD)\",\"commitMessage\":$(git log -1 --pretty=%s | jq -Rs .),\"branch\":\"${GITHUB_REF_NAME}\",\"buildTime\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+          echo "$BUILD_INFO" > client/build-info.json
+          echo "$BUILD_INFO" > dist/build-info.json
 
       - name: Prepare deployment package
         run: |
