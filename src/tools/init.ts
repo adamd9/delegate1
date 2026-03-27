@@ -1,5 +1,6 @@
 import { registerBuiltinTools } from './providers/builtin';
 import { registerLocalTools } from './providers/local';
+import { registerCopilotCliTools } from './providers/copilotCli';
 import { registerMcpTools } from './providers/mcp';
 import { registerAgent, initializeAgentPolicies } from './registry';
 import { getAgent } from '../agentConfigs';
@@ -8,6 +9,7 @@ export async function initToolsRegistry() {
   // Register providers
   registerBuiltinTools();
   registerLocalTools();
+  registerCopilotCliTools();
   // MCP tools are discovered asynchronously before this is called
   registerMcpTools();
 

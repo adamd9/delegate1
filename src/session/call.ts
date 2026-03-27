@@ -151,7 +151,7 @@ export function getAudioFormatForSession(): 'g711_ulaw' | 'pcm16' {
  * This function ensures all required fields are included in session.update messages
  * to prevent the API from resetting fields to defaults, which can break voice processing.
  * 
- * @param channel - The communication channel ('voice', 'text', 'sms', or 'email')
+ * @param channel - The communication channel ('voice', 'text', 'sms', 'email', or 'copilot')
  * @param audioFormat - The audio format to use ('g711_ulaw' for Twilio, 'pcm16' for browser)
  * @returns A complete session configuration object ready to send to the Realtime API
  */

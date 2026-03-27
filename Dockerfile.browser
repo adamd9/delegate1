@@ -1,0 +1,57 @@
+# Dockerfile.browser — Delegate 1 with browser automation support
+# Base image includes Playwright, Chromium, and Node.js on Ubuntu Noble
+FROM mcr.microsoft.com/playwright:v1.52.0-noble
+
+# System packages for virtual display and VNC
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb \
+    fluxbox \
+    x11vnc \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install GitHub CLI (for `gh copilot` extension)
+RUN (type -p wget >/dev/null || apt-get update && apt-get install -y wget) \
+    && mkdir -p -m 755 /etc/apt/keyrings \
+    && out=$(mktemp) && wget -nv -O"$out" https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    && cat "$out" | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+       | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
+# To install the Copilot CLI extension at runtime:
+#   gh auth login --with-token <<< "$GH_TOKEN"
+#   gh extension install github/gh-copilot
+
+# Install Playwright CLI (AI agent browser automation tool)
+RUN npm install -g @playwright/cli@latest
+
+WORKDIR /app
+
+# Install dependencies (prod + build tooling)
+COPY package*.json ./
+RUN npm ci
+
+# Copy source and build
+COPY . .
+RUN npm run build
+
+# Create mount-point directories
+RUN mkdir -p /data/browser-profile /data/copilot-workdir /data/copilot-home /app/runtime-data
+
+# Environment defaults
+ENV BROWSER_ENABLED=true \
+    DOCKER=true \
+    PORT=8081 \
+    RUNTIME_DATA_DIR=/app/runtime-data
+
+EXPOSE 8081 5900
+
+VOLUME ["/data/browser-profile", "/data/copilot-workdir", "/data/copilot-home", "/app/runtime-data"]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8081/ || exit 1
+
+CMD ["node", "dist/server.js"]

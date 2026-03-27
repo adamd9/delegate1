@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Copilot Session · HK</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #1b1d27; --surface: #22253a; --surface2: #2a2d42; --surface3: #181a26;
+      --border: #2e3150; --border2: #383b5e; --accent: #818cf8; --green: #34d399;
+      --amber: #fbbf24; --red: #f87171; --blue: #60a5fa;
+      --text: #e2e4f0; --text-mid: #6b7194; --text-dim: #3d4268;
+      --font: 'SF Mono','Fira Code','Consolas',monospace;
+      --font-ui: -apple-system,BlinkMacSystemFont,'Inter',sans-serif;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font-ui); min-height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
+
+    header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface3); flex-shrink: 0; gap: 12px; }
+    .hdr-left { display: flex; align-items: center; gap: 12px; }
+    .back-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border2); background: transparent; color: var(--text-mid); font-size: 11px; font-family: var(--font); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+    .back-btn:hover { color: var(--text); }
+    h1 { font-size: 14px; font-weight: 600; color: var(--text); }
+    .hdr-right { display: flex; align-items: center; gap: 10px; }
+
+    .conn-status { display: flex; align-items: center; gap: 6px; font-size: 11px; font-family: var(--font); color: var(--text-mid); }
+    .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
+    .conn-dot.connected { background: var(--green); }
+
+    .clear-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border2); background: transparent; color: var(--text-mid); font-size: 11px; font-family: var(--font); cursor: pointer; }
+    .clear-btn:hover { color: var(--text); }
+
+    .status-bar { font-size: 11px; color: var(--text-mid); font-family: var(--font); padding: 6px 20px; border-bottom: 1px solid var(--border); background: var(--surface3); display: flex; align-items: center; gap: 8px; }
+    .status-label { color: var(--text-dim); }
+    .status-value { font-weight: 600; }
+    .status-value.idle { color: var(--text-dim); }
+    .status-value.running { color: var(--green); }
+    .status-value.completed { color: var(--blue); }
+    .status-value.error { color: var(--red); }
+    .status-value.timeout { color: var(--amber); }
+
+    #terminal { flex: 1; overflow-y: auto; padding: 12px 20px; font-family: var(--font); font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+    #terminal::-webkit-scrollbar { width: 4px; }
+    #terminal::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    .line-stdout { color: var(--text); display: block; }
+    .line-stderr { color: var(--amber); display: block; }
+    .line-marker { color: var(--text-dim); display: block; border-top: 1px solid var(--border); padding-top: 6px; margin-top: 6px; font-size: 11px; }
+    .line-marker:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+
+    .empty { display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-dim); font-family: var(--font); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="hdr-left">
+      <a class="back-btn" href="/">← back</a>
+      <h1>Copilot Session</h1>
+    </div>
+    <div class="hdr-right">
+      <button class="clear-btn" id="clear-btn">clear</button>
+      <div class="conn-status">
+        <div class="conn-dot" id="conn-dot"></div>
+        <span id="conn-label">disconnected</span>
+      </div>
+    </div>
+  </header>
+  <div class="status-bar">
+    <span class="status-label">status:</span>
+    <span class="status-value idle" id="session-status">Idle</span>
+  </div>
+  <div id="terminal"><div class="empty">waiting for session…</div></div>
+
+<script>
+  const ANSI_RE = /\x1b\[[0-9;]*m/g;
+  function stripAnsi(str) { return str.replace(ANSI_RE, ''); }
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  const terminal = document.getElementById('terminal');
+  const connDot = document.getElementById('conn-dot');
+  const connLabel = document.getElementById('conn-label');
+  const statusEl = document.getElementById('session-status');
+
+  let autoScroll = true;
+  let hasContent = false;
+  let ws = null;
+  let reconnectTimer = null;
+
+  terminal.addEventListener('scroll', () => {
+    const atBottom = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 40;
+    autoScroll = atBottom;
+  });
+
+  document.getElementById('clear-btn').addEventListener('click', () => {
+    terminal.innerHTML = '<div class="empty">waiting for session…</div>';
+    hasContent = false;
+    autoScroll = true;
+  });
+
+  function setStatus(text, cls) {
+    statusEl.textContent = text;
+    statusEl.className = 'status-value ' + cls;
+  }
+
+  function setConnected(connected) {
+    connDot.classList.toggle('connected', connected);
+    connLabel.textContent = connected ? 'connected' : 'disconnected';
+  }
+
+  function appendLine(html, cls) {
+    if (!hasContent) { terminal.innerHTML = ''; hasContent = true; }
+    const span = document.createElement('span');
+    span.className = cls;
+    span.innerHTML = html;
+    terminal.appendChild(span);
+    if (autoScroll) terminal.scrollTop = terminal.scrollHeight;
+  }
+
+  function appendMarker(text) {
+    appendLine(esc(text), 'line-marker');
+  }
+
+  function fmtTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return d.toLocaleTimeString();
+  }
+
+  function connect() {
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${proto}//${location.host}/copilot`);
+
+    ws.onopen = () => setConnected(true);
+
+    ws.onclose = () => {
+      setConnected(false);
+      reconnectTimer = setTimeout(connect, 2000);
+    };
+
+    ws.onerror = () => {
+      ws.close();
+    };
+
+    ws.onmessage = (event) => {
+      let msg;
+      try { msg = JSON.parse(event.data); } catch { return; }
+
+      switch (msg.type) {
+        case 'copilot.session.start': {
+          const task = msg.task || 'unknown task';
+          setStatus(`Running: ${task}`, 'running');
+          appendMarker(`── session started · ${fmtTime(msg.timestamp)} · ${task} ──`);
+          break;
+        }
+        case 'copilot.session.active': {
+          const task = msg.task || 'unknown task';
+          setStatus(`Running: ${task}`, 'running');
+          appendMarker(`── session active · started ${fmtTime(msg.startedAt)} · pid ${msg.pid || '?'} · ${task} ──`);
+          break;
+        }
+        case 'copilot.stdout': {
+          const text = stripAnsi(msg.output || '');
+          if (text) appendLine(esc(text), 'line-stdout');
+          break;
+        }
+        case 'copilot.stderr': {
+          const text = stripAnsi(msg.output || '');
+          if (text) appendLine(esc(text), 'line-stderr');
+          break;
+        }
+        case 'copilot.session.end': {
+          const status = (msg.status || 'completed').toLowerCase();
+          if (status === 'error') {
+            setStatus('Error', 'error');
+          } else if (status === 'timeout') {
+            setStatus('Timeout', 'timeout');
+          } else {
+            setStatus('Completed', 'completed');
+          }
+          appendMarker(`── session ended · ${fmtTime(msg.timestamp)} · ${status} ──`);
+          break;
+        }
+      }
+    };
+  }
+
+  connect();
+</script>
+</body>
+</html>

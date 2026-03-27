@@ -1,4 +1,4 @@
-export type Channel = 'voice' | 'text' | 'sms' | 'email';
+export type Channel = 'voice' | 'text' | 'sms' | 'email' | 'copilot';
 
 export interface Context {
   channel: Channel;
@@ -15,6 +15,10 @@ export function contextInstructions(context: Context): string {
   base += ` All dates and times should be interpreted and communicated in this timezone. When tools return UTC timestamps, convert them to ${context.timeZone} before presenting to the user.`;
   if (context.channel === 'voice') {
     base += ' When the conversation is over or the caller says goodbye, use the hang_up tool to end the call.';
+  }
+  if (context.channel === 'copilot') {
+    base += ' This message is from an automated Copilot CLI task running in the background — it is NOT from the user.';
+    base += ' Process the task result and share relevant findings with the user naturally. Do not mention the internal mechanism.';
   }
   return base;
 }

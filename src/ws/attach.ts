@@ -5,7 +5,8 @@ import { establishCallSocket } from '../session/call';
 import { establishBrowserCallSocket } from '../session/browserCall';
 import { establishChatSocket } from '../session/chat';
 import { establishDeepgramProxy } from './deepgramProxy';
-import { session } from '../session/state';
+import { session, isOpen, jsonSend } from '../session/state';
+import { setCopilotBroadcast, getActiveSession } from '../tools/handlers/copilotCli';
 
 /**
  * Attaches a WebSocketServer to the given HTTP server and wires up
@@ -22,6 +23,12 @@ export function attachWebSockets(
   }
 ) {
   const { chatClients, logsClients, openAIApiKey } = options;
+  const copilotClients = new Set<WebSocket>();
+  setCopilotBroadcast((msg) => {
+    for (const ws of copilotClients) {
+      if (isOpen(ws)) jsonSend(ws, msg);
+    }
+  });
   const wss = new WebSocketServer({ server });
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
@@ -107,6 +114,13 @@ export function attachWebSockets(
       ws.on('close', () => chatClients.delete(ws));
     } else if (type === 'deepgram') {
       establishDeepgramProxy(ws);
+    } else if (type === 'copilot') {
+      copilotClients.add(ws);
+      const activeSession = getActiveSession();
+      if (activeSession) {
+        jsonSend(ws, { type: 'copilot.session.active', ...activeSession });
+      }
+      ws.on('close', () => copilotClients.delete(ws));
     } else {
       ws.close();
     }

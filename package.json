@@ -6,7 +6,7 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc && npm run copy-assets",
-    "copy-assets": "cp src/twiml.xml dist/ && mkdir -p dist/config && cp -R src/config/* dist/config/ || true",
+    "copy-assets": "cp src/twiml.xml dist/ && mkdir -p dist/config && cp -R src/config/* dist/config/ && mkdir -p dist/copilot-agent && cp -R src/copilot-agent/* dist/copilot-agent/ || true",
     "start": "node dist/server.js",
     "dev": "bash scripts/kill-ports.sh && nodemon --watch 'src/**/*' --watch '.env' --ext 'ts,js,xml,env' --exec 'ts-node' src/server.ts",
     "kill-ports": "bash scripts/kill-ports.sh",
@@ -14,6 +14,7 @@
     "test:e2e:headed": "npx -y @playwright/test@1.55.0 test --headed",
     "test:voice": "ts-node src/voice/voicePipeline.test.ts",
     "test:unit": "ts-node tests/unit/memory-deduplicator.test.ts",
+    "test:copilot": "ts-node tests/unit/copilot-dispatch.test.ts",
     "clean": "rm -rf node_modules dist",
     "script:token": "node scripts/twilio/generate-token.js",
     "script:list-apps": "node scripts/twilio/list-twiml-apps.js",

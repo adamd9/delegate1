@@ -19,6 +19,7 @@ import { registerVoiceMessageRoutes } from './server/routes/voiceMessage';
 import { registerVoiceDefaultsRoutes } from './server/routes/voiceDefaults';
 import { registerMemoryConfigRoutes } from './server/routes/memoryConfig';
 import { registerOpenAiSessionRoute } from './server/routes/openaiSession';
+import { registerCopilotRoutes } from './server/routes/copilot';
 import { getConfig } from './server/config/env';
 import { registerHealthRoutes, setReady } from './server/routes/health';
 import { registerBuildInfoRoutes } from './server/routes/buildInfo';
@@ -27,6 +28,7 @@ import { finalizeOpenSessionsOnStartup } from './server/startup/finalize';
 import { initToolsAndRegistry } from './server/startup/init';
 import { writeLatestStartupResults } from './server/startup/note';
 import { reloadAdaptations } from './adaptations';
+import { startBrowserInfra, stopBrowserInfra } from './browser';
 
 // Ensure we load the env file from this package even if process is started from repo root
 dotenv.config({ path: join(__dirname, '../.env') });
@@ -74,6 +76,12 @@ async function writeLatestStartupResultsIfReady() {
     } catch (e: any) {
       console.warn('[startup] reloadAdaptations failed:', e?.message || e);
     }
+    // Start browser infrastructure (Xvfb/VNC in Docker, directories in local dev)
+    const browserResult = await startBrowserInfra();
+    if (!browserResult.ok) {
+      console.error(`[server] browser infrastructure failed: ${browserResult.error}`);
+    }
+
     toolsReady = true;
     await writeLatestStartupResultsIfReady();
   } catch (e: any) {
@@ -134,6 +142,9 @@ registerMemoryConfigRoutes(app);
 // OpenAI Realtime session token proxy
 registerOpenAiSessionRoute(app);
 
+// Copilot CLI hook callback routes
+registerCopilotRoutes(app, { chatClients, logsClients });
+
 // Serve the vanilla JS client (after all API routes so they take priority)
 app.use(express.static(vanillaClientDir, { extensions: ['html'] }));
 
@@ -157,3 +168,11 @@ server.listen(PORT, () => {
   // Update readiness
   if (toolsReady) setReady(true);
 });
+
+function gracefulShutdown(signal: string) {
+  console.log(`[server] ${signal} received — shutting down`);
+  stopBrowserInfra();
+  process.exit(0);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

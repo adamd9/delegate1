@@ -1,0 +1,25 @@
+services:
+  delegate1-browser:
+    build:
+      context: .
+      dockerfile: Dockerfile.browser
+    ports:
+      - "8081:8081"   # App
+      - "5900:5900"   # VNC
+    volumes:
+      - browser-profile:/data/browser-profile
+      - copilot-workdir:/data/copilot-workdir
+      - copilot-home:/data/copilot-home
+      - runtime-data:/app/runtime-data
+    env_file:
+      - .env
+    environment:
+      - BROWSER_ENABLED=true
+      - DOCKER=true
+    restart: unless-stopped
+
+volumes:
+  browser-profile:
+  copilot-workdir:
+  runtime-data:
+  copilot-home:

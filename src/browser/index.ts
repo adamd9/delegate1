@@ -1,0 +1,489 @@
+import { spawn, execSync, ChildProcess } from 'child_process';
+import path from 'path';
+import fs from 'fs';
+
+// ---------------------------------------------------------------------------
+// Config: resolve paths based on Docker vs local-dev environment
+// ---------------------------------------------------------------------------
+
+const isDocker = (): boolean =>
+  process.env.DOCKER === 'true' || fs.existsSync('/.dockerenv');
+
+const RUNTIME_DATA_DIR = process.env.RUNTIME_DATA_DIR;
+
+export const BROWSER_PROFILE_DIR: string = isDocker()
+  ? '/data/browser-profile'
+  : RUNTIME_DATA_DIR
+    ? path.join(RUNTIME_DATA_DIR, 'browser-profile')
+    : path.join(__dirname, '..', '..', 'runtime-data', 'browser-profile');
+
+export const COPILOT_WORK_DIR: string = isDocker()
+  ? '/data/copilot-workdir'
+  : RUNTIME_DATA_DIR
+    ? path.join(RUNTIME_DATA_DIR, 'copilot-workdir')
+    : path.join(__dirname, '..', '..', 'runtime-data', 'copilot-workdir');
+
+export const COPILOT_HOME_DIR: string = isDocker()
+  ? '/data/copilot-home'
+  : RUNTIME_DATA_DIR
+    ? path.join(RUNTIME_DATA_DIR, 'copilot-home')
+    : path.join(__dirname, '..', '..', 'runtime-data', 'copilot-home');
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+export interface BrowserStatus {
+  enabled: boolean;
+  running: boolean;
+  dockerMode: boolean;
+  vncPort?: number;
+  display?: string;
+  profileDir: string;
+  workDir: string;
+}
+
+let xvfbProc: ChildProcess | null = null;
+let fluxboxProc: ChildProcess | null = null;
+let x11vncProc: ChildProcess | null = null;
+let running = false;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function ensureDirectories(): void {
+  fs.mkdirSync(BROWSER_PROFILE_DIR, { recursive: true });
+  fs.mkdirSync(COPILOT_WORK_DIR, { recursive: true });
+  fs.mkdirSync(COPILOT_HOME_DIR, { recursive: true });
+}
+
+const DEFAULT_REPO_NAME = 'delegate1-copilot-workspace';
+
+/** Use the GitHub API (via token) to get the authenticated user's login. */
+function getGitHubUser(token: string): string | null {
+  try {
+    const result = execSync(
+      `curl -s -H "Authorization: token ${token}" https://api.github.com/user`,
+      { encoding: 'utf8' }
+    );
+    const data = JSON.parse(result);
+    return data.login || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Check if a GitHub repo exists. Returns the clone URL if it does, null otherwise. */
+function repoExists(owner: string, name: string, token: string): string | null {
+  try {
+    const result = execSync(
+      `curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${token}" https://api.github.com/repos/${owner}/${name}`,
+      { encoding: 'utf8' }
+    );
+    if (result.trim() === '200') {
+      return `https://github.com/${owner}/${name}.git`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Create a private GitHub repo and return its clone URL. */
+function createRepo(name: string, token: string): string | null {
+  try {
+    const result = execSync(
+      `curl -s -X POST -H "Authorization: token ${token}" -H "Content-Type: application/json" ` +
+      `https://api.github.com/user/repos -d '{"name":"${name}","private":true,"auto_init":true,"description":"Copilot CLI workspace — auto-managed by Delegate"}'`,
+      { encoding: 'utf8' }
+    );
+    const data = JSON.parse(result);
+    if (data.clone_url) {
+      console.log(`[browser] created GitHub repo: ${data.clone_url}`);
+      return data.clone_url;
+    }
+    console.warn('[browser] repo creation response missing clone_url:', data.message || data);
+    return null;
+  } catch (err) {
+    console.warn('[browser] failed to create GitHub repo:', err);
+    return null;
+  }
+}
+
+/** Auto-create (or discover) the default remote repo using the token. Returns HTTPS clone URL or undefined. */
+function autoCreateRemoteRepo(token: string): string | undefined {
+  const user = getGitHubUser(token);
+  if (!user) {
+    console.warn('[browser] could not determine GitHub user from token — skipping remote repo setup');
+    return undefined;
+  }
+
+  // Check if the default repo already exists
+  const existing = repoExists(user, DEFAULT_REPO_NAME, token);
+  if (existing) {
+    console.log(`[browser] found existing remote repo: ${existing}`);
+    return existing;
+  }
+
+  // Create it
+  const created = createRepo(DEFAULT_REPO_NAME, token);
+  return created || undefined;
+}
+
+/** Return an HTTPS URL with the token embedded for auth. */
+function authedUrl(remoteUrl: string, token: string): string {
+  if (remoteUrl.startsWith('https://')) {
+    return remoteUrl.replace('https://', `https://x-access-token:${token}@`);
+  }
+  return remoteUrl;
+}
+
+/**
+ * Set up the local working directory from a remote repo.
+ * If the local dir has stale content, blow it away and do a fresh clone.
+ */
+function setupWorkDirFromRemote(remoteUrl: string, token: string): void {
+  const gitDir = path.join(COPILOT_WORK_DIR, '.git');
+  const cloneUrl = authedUrl(remoteUrl, token);
+
+  // If there's already a .git dir, check if origin matches
+  if (fs.existsSync(gitDir)) {
+    try {
+      const currentOrigin = execSync('git remote get-url origin', { cwd: COPILOT_WORK_DIR, encoding: 'utf8' }).trim();
+      if (currentOrigin === remoteUrl) {
+        // Same remote — just pull latest
+        try {
+          execSync(
+            `git pull "${cloneUrl}" main --rebase --autostash 2>&1 || true`,
+            { cwd: COPILOT_WORK_DIR, stdio: 'ignore' }
+          );
+          console.log(`[browser] pulled latest from ${remoteUrl}`);
+        } catch {
+          console.warn('[browser] pull failed (non-fatal) — continuing with local state');
+        }
+        return;
+      }
+    } catch {
+      // No origin or corrupt git dir — fall through to fresh clone
+    }
+  }
+
+  // Fresh clone: remove existing content and clone
+  console.log(`[browser] setting up working directory from ${remoteUrl}`);
+  try {
+    // Remove everything except the parent dir
+    const entries = fs.readdirSync(COPILOT_WORK_DIR);
+    for (const entry of entries) {
+      fs.rmSync(path.join(COPILOT_WORK_DIR, entry), { recursive: true, force: true });
+    }
+
+    // Clone into the work dir (use authed URL, store clean URL as origin)
+    const parentDir = path.dirname(COPILOT_WORK_DIR);
+    const dirName = path.basename(COPILOT_WORK_DIR);
+    execSync(
+      `git clone "${cloneUrl}" "${dirName}" 2>&1`,
+      { cwd: parentDir, encoding: 'utf8' }
+    );
+    // Replace the authed origin with the clean URL (don't persist token in .git/config)
+    execSync(`git remote set-url origin "${remoteUrl}"`, { cwd: COPILOT_WORK_DIR, stdio: 'ignore' });
+    console.log(`[browser] cloned ${remoteUrl} into ${COPILOT_WORK_DIR}`);
+  } catch (err: any) {
+    console.warn('[browser] clone failed:', err.message || err);
+    // Fallback: init locally and add remote
+    try {
+      if (!fs.existsSync(gitDir)) {
+        execSync('git init', { cwd: COPILOT_WORK_DIR, stdio: 'ignore' });
+        execSync('git commit --allow-empty -m "init copilot workdir"', { cwd: COPILOT_WORK_DIR, stdio: 'ignore' });
+      }
+      execSync(`git remote add origin "${remoteUrl}" 2>/dev/null || git remote set-url origin "${remoteUrl}"`, {
+        cwd: COPILOT_WORK_DIR, stdio: 'ignore'
+      });
+      console.log('[browser] fallback: initialized local repo with remote configured');
+    } catch (fallbackErr) {
+      console.warn('[browser] fallback git setup failed:', fallbackErr);
+    }
+  }
+}
+
+function scaffoldWorkDir(): void {
+  // Copilot CLI discovers agents from $COPILOT_HOME/agents/ (user-global path)
+  const agentDestDir = path.join(COPILOT_HOME_DIR, 'agents');
+  const destFile = path.join(agentDestDir, 'delegate-browser.agent.md');
+
+  // Resolve source: dist/copilot-agent/ (prod) or src/copilot-agent/ (dev)
+  const candidates = [
+    path.join(__dirname, '..', 'copilot-agent', 'delegate-browser.agent.md'),
+    path.join(__dirname, '..', '..', 'src', 'copilot-agent', 'delegate-browser.agent.md'),
+  ];
+
+  const srcFile = candidates.find((p) => fs.existsSync(p));
+  if (!srcFile) {
+    console.warn('[browser] agent definition not found — skipping workdir scaffold');
+    return;
+  }
+
+  fs.mkdirSync(agentDestDir, { recursive: true });
+  fs.copyFileSync(srcFile, destFile);
+  console.log(`[browser] agent definition installed to ${destFile}`);
+
+  // ---- Git repository setup ----
+  // Strategy: if COPILOT_REMOTE_REPO is set, use it. Otherwise auto-create one.
+  // Always ensure local workdir is a clean clone of the remote.
+  const token = process.env.COPILOT_GITHUB_TOKEN;
+  let remoteRepo = process.env.COPILOT_REMOTE_REPO;
+
+  if (token && !remoteRepo) {
+    // Auto-create a default repo if none specified
+    remoteRepo = autoCreateRemoteRepo(token);
+  }
+
+  if (remoteRepo && token) {
+    setupWorkDirFromRemote(remoteRepo, token);
+  } else {
+    // No remote — just ensure local git init for copilot CLI
+    const gitDir = path.join(COPILOT_WORK_DIR, '.git');
+    if (!fs.existsSync(gitDir)) {
+      try {
+        execSync('git init', { cwd: COPILOT_WORK_DIR, stdio: 'ignore' });
+        execSync('git commit --allow-empty -m "init copilot workdir"', { cwd: COPILOT_WORK_DIR, stdio: 'ignore' });
+        console.log('[browser] initialized local-only git repo in copilot working directory');
+      } catch (err) {
+        console.warn('[browser] failed to git init copilot working dir:', err);
+      }
+    }
+  }
+
+  // Scaffold Copilot CLI hooks (overwrite every run to stay up to date)
+  const hooksDir = path.join(COPILOT_WORK_DIR, '.github', 'hooks');
+  fs.mkdirSync(hooksDir, { recursive: true });
+
+  const hooksJson = {
+    version: 1,
+    hooks: {
+      sessionEnd: [
+        {
+          type: 'command',
+          bash: './.github/hooks/callback.sh',
+          env: { HOOK_TYPE: 'sessionEnd' },
+          timeoutSec: 15,
+        },
+      ],
+      postToolUse: [
+        {
+          type: 'command',
+          bash: './.github/hooks/callback.sh',
+          env: { HOOK_TYPE: 'postToolUse' },
+          timeoutSec: 10,
+        },
+      ],
+      errorOccurred: [
+        {
+          type: 'command',
+          bash: './.github/hooks/callback.sh',
+          env: { HOOK_TYPE: 'errorOccurred' },
+          timeoutSec: 10,
+        },
+      ],
+    },
+  };
+  fs.writeFileSync(path.join(hooksDir, 'hooks.json'), JSON.stringify(hooksJson, null, 2));
+
+  const callbackSh = `#!/bin/bash
+# Copilot CLI hook callback — sends hook payload to the agent's HTTP server
+# HOOK_TYPE and AGENT_CALLBACK_URL are set via environment variables
+
+INPUT=$(cat)
+
+if [ -z "$AGENT_CALLBACK_URL" ]; then
+  echo "[copilot-hook] AGENT_CALLBACK_URL not set, skipping callback" >&2
+  exit 0
+fi
+
+# POST the hook payload to the agent callback endpoint
+curl -s -X POST "\${AGENT_CALLBACK_URL}/api/copilot/callback" \\
+  -H "Content-Type: application/json" \\
+  -d "{\\"hookType\\": \\"\${HOOK_TYPE}\\", \\"payload\\": \${INPUT}}" \\
+  --connect-timeout 5 \\
+  --max-time 10 \\
+  2>/dev/null || echo "[copilot-hook] callback failed (non-fatal)" >&2
+
+exit 0
+`;
+  const callbackPath = path.join(hooksDir, 'callback.sh');
+  fs.writeFileSync(callbackPath, callbackSh);
+  fs.chmodSync(callbackPath, 0o755);
+
+  console.log('[browser] scaffolded copilot hooks in', hooksDir);
+}
+
+function setupCopilotHome(): void {
+  const configPath = path.join(COPILOT_HOME_DIR, 'config.json');
+  const config = {
+    trusted_folders: [COPILOT_WORK_DIR],
+  };
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  process.env.COPILOT_HOME = COPILOT_HOME_DIR;
+  console.log(`[browser] Copilot home configured — ${configPath} (trusted: ${COPILOT_WORK_DIR})`);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Commit all changes in the copilot working directory and push to remote (if configured).
+ * Called after each copilot session ends. Non-fatal — errors are logged but don't propagate.
+ */
+export function commitAndPushWorkDir(taskSummary: string): void {
+  try {
+    // Check for changes
+    const status = execSync('git status --porcelain', { cwd: COPILOT_WORK_DIR, encoding: 'utf8' }).trim();
+    if (!status) {
+      console.log('[browser] no changes to commit after session');
+      return;
+    }
+
+    // Stage all changes
+    execSync('git add -A', { cwd: COPILOT_WORK_DIR, stdio: 'ignore' });
+
+    // Commit with a descriptive message
+    const shortTask = taskSummary.length > 72 ? taskSummary.slice(0, 72) + '…' : taskSummary;
+    const commitMsg = `session: ${shortTask}`;
+    execSync(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, { cwd: COPILOT_WORK_DIR, stdio: 'ignore' });
+    console.log(`[browser] committed session output: ${commitMsg}`);
+
+    // Push if origin remote is configured
+    let remoteUrl: string | null = null;
+    try {
+      remoteUrl = execSync('git remote get-url origin', { cwd: COPILOT_WORK_DIR, encoding: 'utf8' }).trim();
+    } catch {
+      // No remote configured
+    }
+
+    if (remoteUrl) {
+      const token = process.env.COPILOT_GITHUB_TOKEN;
+      try {
+        const pushUrl = token ? authedUrl(remoteUrl, token) : remoteUrl;
+        execSync(
+          `git push "${pushUrl}" main 2>&1`,
+          { cwd: COPILOT_WORK_DIR, encoding: 'utf8' }
+        );
+        console.log(`[browser] pushed to ${remoteUrl}`);
+      } catch (pushErr: any) {
+        console.warn('[browser] push failed (non-fatal):', pushErr.message || pushErr);
+      }
+    }
+  } catch (err: any) {
+    console.warn('[browser] commit failed (non-fatal):', err.message || err);
+  }
+}
+
+function killProc(name: string, proc: ChildProcess | null): void {
+  if (!proc || proc.pid == null) return;
+  try {
+    console.log(`[browser] stopping ${name} (pid ${proc.pid})`);
+    process.kill(proc.pid, 'SIGTERM');
+  } catch (err) {
+    // Process may already be gone — that's fine.
+    console.log(`[browser] ${name} already exited or could not be killed`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string }> {
+  if (process.env.BROWSER_ENABLED !== 'true') {
+    return { ok: true };
+  }
+
+  const docker = isDocker();
+
+  try {
+    ensureDirectories();
+    console.log(`[browser] directories ready — profile: ${BROWSER_PROFILE_DIR}, work: ${COPILOT_WORK_DIR}`);
+
+    setupCopilotHome();
+    scaffoldWorkDir();
+
+    if (!docker) {
+      console.log('[browser] local dev mode — skipping display processes');
+      running = true;
+      return { ok: true };
+    }
+
+    // --- Docker mode: start Xvfb, fluxbox, x11vnc ---
+
+    console.log('[browser] Docker mode detected — starting display infrastructure');
+
+    xvfbProc = spawn('Xvfb', [':99', '-screen', '0', '1280x1024x24', '-ac'], {
+      detached: false,
+      stdio: 'ignore',
+    });
+    console.log(`[browser] Xvfb started (pid ${xvfbProc.pid})`);
+
+    process.env.DISPLAY = ':99';
+
+    // Give Xvfb a moment to initialise the display
+    await delay(500);
+
+    fluxboxProc = spawn('fluxbox', [], {
+      detached: false,
+      stdio: 'ignore',
+      env: { ...process.env, DISPLAY: ':99' },
+    });
+    console.log(`[browser] fluxbox started (pid ${fluxboxProc.pid})`);
+
+    x11vncProc = spawn(
+      'x11vnc',
+      ['-display', ':99', '-nopw', '-forever', '-shared', '-rfbport', '5900'],
+      { detached: false, stdio: 'ignore' },
+    );
+    console.log(`[browser] x11vnc started (pid ${x11vncProc.pid})`);
+
+    running = true;
+    return { ok: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[browser] failed to start infrastructure: ${message}`);
+    return { ok: false, error: message };
+  }
+}
+
+export function stopBrowserInfra(): void {
+  console.log('[browser] stopping browser infrastructure');
+  try {
+    killProc('x11vnc', x11vncProc);
+    killProc('fluxbox', fluxboxProc);
+    killProc('Xvfb', xvfbProc);
+
+    x11vncProc = null;
+    fluxboxProc = null;
+    xvfbProc = null;
+    running = false;
+
+    console.log('[browser] all processes stopped');
+  } catch (err) {
+    console.error('[browser] error during shutdown', err);
+  }
+}
+
+export function getBrowserStatus(): BrowserStatus {
+  const docker = isDocker();
+  const status: BrowserStatus = {
+    enabled: process.env.BROWSER_ENABLED === 'true',
+    running,
+    dockerMode: docker,
+    profileDir: BROWSER_PROFILE_DIR,
+    workDir: COPILOT_WORK_DIR,
+  };
+
+  if (docker && running) {
+    status.vncPort = 5900;
+    status.display = ':99';
+  }
+
+  return status;
+}
