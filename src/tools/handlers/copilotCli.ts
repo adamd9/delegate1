@@ -167,8 +167,11 @@ export const copilotDispatchHandler: FunctionHandler = {
         env.DISPLAY = process.env.DISPLAY;
       }
 
-      // 6. Timeout (default 5 min for async tasks)
-      const timeoutMs = parseInt(process.env.COPILOT_TIMEOUT_MS || '300000', 10);
+      // 6. Timeout — default 30 min for research/browsing tasks.
+      // Copilot CLI catches SIGTERM and finishes its current step before exiting,
+      // so we send SIGTERM first and escalate to SIGKILL after a 30 s grace period.
+      const timeoutMs = parseInt(process.env.COPILOT_TIMEOUT_MS || '1800000', 10);
+      const sigkillGraceMs = 30000;
 
       // 7. Spawn copilot process (async — returns immediately, results via hooks)
       // Per docs: -p (prompt) + --no-ask-user + --yolo + --agent
@@ -215,7 +218,15 @@ export const copilotDispatchHandler: FunctionHandler = {
 
       const timer = setTimeout(() => {
         killed = true;
+        try { fs.appendFileSync(GLOBAL_LOG_FILE, `\n[timeout] Sending SIGTERM (${timeoutMs / 60000} min limit reached)...\n`); } catch (_) { /* non-fatal */ }
         child.kill('SIGTERM');
+        // Escalate to SIGKILL if the process doesn't exit within the grace period
+        setTimeout(() => {
+          try {
+            child.kill('SIGKILL');
+            fs.appendFileSync(GLOBAL_LOG_FILE, '[timeout] SIGTERM ignored — sent SIGKILL\n');
+          } catch (_) { /* already exited */ }
+        }, sigkillGraceMs);
       }, timeoutMs);
 
       child.on('error', (err) => {
