@@ -11,6 +11,7 @@ services:
       - copilot-workdir:/data/copilot-workdir
       - copilot-home:/data/copilot-home
       - runtime-data:/app/runtime-data
+      - gh-copilot-data:/root/.local/share/gh
     env_file:
       - .env
     environment:
@@ -23,3 +24,4 @@ volumes:
   copilot-workdir:
   runtime-data:
   copilot-home:
+  gh-copilot-data:

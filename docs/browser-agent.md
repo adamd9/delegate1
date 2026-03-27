@@ -100,6 +100,7 @@ In local mode, no display processes are started. Copilot CLI uses your local bro
 | `DOCKER` | — | Set to `true` (or presence of `/.dockerenv`) to enable Xvfb/fluxbox/x11vnc startup. |
 | `COPILOT_TIMEOUT_MS` | `300000` | Max milliseconds for a single `copilot_dispatch` invocation. Process is killed with SIGTERM on timeout. |
 | `COPILOT_GITHUB_TOKEN` | — | GitHub PAT (classic or fine-grained) — see **PAT permissions** below. Required for Copilot CLI auth and workspace repo management. |
+| `VNC_PASSWORD` | `delegate` | Password for the x11vnc VNC server (port 5900). |
 | `COPILOT_REMOTE_REPO` | — | Git remote URL for the copilot working directory (e.g. `https://github.com/user/copilot-outputs.git`). If omitted and a token is set, a private repo `delegate1-copilot-workspace` is auto-created under the authenticated user. Session outputs are committed and pushed after each task. |
 | `OPENAI_API_KEY` | — | Required for the main assistant model. |
 | `PUBLIC_URL` | — | External URL for webhooks/callbacks. |
@@ -216,16 +217,18 @@ In Docker mode, x11vnc exposes the virtual display on port 5900. Connect with an
 ```bash
 # macOS built-in Screen Sharing
 open vnc://localhost:5900
+# Password: delegate  (or whatever VNC_PASSWORD is set to)
 
 # Or any VNC client
-# Host: localhost, Port: 5900, No password
+# Host: localhost, Port: 5900, Password: delegate
 ```
 
 **What you'll see:** A 1280×1024 desktop with fluxbox window manager. When `copilot_dispatch` runs, Chromium windows will appear and you can observe Playwright navigating, clicking, and typing.
 
 **Tips:**
 
-- VNC is unauthenticated (`-nopw` flag) — only expose port 5900 on trusted networks
+- VNC password defaults to `delegate`. Set `VNC_PASSWORD` in `.env` to change it.
+- **Colima users**: start Colima with `--network-address` flag so `localhost` port forwarding works: `colima start --cpu 4 --memory 6 --network-address`
 - The display resolution (1280×1024) is set in the Xvfb startup args in `src/browser/index.ts`
 - If the display appears frozen, the browser may be idle between tasks — it's normal
 
@@ -260,5 +263,5 @@ gh auth login
 - **Single task at a time** — only one `copilot_dispatch` can run concurrently. Overlapping calls will compete for the same browser profile.
 - **Timeout ceiling** — complex multi-page workflows may exceed the default 2-minute timeout. Increase `COPILOT_TIMEOUT_MS` for longer tasks, but be aware the user is waiting.
 - **No streaming feedback** — the user sees nothing until the task completes. Intermediate progress reporting would improve UX for long-running tasks.
-- **VNC security** — x11vnc runs without authentication. Do not expose port 5900 to the public internet.
+- **VNC security** — x11vnc is password-protected (default: `delegate`, configurable via `VNC_PASSWORD`). Do not expose port 5900 to the public internet.
 - **GitHub CLI auth** — the container needs a valid `GH_TOKEN` at runtime. Token refresh and expiry are not currently handled.

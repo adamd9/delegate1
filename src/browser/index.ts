@@ -429,6 +429,17 @@ export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string
     // Give Xvfb a moment to initialise the display
     await delay(500);
 
+    // Write a minimal fluxbox config to enforce 1 workspace
+    const fluxboxDir = path.join(process.env.HOME || '/root', '.fluxbox');
+    fs.mkdirSync(fluxboxDir, { recursive: true });
+    const fluxboxInit = path.join(fluxboxDir, 'init');
+    if (!fs.existsSync(fluxboxInit)) {
+      fs.writeFileSync(fluxboxInit,
+        'session.screen0.workspaces:\t1\n' +
+        'session.screen0.workspaceNames:\tmain\n'
+      );
+    }
+
     fluxboxProc = spawn('fluxbox', [], {
       detached: false,
       stdio: 'ignore',
@@ -436,9 +447,10 @@ export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string
     });
     console.log(`[browser] fluxbox started (pid ${fluxboxProc.pid})`);
 
+    const vncPassword = process.env.VNC_PASSWORD || 'delegate';
     x11vncProc = spawn(
       'x11vnc',
-      ['-display', ':99', '-nopw', '-forever', '-shared', '-rfbport', '5900'],
+      ['-display', ':99', '-passwd', vncPassword, '-forever', '-shared', '-rfbport', '5900'],
       { detached: false, stdio: 'ignore' },
     );
     console.log(`[browser] x11vnc started (pid ${x11vncProc.pid})`);

@@ -1,0 +1,17 @@
+.env
+.env.*
+node_modules
+dist
+.git
+.github
+.vscode
+.claude
+.windsurf
+.playwright
+.playwright-cli
+test-results
+tests
+docs
+runtime-data/db
+runtime-data/thoughtflow
+runtime-data/browser-profile

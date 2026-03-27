@@ -4,6 +4,9 @@ import { execFile } from 'child_process';
 import fs from 'fs';
 import { COPILOT_WORK_DIR, COPILOT_HOME_DIR, commitAndPushWorkDir } from '../../browser';
 
+// Session log file — written to /tmp so xterm can tail it for VNC visibility
+const COPILOT_LOG_FILE = '/tmp/copilot-session.log';
+
 // Single-session enforcement
 let activeSession: { child: ChildProcess; task: string; startedAt: number; stdout: string; stderr: string } | null = null;
 
@@ -66,7 +69,14 @@ function getCopilotInfo(): Promise<{ path: string; ghMode: boolean } | null> {
         copilotCache = { path: stdout.trim(), ghMode: false };
         return resolve(copilotCache);
       }
-      // Fall back to `gh copilot`
+      // Check the well-known path where `gh copilot` auto-downloads the binary
+      const home = process.env.HOME || '/root';
+      const knownBin = `${home}/.local/share/gh/copilot/copilot`;
+      if (require('fs').existsSync(knownBin)) {
+        copilotCache = { path: knownBin, ghMode: false };
+        return resolve(copilotCache);
+      }
+      // Fall back to `gh copilot` wrapper (only if gh is present)
       execFile('which', ['gh'], (err2, stdout2) => {
         if (!err2 && stdout2.trim()) {
           copilotCache = { path: stdout2.trim(), ghMode: true };
@@ -133,7 +143,9 @@ export const copilotDispatchHandler: FunctionHandler = {
       // 3. Check copilot CLI availability
       const copilotInfo = await getCopilotInfo();
       if (!copilotInfo) {
-        return { error: 'Copilot CLI not installed or not in PATH. Checked `copilot` and `gh`.' };
+        // Clear cache so next call re-checks (binary may appear after entrypoint finishes)
+        copilotCache = undefined;
+        return { error: 'Copilot CLI not installed or not in PATH. Checked `copilot`, known gh binary path, and `gh`.' };
       }
 
       // 4. Resolve working directory — ensure it exists, fall back to cwd
@@ -159,13 +171,44 @@ export const copilotDispatchHandler: FunctionHandler = {
       const timeoutMs = parseInt(process.env.COPILOT_TIMEOUT_MS || '300000', 10);
 
       // 7. Spawn copilot process (async — returns immediately, results via hooks)
-      const baseArgs = ['-p', task, '-s', '--no-ask-user', '--yolo', '--agent=delegate-browser'];
+      // Per docs: -p + -s (silent, clean stdout) + --no-ask-user + --yolo + --agent
+      // --share writes the full session transcript to a file (reliable fallback if stdout is sparse)
+      const sessionShareFile = '/tmp/copilot-session-share.md';
+      const baseArgs = ['-p', task, '-s', '--no-ask-user', '--yolo',
+        '--agent=delegate-browser',
+        `--share=${sessionShareFile}`];
       const spawnArgs = copilotInfo.ghMode ? ['copilot', ...baseArgs] : baseArgs;
+
+      // Initialise session log file for VNC visibility
+      try {
+        fs.writeFileSync(COPILOT_LOG_FILE,
+          `=== Copilot Session ===\nTask: ${task}\nStarted: ${new Date().toISOString()}\n` +
+          `===============================\n\n`);
+      } catch (_) { /* non-fatal */ }
 
       const child = spawn(copilotInfo.path, spawnArgs, { cwd, env, stdio: 'pipe' });
       activeSession = { child, task, startedAt: Date.now(), stdout: '', stderr: '' };
 
       broadcastFn?.({ type: 'copilot.session.start', task: truncatedTask, timestamp: Date.now() });
+
+      // Open an xterm in the VNC display tailing the log file
+      if (process.env.DISPLAY) {
+        try {
+          const xtermProc = spawn('xterm', [
+            '-hold',
+            '-title', `Copilot: ${truncatedTask}`,
+            '-fg', 'lime green',
+            '-bg', 'black',
+            '-fs', '11',
+            '-e', 'tail', '-f', COPILOT_LOG_FILE,
+          ], {
+            env: { ...process.env as Record<string, string>, DISPLAY: process.env.DISPLAY },
+            detached: true,
+            stdio: 'ignore',
+          });
+          xtermProc.unref();
+        } catch (_) { /* xterm not available — non-fatal */ }
+      }
 
       let killed = false;
       // Track whether the sessionEnd hook already injected the result
@@ -175,11 +218,13 @@ export const copilotDispatchHandler: FunctionHandler = {
       child.stdout.on('data', (chunk: Buffer) => {
         const text = chunk.toString();
         if (activeSession) activeSession.stdout += text;
+        try { fs.appendFileSync(COPILOT_LOG_FILE, text); } catch (_) { /* non-fatal */ }
         broadcastFn?.({ type: 'copilot.stdout', output: text, timestamp: Date.now() });
       });
       child.stderr.on('data', (chunk: Buffer) => {
         const text = chunk.toString();
         if (activeSession) activeSession.stderr += text;
+        try { fs.appendFileSync(COPILOT_LOG_FILE, `[stderr] ${text}`); } catch (_) { /* non-fatal */ }
         broadcastFn?.({ type: 'copilot.stderr', output: text, timestamp: Date.now() });
       });
 
@@ -199,11 +244,23 @@ export const copilotDispatchHandler: FunctionHandler = {
 
       child.on('close', (code) => {
         clearTimeout(timer);
-        const sessionStdout = activeSession?.stdout?.trim() || '';
+        let sessionStdout = activeSession?.stdout?.trim() || '';
         const sessionStderr = activeSession?.stderr?.trim() || '';
         const sessionTask = activeSession?.task || task;
 
         const status = killed ? 'timeout' : code !== 0 ? 'error' : 'completed';
+
+        // If stdout is sparse, supplement with the --share transcript
+        if (!sessionStdout || sessionStdout.length < 100) {
+          try {
+            const shareContent = fs.readFileSync(sessionShareFile, 'utf-8').trim();
+            if (shareContent) {
+              sessionStdout = sessionStdout
+                ? `${sessionStdout}\n\n--- Full transcript ---\n${shareContent}`
+                : shareContent;
+            }
+          } catch (_) { /* share file may not exist if session crashed early */ }
+        }
 
         // Preserve output for copilot_get_result
         lastCompletedSession = {
@@ -217,7 +274,15 @@ export const copilotDispatchHandler: FunctionHandler = {
         activeSession = null;
         export_setHookDelivered = null;
         broadcastFn?.({ type: 'copilot.session.end', status, timestamp: Date.now() });
-        console.log(`[copilot-dispatch] Process closed (status=${status}, code=${code}, hookDelivered=${hookDelivered}, outputLen=${sessionStdout.length})`);
+        console.log(`[copilot-dispatch] Process closed (status=${status}, code=${code}, hookDelivered=${hookDelivered}, outputLen=${sessionStdout.length}, stderrLen=${sessionStderr.length})`);
+        // Append a completion marker to the log so the VNC xterm shows the final status
+        try {
+          fs.appendFileSync(COPILOT_LOG_FILE,
+            `\n==============================\n` +
+            `Session ${status.toUpperCase()} at ${new Date().toISOString()}\n` +
+            (sessionStderr ? `\n[stderr]\n${sessionStderr}\n` : '') +
+            `==============================\n`);
+        } catch (_) { /* non-fatal */ }
 
         // Commit + push session outputs to remote repo (non-fatal)
         commitAndPushWorkDir(sessionTask);

@@ -7,7 +7,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     fluxbox \
     x11vnc \
+    xterm \
     curl \
+    expect \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI (for `gh copilot` extension)
@@ -54,4 +56,8 @@ VOLUME ["/data/browser-profile", "/data/copilot-workdir", "/data/copilot-home", 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8081/ || exit 1
 
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "dist/server.js"]
