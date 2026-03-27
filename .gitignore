@@ -11,6 +11,8 @@ scripts/localtunnel/*.log
 
 # runtime artifacts (ThoughtFlow, etc.)
 runtime-data/
+# local Docker bind-mount volumes (host-visible data from docker-compose.browser.yml)
+local-volumes/
 .ngrok
 adaptations.edits.json
 .ngrok_cmd

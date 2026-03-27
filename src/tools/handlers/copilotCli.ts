@@ -2,10 +2,10 @@ import { FunctionHandler } from '../../agentConfigs/types';
 import { spawn, ChildProcess } from 'child_process';
 import { execFile } from 'child_process';
 import fs from 'fs';
-import { COPILOT_WORK_DIR, COPILOT_HOME_DIR, commitAndPushWorkDir } from '../../browser';
+import { COPILOT_WORK_DIR, COPILOT_HOME_DIR, commitAndPushWorkDir, GLOBAL_LOG_FILE } from '../../browser';
 
-// Session log file — written to /tmp so xterm can tail it for VNC visibility
-const COPILOT_LOG_FILE = '/tmp/copilot-session.log';
+// GLOBAL_LOG_FILE is imported from browser/index.ts — it is an append-only log
+// file tailed by the persistent xterm in the VNC display.
 
 // Single-session enforcement
 let activeSession: { child: ChildProcess; task: string; startedAt: number; stdout: string; stderr: string } | null = null;
@@ -171,44 +171,29 @@ export const copilotDispatchHandler: FunctionHandler = {
       const timeoutMs = parseInt(process.env.COPILOT_TIMEOUT_MS || '300000', 10);
 
       // 7. Spawn copilot process (async — returns immediately, results via hooks)
-      // Per docs: -p + -s (silent, clean stdout) + --no-ask-user + --yolo + --agent
-      // --share writes the full session transcript to a file (reliable fallback if stdout is sparse)
+      // Per docs: -p (prompt) + --no-ask-user + --yolo + --agent
+      // -s (silent/scriptable) is intentionally omitted so the full reasoning trace
+      // is written to the log file and visible in the VNC terminal.
+      // --share writes the full session transcript to a file as an additional fallback.
       const sessionShareFile = '/tmp/copilot-session-share.md';
-      const baseArgs = ['-p', task, '-s', '--no-ask-user', '--yolo',
+      const baseArgs = ['-p', task, '--no-ask-user', '--yolo',
         '--agent=delegate-browser',
         `--share=${sessionShareFile}`];
       const spawnArgs = copilotInfo.ghMode ? ['copilot', ...baseArgs] : baseArgs;
 
-      // Initialise session log file for VNC visibility
+      // Append session start marker to the global log (history is preserved across sessions)
       try {
-        fs.writeFileSync(COPILOT_LOG_FILE,
-          `=== Copilot Session ===\nTask: ${task}\nStarted: ${new Date().toISOString()}\n` +
-          `===============================\n\n`);
+        fs.appendFileSync(GLOBAL_LOG_FILE,
+          `\n${'═'.repeat(60)}\n` +
+          `SESSION STARTED  ${new Date().toISOString()}\n` +
+          `Task: ${task}\n` +
+          `${'═'.repeat(60)}\n\n`);
       } catch (_) { /* non-fatal */ }
 
       const child = spawn(copilotInfo.path, spawnArgs, { cwd, env, stdio: 'pipe' });
       activeSession = { child, task, startedAt: Date.now(), stdout: '', stderr: '' };
 
       broadcastFn?.({ type: 'copilot.session.start', task: truncatedTask, timestamp: Date.now() });
-
-      // Open an xterm in the VNC display tailing the log file
-      if (process.env.DISPLAY) {
-        try {
-          const xtermProc = spawn('xterm', [
-            '-hold',
-            '-title', `Copilot: ${truncatedTask}`,
-            '-fg', 'lime green',
-            '-bg', 'black',
-            '-fs', '11',
-            '-e', 'tail', '-f', COPILOT_LOG_FILE,
-          ], {
-            env: { ...process.env as Record<string, string>, DISPLAY: process.env.DISPLAY },
-            detached: true,
-            stdio: 'ignore',
-          });
-          xtermProc.unref();
-        } catch (_) { /* xterm not available — non-fatal */ }
-      }
 
       let killed = false;
       // Track whether the sessionEnd hook already injected the result
@@ -218,13 +203,13 @@ export const copilotDispatchHandler: FunctionHandler = {
       child.stdout.on('data', (chunk: Buffer) => {
         const text = chunk.toString();
         if (activeSession) activeSession.stdout += text;
-        try { fs.appendFileSync(COPILOT_LOG_FILE, text); } catch (_) { /* non-fatal */ }
+        try { fs.appendFileSync(GLOBAL_LOG_FILE, text); } catch (_) { /* non-fatal */ }
         broadcastFn?.({ type: 'copilot.stdout', output: text, timestamp: Date.now() });
       });
       child.stderr.on('data', (chunk: Buffer) => {
         const text = chunk.toString();
         if (activeSession) activeSession.stderr += text;
-        try { fs.appendFileSync(COPILOT_LOG_FILE, `[stderr] ${text}`); } catch (_) { /* non-fatal */ }
+        try { fs.appendFileSync(GLOBAL_LOG_FILE, `[stderr] ${text}`); } catch (_) { /* non-fatal */ }
         broadcastFn?.({ type: 'copilot.stderr', output: text, timestamp: Date.now() });
       });
 
@@ -275,9 +260,9 @@ export const copilotDispatchHandler: FunctionHandler = {
         export_setHookDelivered = null;
         broadcastFn?.({ type: 'copilot.session.end', status, timestamp: Date.now() });
         console.log(`[copilot-dispatch] Process closed (status=${status}, code=${code}, hookDelivered=${hookDelivered}, outputLen=${sessionStdout.length}, stderrLen=${sessionStderr.length})`);
-        // Append a completion marker to the log so the VNC xterm shows the final status
+        // Append a completion marker to the log so the persistent VNC terminal shows the final status
         try {
-          fs.appendFileSync(COPILOT_LOG_FILE,
+          fs.appendFileSync(GLOBAL_LOG_FILE,
             `\n==============================\n` +
             `Session ${status.toUpperCase()} at ${new Date().toISOString()}\n` +
             (sessionStderr ? `\n[stderr]\n${sessionStderr}\n` : '') +

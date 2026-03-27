@@ -17,9 +17,22 @@ Rules:
 - Each fact must be a single plain-text line starting with "- ".
 - If there are no qualifying facts, return exactly: NONE`;
 
+/** Jaccard similarity between two query strings (word-set overlap). */
+function queryOverlap(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const tokenize = (s: string) => new Set(s.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 2));
+  const setA = tokenize(a);
+  const setB = tokenize(b);
+  if (setA.size === 0 && setB.size === 0) return 1;
+  let intersection = 0;
+  for (const w of setA) if (setB.has(w)) intersection++;
+  return intersection / (setA.size + setB.size - intersection);
+}
+
 class MemoryModule {
   private _openaiClient: any = null;
   private _cachedMemories: string | null = null;
+  private _cachedQuery: string = '';
   private _cacheUpdatedAt: number = 0;
   private _inflightRetrieve: Promise<string | null> | null = null;
   private _dedup: MemoryDeduplicator = new MemoryDeduplicator();
@@ -72,19 +85,25 @@ class MemoryModule {
     const backend = getMemoryBackend();
     if (!backend.available) return null;
 
-    // Warm cache — return immediately, refresh in background
+    // Warm cache — return immediately if the new query is topically related; otherwise bust
     if (this._cachedMemories !== null) {
+      const similarity = queryOverlap(query, this._cachedQuery);
       const ageMs = Date.now() - this._cacheUpdatedAt;
-      const lines = this._cachedMemories.split('\n').filter(Boolean);
-      console.log(`[memory] retrieve — cache hit (age: ${ageMs}ms), returning immediately`);
-      const cachets = Date.now();
-      this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: this._cachedMemories, source: 'cache', age_ms: ageMs, timestamp: cachets });
-      if (conversationId) {
-        this._persist(conversationId, 'memory_retrieved', { source: 'cache', count: lines.length, age_ms: ageMs }, cachets);
-        this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'cache', count: lines.length }, cachets);
+      if (similarity >= 0.15) {
+        const lines = this._cachedMemories.split('\n').filter(Boolean);
+        console.log(`[memory] retrieve — cache hit (age: ${ageMs}ms, overlap: ${similarity.toFixed(2)}), returning immediately`);
+        const cachets = Date.now();
+        this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: this._cachedMemories, source: 'cache', age_ms: ageMs, timestamp: cachets });
+        if (conversationId) {
+          this._persist(conversationId, 'memory_retrieved', { source: 'cache', count: lines.length, age_ms: ageMs }, cachets);
+          this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'cache', count: lines.length }, cachets);
+        }
+        this._kickBackgroundRefresh(backend, query);
+        return this._cachedMemories;
       }
-      this._kickBackgroundRefresh(backend, query);
-      return this._cachedMemories;
+      console.log(`[memory] retrieve — cache bust (overlap: ${similarity.toFixed(2)} < 0.15), doing fresh search`);
+      this._cachedMemories = null;
+      this._cachedQuery = '';
     }
 
     if (!query.trim()) return null;
@@ -102,6 +121,7 @@ class MemoryModule {
           this._inflightRetrieve = null;
           if (result !== null) {
             this._cachedMemories = result;
+            this._cachedQuery = query;
             this._cacheUpdatedAt = Date.now();
             const lines = result.split('\n').filter(Boolean);
             if (timedOut) {
@@ -185,6 +205,7 @@ class MemoryModule {
         this._inflightRetrieve = null;
         if (result !== null) {
           this._cachedMemories = result;
+          this._cachedQuery = query;
           this._cacheUpdatedAt = Date.now();
           console.log(`[memory] retrieve — cache refreshed (${result.split('\n').length} result(s))`);
         }

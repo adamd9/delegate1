@@ -40,18 +40,24 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# Create mount-point directories
-RUN mkdir -p /data/browser-profile /data/copilot-workdir /data/copilot-home /app/runtime-data
+# Create mount-point directory
+RUN mkdir -p /app/runtime-data
 
 # Environment defaults
+# PLAYWRIGHT_BROWSERS_PATH tells @playwright/cli (and the playwright node module it
+# bundles) to use the browsers already present in the base image instead of
+# downloading its own copy. PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD prevents any download
+# attempt during npm operations inside the container.
 ENV BROWSER_ENABLED=true \
     DOCKER=true \
     PORT=8081 \
-    RUNTIME_DATA_DIR=/app/runtime-data
+    RUNTIME_DATA_DIR=/app/runtime-data \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 EXPOSE 8081 5900
 
-VOLUME ["/data/browser-profile", "/data/copilot-workdir", "/data/copilot-home", "/app/runtime-data"]
+VOLUME ["/app/runtime-data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8081/ || exit 1

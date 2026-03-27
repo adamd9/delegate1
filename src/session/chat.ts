@@ -475,7 +475,23 @@ export async function handleTextChatMessage(
       },
       timestamp: Date.now(),
     });
-    const response = await session.openaiClient.responses.create(requestBody);
+    let response: Awaited<ReturnType<typeof session.openaiClient.responses.create>>;
+    try {
+      response = await session.openaiClient.responses.create(requestBody);
+    } catch (firstErr: unknown) {
+      const firstMsg: string = (firstErr as any)?.error?.message ?? (firstErr as any)?.message ?? '';
+      if (firstMsg.includes('No tool output found for function call') && session.previousResponseId) {
+        // The previous response had an unresolved tool call (e.g. the request was
+        // cancelled after tool dispatch).  Start a fresh thread by dropping the
+        // stale previous_response_id and retrying once.
+        console.warn('[chat] Stale thread detected (unresolved tool call in previous response) — resetting previousResponseId and retrying as new thread.');
+        session.previousResponseId = undefined;
+        delete requestBody.previous_response_id;
+        response = await session.openaiClient.responses.create(requestBody);
+      } else {
+        throw firstErr;
+      }
+    }
     // If canceled mid-flight, abort committing
     if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
       console.log(`[${requestId}] Aborting post-response handling due to cancel`);

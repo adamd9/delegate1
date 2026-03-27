@@ -11,23 +11,18 @@ const isDocker = (): boolean =>
 
 const RUNTIME_DATA_DIR = process.env.RUNTIME_DATA_DIR;
 
-export const BROWSER_PROFILE_DIR: string = isDocker()
-  ? '/data/browser-profile'
-  : RUNTIME_DATA_DIR
-    ? path.join(RUNTIME_DATA_DIR, 'browser-profile')
-    : path.join(__dirname, '..', '..', 'runtime-data', 'browser-profile');
+const _runtimeBase: string = RUNTIME_DATA_DIR
+  ? RUNTIME_DATA_DIR
+  : isDocker()
+    ? '/app/runtime-data'
+    : path.join(__dirname, '..', '..', 'runtime-data');
 
-export const COPILOT_WORK_DIR: string = isDocker()
-  ? '/data/copilot-workdir'
-  : RUNTIME_DATA_DIR
-    ? path.join(RUNTIME_DATA_DIR, 'copilot-workdir')
-    : path.join(__dirname, '..', '..', 'runtime-data', 'copilot-workdir');
+export const BROWSER_PROFILE_DIR: string = path.join(_runtimeBase, 'browser-profile');
+export const COPILOT_WORK_DIR: string    = path.join(_runtimeBase, 'copilot-workdir');
+export const COPILOT_HOME_DIR: string    = path.join(_runtimeBase, 'copilot-home');
 
-export const COPILOT_HOME_DIR: string = isDocker()
-  ? '/data/copilot-home'
-  : RUNTIME_DATA_DIR
-    ? path.join(RUNTIME_DATA_DIR, 'copilot-home')
-    : path.join(__dirname, '..', '..', 'runtime-data', 'copilot-home');
+/** Append-only log file shared by all copilot sessions — tailed by the persistent VNC terminal. */
+export const GLOBAL_LOG_FILE = '/tmp/copilot-session.log';
 
 // ---------------------------------------------------------------------------
 // State
@@ -46,6 +41,8 @@ export interface BrowserStatus {
 let xvfbProc: ChildProcess | null = null;
 let fluxboxProc: ChildProcess | null = null;
 let x11vncProc: ChildProcess | null = null;
+let chromiumProc: ChildProcess | null = null;
+let xtermLogProc: ChildProcess | null = null;
 let running = false;
 
 // ---------------------------------------------------------------------------
@@ -315,6 +312,17 @@ exit 0
   fs.chmodSync(callbackPath, 0o755);
 
   console.log('[browser] scaffolded copilot hooks in', hooksDir);
+
+  // Install playwright-cli skills so Copilot CLI knows how to drive the browser
+  // This creates .github/copilot/skills/playwright-cli/SKILL.md (and siblings) in the workdir.
+  // Overwrite every run to ensure skills stay up to date.
+  try {
+    execSync('playwright-cli install --skills', { cwd: COPILOT_WORK_DIR, stdio: 'ignore' });
+    console.log('[browser] playwright-cli skills installed in workdir');
+  } catch (err: any) {
+    // Non-fatal — copilot can still run; it just won't have the packaged skill reference
+    console.warn('[browser] playwright-cli install --skills failed (non-fatal):', err.message || err);
+  }
 }
 
 function setupCopilotHome(): void {
@@ -455,6 +463,46 @@ export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string
     );
     console.log(`[browser] x11vnc started (pid ${x11vncProc.pid})`);
 
+    // Give fluxbox time to initialise the window manager before placing windows
+    await delay(1500);
+
+    // Ensure the global log file exists so tail -f starts immediately
+    try {
+      if (!fs.existsSync(GLOBAL_LOG_FILE)) fs.writeFileSync(GLOBAL_LOG_FILE, '');
+    } catch (_) { /* non-fatal */ }
+
+    // --- Persistent terminal (right half: x=822, 58 cols × 52 rows) ---
+    xtermLogProc = spawn('xterm', [
+      '-title', 'Copilot Log',
+      '-fg', 'lime green',
+      '-bg', 'black',
+      '-fs', '10',
+      '-geometry', '58x52+822+0',
+      '-e', 'tail', '-f', GLOBAL_LOG_FILE,
+    ], {
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, DISPLAY: ':99' },
+    });
+    xtermLogProc.unref();
+    console.log(`[browser] xterm log started (pid ${xtermLogProc.pid})`);
+
+    // --- Playwright session monitor (left half: playwright-cli show dashboard) ---
+    // playwright-cli show opens a live visual dashboard that streams all active
+    // playwright-cli browser sessions (headless or headed). This is the correct way
+    // to observe what the copilot browser agent is doing in real time.
+    try {
+      chromiumProc = spawn('playwright-cli', ['show'], {
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env, DISPLAY: ':99' },
+      });
+      chromiumProc.unref();
+      console.log(`[browser] playwright-cli show started (pid ${chromiumProc.pid})`);
+    } catch (_) {
+      console.warn('[browser] playwright-cli show failed to start — skipping session monitor');
+    }
+
     running = true;
     return { ok: true };
   } catch (err: unknown) {
@@ -467,10 +515,14 @@ export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string
 export function stopBrowserInfra(): void {
   console.log('[browser] stopping browser infrastructure');
   try {
+    killProc('chromium', chromiumProc);
+    killProc('xterm-log', xtermLogProc);
     killProc('x11vnc', x11vncProc);
     killProc('fluxbox', fluxboxProc);
     killProc('Xvfb', xvfbProc);
 
+    chromiumProc = null;
+    xtermLogProc = null;
     x11vncProc = null;
     fluxboxProc = null;
     xvfbProc = null;
