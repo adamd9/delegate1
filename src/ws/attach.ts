@@ -7,6 +7,7 @@ import { establishChatSocket } from '../session/chat';
 import { establishDeepgramProxy } from './deepgramProxy';
 import { session, isOpen, jsonSend } from '../session/state';
 import { setCopilotBroadcast, getActiveSession } from '../tools/handlers/copilotCli';
+import { handleVncWebSocket, validateVncToken } from '../browser/vncProxy';
 
 /**
  * Attaches a WebSocketServer to the given HTTP server and wires up
@@ -114,6 +115,13 @@ export function attachWebSockets(
       ws.on('close', () => chatClients.delete(ws));
     } else if (type === 'deepgram') {
       establishDeepgramProxy(ws);
+    } else if (type === 'vnc-ws') {
+      const token = url.searchParams.get('token') || '';
+      if (!validateVncToken(token)) {
+        ws.close(4401, 'Unauthorized');
+        return;
+      }
+      handleVncWebSocket(ws);
     } else if (type === 'copilot') {
       copilotClients.add(ws);
       const activeSession = getActiveSession();

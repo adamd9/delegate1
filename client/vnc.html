@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VNC Remote Display · HK</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #1b1d27; --surface: #22253a; --surface2: #2a2d42; --surface3: #181a26;
+      --border: #2e3150; --border2: #383b5e; --accent: #818cf8; --green: #34d399;
+      --amber: #fbbf24; --red: #f87171; --blue: #60a5fa;
+      --text: #e2e4f0; --text-mid: #6b7194; --text-dim: #3d4268;
+      --font: 'SF Mono','Fira Code','Consolas',monospace;
+      --font-ui: -apple-system,BlinkMacSystemFont,'Inter',sans-serif;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font-ui); min-height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
+
+    header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface3); flex-shrink: 0; gap: 12px; }
+    .hdr-left { display: flex; align-items: center; gap: 12px; }
+    .back-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border2); background: transparent; color: var(--text-mid); font-size: 11px; font-family: var(--font); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+    .back-btn:hover { color: var(--text); }
+    h1 { font-size: 14px; font-weight: 600; color: var(--text); }
+    .hdr-right { display: flex; align-items: center; gap: 10px; }
+
+    .conn-status { display: flex; align-items: center; gap: 6px; font-size: 11px; font-family: var(--font); color: var(--text-mid); }
+    .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
+    .conn-dot.connected { background: var(--green); }
+
+    .toolbar-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border2); background: transparent; color: var(--text-mid); font-size: 11px; font-family: var(--font); cursor: pointer; }
+    .toolbar-btn:hover { color: var(--text); }
+    .toolbar-btn.danger { border-color: var(--red); color: var(--red); }
+    .toolbar-btn.danger:hover { background: var(--red); color: var(--bg); }
+
+    /* Login overlay */
+    .login-overlay {
+      position: absolute; inset: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg);
+    }
+    .login-overlay.hidden { display: none; }
+    .login-card {
+      background: var(--surface); border: 1px solid var(--border2); border-radius: 8px;
+      padding: 32px; width: 340px; text-align: center;
+    }
+    .login-card h2 { font-size: 16px; margin-bottom: 4px; }
+    .login-card .subtitle { font-size: 12px; color: var(--text-mid); margin-bottom: 20px; }
+    .login-card input {
+      width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border2);
+      background: var(--surface2); color: var(--text); font-family: var(--font); font-size: 13px;
+      outline: none; margin-bottom: 12px;
+    }
+    .login-card input:focus { border-color: var(--accent); }
+    .login-card button {
+      width: 100%; padding: 10px; border-radius: 6px; border: none;
+      background: var(--accent); color: #fff; font-family: var(--font-ui); font-size: 13px;
+      font-weight: 600; cursor: pointer;
+    }
+    .login-card button:hover { opacity: 0.9; }
+    .login-card button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .login-error { color: var(--red); font-size: 12px; margin-top: 8px; min-height: 18px; }
+
+    /* VNC container */
+    #vnc-container {
+      flex: 1; position: relative; overflow: hidden; background: #000;
+    }
+    #vnc-container.hidden { display: none; }
+
+    /* Disconnected message */
+    .disconnected-msg {
+      position: absolute; inset: 0; z-index: 50;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(27, 29, 39, 0.92); gap: 12px;
+    }
+    .disconnected-msg.hidden { display: none; }
+    .disconnected-msg span { color: var(--text-mid); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="hdr-left">
+      <a href="/" class="back-btn">← Home</a>
+      <h1>VNC Remote Display</h1>
+    </div>
+    <div class="hdr-right">
+      <div class="conn-status">
+        <div class="conn-dot" id="connDot"></div>
+        <span id="connLabel">disconnected</span>
+      </div>
+      <button class="toolbar-btn" id="fullscreenBtn" title="Fullscreen" style="display:none;">⛶ Fullscreen</button>
+      <button class="toolbar-btn danger" id="disconnectBtn" style="display:none;">Disconnect</button>
+    </div>
+  </header>
+
+  <div id="vnc-container" class="hidden">
+    <div class="disconnected-msg hidden" id="disconnectedMsg">
+      <span id="disconnectedText">Connection lost</span>
+      <button class="toolbar-btn" id="reconnectBtn">Reconnect</button>
+    </div>
+  </div>
+
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-card">
+      <h2>🖥 VNC Access</h2>
+      <p class="subtitle">Enter the VNC password to connect to the remote display</p>
+      <form id="loginForm">
+        <input type="password" id="passwordInput" placeholder="Password" autocomplete="off" autofocus />
+        <button type="submit" id="loginBtn">Connect</button>
+      </form>
+      <div class="login-error" id="loginError"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import RFB from '/vendor/novnc/rfb.js';
+
+    const $ = (sel) => document.querySelector(sel);
+    const loginOverlay = $('#loginOverlay');
+    const loginForm = $('#loginForm');
+    const passwordInput = $('#passwordInput');
+    const loginBtn = $('#loginBtn');
+    const loginError = $('#loginError');
+    const vncContainer = $('#vnc-container');
+    const connDot = $('#connDot');
+    const connLabel = $('#connLabel');
+    const fullscreenBtn = $('#fullscreenBtn');
+    const disconnectBtn = $('#disconnectBtn');
+    const disconnectedMsg = $('#disconnectedMsg');
+    const disconnectedText = $('#disconnectedText');
+    const reconnectBtn = $('#reconnectBtn');
+
+    let rfb = null;
+    let token = sessionStorage.getItem('vnc_token');
+
+    function setStatus(label, connected) {
+      connLabel.textContent = label;
+      connDot.classList.toggle('connected', connected);
+    }
+
+    function showToolbar(show) {
+      fullscreenBtn.style.display = show ? '' : 'none';
+      disconnectBtn.style.display = show ? '' : 'none';
+    }
+
+    function buildWsUrl() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${proto}//${location.host}/vnc-ws?token=${encodeURIComponent(token)}`;
+    }
+
+    function connect() {
+      loginOverlay.classList.add('hidden');
+      vncContainer.classList.remove('hidden');
+      disconnectedMsg.classList.add('hidden');
+      setStatus('connecting…', false);
+
+      const wsUrl = buildWsUrl();
+
+      try {
+        rfb = new RFB(vncContainer, wsUrl, {
+          credentials: { password: passwordInput.value },
+        });
+      } catch (err) {
+        setStatus('error', false);
+        disconnectedText.textContent = 'Failed to initialize VNC: ' + err.message;
+        disconnectedMsg.classList.remove('hidden');
+        return;
+      }
+
+      rfb.scaleViewport = true;
+      rfb.resizeSession = false;
+      rfb.showDotCursor = true;
+
+      rfb.addEventListener('connect', () => {
+        setStatus('connected', true);
+        showToolbar(true);
+      });
+
+      rfb.addEventListener('disconnect', (ev) => {
+        const clean = ev.detail.clean;
+        setStatus('disconnected', false);
+        showToolbar(false);
+        disconnectedText.textContent = clean ? 'Disconnected' : 'Connection lost unexpectedly';
+        disconnectedMsg.classList.remove('hidden');
+        rfb = null;
+      });
+
+      rfb.addEventListener('credentialsrequired', () => {
+        console.log('[vnc] credentials required, sending password');
+        rfb.sendCredentials({ password: passwordInput.value });
+      });
+
+      rfb.addEventListener('securityfailure', (ev) => {
+        setStatus('auth failed', false);
+        disconnectedText.textContent = 'VNC authentication failed: ' + (ev.detail.reason || 'unknown');
+        disconnectedMsg.classList.remove('hidden');
+        rfb = null;
+      });
+    }
+
+    // Login form
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      loginError.textContent = '';
+      loginBtn.disabled = true;
+
+      try {
+        const res = await fetch('/api/vnc/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: passwordInput.value }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          loginError.textContent = data.error || 'Authentication failed';
+          loginBtn.disabled = false;
+          return;
+        }
+        const data = await res.json();
+        token = data.token;
+        sessionStorage.setItem('vnc_token', token);
+        connect();
+      } catch (err) {
+        loginError.textContent = 'Network error: ' + err.message;
+      }
+      loginBtn.disabled = false;
+    });
+
+    // Auto-connect if token exists
+    if (token) {
+      connect();
+    }
+
+    // Reconnect
+    reconnectBtn.addEventListener('click', () => {
+      if (token) {
+        connect();
+      } else {
+        loginOverlay.classList.remove('hidden');
+        vncContainer.classList.add('hidden');
+      }
+    });
+
+    // Disconnect
+    disconnectBtn.addEventListener('click', () => {
+      if (rfb) rfb.disconnect();
+    });
+
+    // Fullscreen
+    fullscreenBtn.addEventListener('click', () => {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        vncContainer.requestFullscreen().catch(() => {});
+      }
+    });
+  </script>
+</body>
+</html>

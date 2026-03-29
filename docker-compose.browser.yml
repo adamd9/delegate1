@@ -4,8 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile.browser
     ports:
-      - "8081:8081"   # App
-      - "5900:5900"   # VNC
+      - "8081:8081"   # App (includes VNC web viewer)
     volumes:
       - ./local-volumes/runtime-data:/app/runtime-data
       - ./local-volumes/gh-copilot-data:/root/.local/share/gh

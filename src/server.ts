@@ -20,6 +20,7 @@ import { registerVoiceDefaultsRoutes } from './server/routes/voiceDefaults';
 import { registerMemoryConfigRoutes } from './server/routes/memoryConfig';
 import { registerOpenAiSessionRoute } from './server/routes/openaiSession';
 import { registerCopilotRoutes } from './server/routes/copilot';
+import { registerVncRoutes } from './server/routes/vnc';
 import { getConfig } from './server/config/env';
 import { registerHealthRoutes, setReady } from './server/routes/health';
 import { registerBuildInfoRoutes } from './server/routes/buildInfo';
@@ -144,6 +145,9 @@ registerOpenAiSessionRoute(app);
 
 // Copilot CLI hook callback routes
 registerCopilotRoutes(app, { chatClients, logsClients });
+
+// VNC web viewer routes (noVNC static files + auth endpoint)
+registerVncRoutes(app);
 
 // Serve the vanilla JS client (after all API routes so they take priority)
 app.use(express.static(vanillaClientDir, { extensions: ['html'] }));
