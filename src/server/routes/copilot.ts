@@ -13,7 +13,7 @@ function formatNotification(task: string, status: string): string {
     `[COPILOT TASK NOTIFICATION — this is NOT from the user]\n\n` +
     `A background task you dispatched has ${statusLine}.\n` +
     `Task: "${task}"\n\n` +
-    `You can use the \`copilot_get_result\` tool to retrieve the full output if needed.\n` +
+    `You can use the \`copilot_status\` tool to retrieve the full output if needed.\n` +
     `Decide whether to fetch and share results with the user, or simply let them know the task is done.`
   );
 }
@@ -71,7 +71,7 @@ export function registerCopilotRoutes(
             `[COPILOT TASK NOTIFICATION — this is NOT from the user]\n\n` +
             `A background task encountered an error: ${errorName}: ${errorMsg}\n` +
             `Task: "${task}"\n\n` +
-            `You can use \`copilot_get_result\` to see the full output. ` +
+            `You can use \`copilot_status\` to see the full output. ` +
             `Decide whether to inform the user or retry.`;
 
           await handleTextChatMessage(message, chatClients, logsClients, 'copilot');

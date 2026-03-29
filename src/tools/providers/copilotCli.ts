@@ -34,5 +34,5 @@ export function registerCopilotCliTools() {
     },
   ]);
 
-  console.log('[copilot-cli] registered copilot_dispatch + copilot_get_result tools');
+  console.log('[copilot-cli] registered copilot_dispatch + copilot_status tools');
 }

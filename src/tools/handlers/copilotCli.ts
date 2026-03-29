@@ -10,7 +10,7 @@ import { COPILOT_WORK_DIR, COPILOT_HOME_DIR, commitAndPushWorkDir, GLOBAL_LOG_FI
 // Single-session enforcement
 let activeSession: { child: ChildProcess; task: string; startedAt: number; stdout: string; stderr: string } | null = null;
 
-// Preserved output from the last completed session (for copilot_get_result)
+// Preserved output from the last completed session (for copilot_status)
 let lastCompletedSession: { task: string; status: string; stdout: string; stderr: string; completedAt: number } | null = null;
 
 export function getActiveSession() {
@@ -179,7 +179,23 @@ export const copilotDispatchHandler: FunctionHandler = {
       // is written to the log file and visible in the VNC terminal.
       // --share writes the full session transcript to a file as an additional fallback.
       const sessionShareFile = '/tmp/copilot-session-share.md';
-      const baseArgs = ['-p', task, '--no-ask-user', '--yolo',
+
+      // If a prior session exists, prepend its summary as context so the agent knows
+      // what was already accomplished and can continue naturally.
+      let effectiveTask = task;
+      if (lastCompletedSession) {
+        const prevSummary =
+          `## Context from previous session\n` +
+          `Task: ${lastCompletedSession.task}\n` +
+          `Status: ${lastCompletedSession.status}\n` +
+          `Completed: ${new Date(lastCompletedSession.completedAt).toISOString()}\n\n` +
+          `Output summary:\n${lastCompletedSession.stdout.slice(0, 2000)}` +
+          (lastCompletedSession.stdout.length > 2000 ? '\n...[truncated]' : '') +
+          `\n\n---\n\n## New task\n${task}`;
+        effectiveTask = prevSummary;
+      }
+
+      const baseArgs = ['-p', effectiveTask, '--no-ask-user', '--yolo',
         '--agent=delegate-browser',
         `--share=${sessionShareFile}`];
       const spawnArgs = copilotInfo.ghMode ? ['copilot', ...baseArgs] : baseArgs;
@@ -258,7 +274,7 @@ export const copilotDispatchHandler: FunctionHandler = {
           } catch (_) { /* share file may not exist if session crashed early */ }
         }
 
-        // Preserve output for copilot_get_result
+        // Preserve output for copilot_status
         lastCompletedSession = {
           task: sessionTask,
           status,
@@ -311,10 +327,10 @@ export const copilotDispatchHandler: FunctionHandler = {
 
 export const copilotGetResultHandler: FunctionHandler = {
   schema: {
-    name: 'copilot_get_result',
+    name: 'copilot_status',
     type: 'function',
     description:
-      'Retrieve the output from the most recent Copilot CLI session, or check the status of a currently running session. Use after receiving a task completion notification, or when the user asks for an update.',
+      'Check the status of the Copilot CLI agent — works whether a session is currently running or has already completed. Returns live progress (stdout so far, elapsed time) for a running session, or the full output for a completed/timed-out session.',
     parameters: {
       type: 'object',
       properties: {},

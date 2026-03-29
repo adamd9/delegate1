@@ -3,9 +3,9 @@ import { FunctionHandler } from '../../agentConfigs/types';
 const GITHUB_API = 'https://api.github.com';
 
 function getHeaders(): { headers: Record<string, string>; error?: undefined } | { error: string } {
-  const pat = process.env.GITHUB_PAT;
+  const pat = process.env.GITHUB_PAT || process.env.COPILOT_GITHUB_TOKEN;
   if (!pat) {
-    return { error: 'GITHUB_PAT not configured. Set the GITHUB_PAT environment variable to a GitHub Personal Access Token.' };
+    return { error: 'No GitHub token configured. Set GITHUB_PAT (or COPILOT_GITHUB_TOKEN) to a GitHub Personal Access Token.' };
   }
   return {
     headers: {
