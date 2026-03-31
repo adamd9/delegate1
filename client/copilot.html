@@ -27,8 +27,11 @@
     .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
     .conn-dot.connected { background: var(--green); }
 
-    .clear-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border2); background: transparent; color: var(--text-mid); font-size: 11px; font-family: var(--font); cursor: pointer; }
-    .clear-btn:hover { color: var(--text); }
+    .toolbar-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border2); background: transparent; color: var(--text-mid); font-size: 11px; font-family: var(--font); cursor: pointer; }
+    .toolbar-btn:hover { color: var(--text); }
+    .toolbar-btn.active { border-color: var(--accent); color: var(--accent); }
+    .toolbar-btn.danger { border-color: var(--red); color: var(--red); }
+    .toolbar-btn.danger:hover { background: var(--red); color: var(--bg); }
 
     .status-bar { font-size: 11px; color: var(--text-mid); font-family: var(--font); padding: 6px 20px; border-bottom: 1px solid var(--border); background: var(--surface3); display: flex; align-items: center; gap: 8px; }
     .status-label { color: var(--text-dim); }
@@ -39,6 +42,11 @@
     .status-value.error { color: var(--red); }
     .status-value.timeout { color: var(--amber); }
 
+    /* Main content area — split pane when VNC is open */
+    .main-content { flex: 1; display: flex; flex-direction: row; overflow: hidden; min-height: 0; }
+
+    /* Terminal pane */
+    .terminal-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
     #terminal { flex: 1; overflow-y: auto; padding: 12px 20px; font-family: var(--font); font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
     #terminal::-webkit-scrollbar { width: 4px; }
     #terminal::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
@@ -47,8 +55,59 @@
     .line-stderr { color: var(--amber); display: block; }
     .line-marker { color: var(--text-dim); display: block; border-top: 1px solid var(--border); padding-top: 6px; margin-top: 6px; font-size: 11px; }
     .line-marker:first-child { border-top: none; padding-top: 0; margin-top: 0; }
-
     .empty { display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-dim); font-family: var(--font); font-size: 12px; }
+
+    /* VNC pane */
+    .vnc-pane { display: none; flex-direction: column; border-left: 1px solid var(--border); min-width: 0; overflow: hidden; }
+    .vnc-pane.open { display: flex; width: 50%; }
+
+    .vnc-pane-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 12px; background: var(--surface3); border-bottom: 1px solid var(--border);
+      font-size: 11px; font-family: var(--font); color: var(--text-mid); flex-shrink: 0;
+    }
+    .vnc-pane-header .vnc-title { display: flex; align-items: center; gap: 8px; }
+    .vnc-pane-header .vnc-actions { display: flex; align-items: center; gap: 6px; }
+    .vnc-conn-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
+    .vnc-conn-dot.connected { background: var(--green); }
+
+    /* VNC login */
+    .vnc-login {
+      flex: 1; display: flex; align-items: center; justify-content: center; background: var(--bg);
+    }
+    .vnc-login.hidden { display: none; }
+    .vnc-login-card {
+      background: var(--surface); border: 1px solid var(--border2); border-radius: 8px;
+      padding: 24px; width: 280px; text-align: center;
+    }
+    .vnc-login-card h3 { font-size: 13px; margin-bottom: 4px; }
+    .vnc-login-card .subtitle { font-size: 11px; color: var(--text-mid); margin-bottom: 14px; }
+    .vnc-login-card input {
+      width: 100%; padding: 8px 10px; border-radius: 5px; border: 1px solid var(--border2);
+      background: var(--surface2); color: var(--text); font-family: var(--font); font-size: 12px;
+      outline: none; margin-bottom: 10px;
+    }
+    .vnc-login-card input:focus { border-color: var(--accent); }
+    .vnc-login-card button {
+      width: 100%; padding: 8px; border-radius: 5px; border: none;
+      background: var(--accent); color: #fff; font-family: var(--font-ui); font-size: 12px;
+      font-weight: 600; cursor: pointer;
+    }
+    .vnc-login-card button:hover { opacity: 0.9; }
+    .vnc-login-card button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .vnc-login-error { color: var(--red); font-size: 11px; margin-top: 6px; min-height: 16px; }
+
+    /* VNC display area */
+    .vnc-display { flex: 1; position: relative; overflow: hidden; background: #000; }
+    .vnc-display.hidden { display: none; }
+
+    .vnc-disconnected {
+      position: absolute; inset: 0; z-index: 50;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(27, 29, 39, 0.92); gap: 10px;
+    }
+    .vnc-disconnected.hidden { display: none; }
+    .vnc-disconnected span { color: var(--text-mid); font-size: 12px; }
   </style>
 </head>
 <body>
@@ -58,7 +117,8 @@
       <h1>Copilot Session</h1>
     </div>
     <div class="hdr-right">
-      <button class="clear-btn" id="clear-btn">clear</button>
+      <button class="toolbar-btn" id="vnc-toggle">🖥 VNC</button>
+      <button class="toolbar-btn" id="clear-btn">clear</button>
       <div class="conn-status">
         <div class="conn-dot" id="conn-dot"></div>
         <span id="conn-label">disconnected</span>
@@ -69,9 +129,51 @@
     <span class="status-label">status:</span>
     <span class="status-value idle" id="session-status">Idle</span>
   </div>
-  <div id="terminal"><div class="empty">waiting for session…</div></div>
 
-<script>
+  <div class="main-content">
+    <!-- Terminal pane -->
+    <div class="terminal-pane">
+      <div id="terminal"><div class="empty">waiting for session…</div></div>
+    </div>
+
+    <!-- VNC pane (toggled) -->
+    <div class="vnc-pane" id="vnc-pane">
+      <div class="vnc-pane-header">
+        <div class="vnc-title">
+          <div class="vnc-conn-dot" id="vnc-conn-dot"></div>
+          <span id="vnc-conn-label">VNC</span>
+        </div>
+        <div class="vnc-actions">
+          <button class="toolbar-btn" id="vnc-fullscreen-btn" style="display:none;" title="Fullscreen">⛶</button>
+          <button class="toolbar-btn danger" id="vnc-disconnect-btn" style="display:none;">disconnect</button>
+        </div>
+      </div>
+
+      <div class="vnc-login" id="vnc-login">
+        <div class="vnc-login-card">
+          <h3>🖥 VNC Access</h3>
+          <p class="subtitle">Enter the VNC password to connect</p>
+          <form id="vnc-login-form">
+            <input type="password" id="vnc-password" placeholder="Password" autocomplete="off" />
+            <button type="submit" id="vnc-login-btn">Connect</button>
+          </form>
+          <div class="vnc-login-error" id="vnc-login-error"></div>
+        </div>
+      </div>
+
+      <div class="vnc-display hidden" id="vnc-display">
+        <div class="vnc-disconnected hidden" id="vnc-disconnected-msg">
+          <span id="vnc-disconnected-text">Connection lost</span>
+          <button class="toolbar-btn" id="vnc-reconnect-btn">Reconnect</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import RFB from '/vendor/novnc/rfb.js';
+
+  // ── Terminal logic ──
   const ANSI_RE = /\x1b\[[0-9;]*m/g;
   function stripAnsi(str) { return str.replace(ANSI_RE, ''); }
   function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -126,7 +228,7 @@
     return d.toLocaleTimeString();
   }
 
-  function connect() {
+  function connectWs() {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(`${proto}//${location.host}/copilot`);
@@ -135,12 +237,10 @@
 
     ws.onclose = () => {
       setConnected(false);
-      reconnectTimer = setTimeout(connect, 2000);
+      reconnectTimer = setTimeout(connectWs, 2000);
     };
 
-    ws.onerror = () => {
-      ws.close();
-    };
+    ws.onerror = () => { ws.close(); };
 
     ws.onmessage = (event) => {
       let msg;
@@ -185,7 +285,153 @@
     };
   }
 
-  connect();
+  connectWs();
+
+  // ── VNC logic ──
+  const vncPane = document.getElementById('vnc-pane');
+  const vncToggle = document.getElementById('vnc-toggle');
+  const vncConnDot = document.getElementById('vnc-conn-dot');
+  const vncConnLabel = document.getElementById('vnc-conn-label');
+  const vncLogin = document.getElementById('vnc-login');
+  const vncLoginForm = document.getElementById('vnc-login-form');
+  const vncPassword = document.getElementById('vnc-password');
+  const vncLoginBtn = document.getElementById('vnc-login-btn');
+  const vncLoginError = document.getElementById('vnc-login-error');
+  const vncDisplay = document.getElementById('vnc-display');
+  const vncFullscreenBtn = document.getElementById('vnc-fullscreen-btn');
+  const vncDisconnectBtn = document.getElementById('vnc-disconnect-btn');
+  const vncDisconnectedMsg = document.getElementById('vnc-disconnected-msg');
+  const vncDisconnectedText = document.getElementById('vnc-disconnected-text');
+  const vncReconnectBtn = document.getElementById('vnc-reconnect-btn');
+
+  let rfb = null;
+  let vncToken = sessionStorage.getItem('vnc_token');
+  let vncOpen = false;
+
+  function setVncStatus(label, connected) {
+    vncConnLabel.textContent = label;
+    vncConnDot.classList.toggle('connected', connected);
+  }
+
+  function showVncToolbar(show) {
+    vncFullscreenBtn.style.display = show ? '' : 'none';
+    vncDisconnectBtn.style.display = show ? '' : 'none';
+  }
+
+  function buildVncWsUrl() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${location.host}/vnc-ws?token=${encodeURIComponent(vncToken)}`;
+  }
+
+  function connectVnc() {
+    vncLogin.classList.add('hidden');
+    vncDisplay.classList.remove('hidden');
+    vncDisconnectedMsg.classList.add('hidden');
+    setVncStatus('connecting…', false);
+
+    try {
+      rfb = new RFB(vncDisplay, buildVncWsUrl(), {
+        credentials: { password: vncPassword.value },
+      });
+    } catch (err) {
+      setVncStatus('error', false);
+      vncDisconnectedText.textContent = 'Failed to initialize VNC: ' + err.message;
+      vncDisconnectedMsg.classList.remove('hidden');
+      return;
+    }
+
+    rfb.scaleViewport = true;
+    rfb.resizeSession = false;
+    rfb.showDotCursor = true;
+
+    rfb.addEventListener('connect', () => {
+      setVncStatus('connected', true);
+      showVncToolbar(true);
+    });
+
+    rfb.addEventListener('disconnect', (ev) => {
+      const clean = ev.detail.clean;
+      setVncStatus('disconnected', false);
+      showVncToolbar(false);
+      vncDisconnectedText.textContent = clean ? 'Disconnected' : 'Connection lost unexpectedly';
+      vncDisconnectedMsg.classList.remove('hidden');
+      rfb = null;
+    });
+
+    rfb.addEventListener('credentialsrequired', () => {
+      rfb.sendCredentials({ password: vncPassword.value });
+    });
+
+    rfb.addEventListener('securityfailure', (ev) => {
+      setVncStatus('auth failed', false);
+      vncDisconnectedText.textContent = 'VNC auth failed: ' + (ev.detail.reason || 'unknown');
+      vncDisconnectedMsg.classList.remove('hidden');
+      rfb = null;
+    });
+  }
+
+  // Toggle VNC pane
+  vncToggle.addEventListener('click', () => {
+    vncOpen = !vncOpen;
+    vncPane.classList.toggle('open', vncOpen);
+    vncToggle.classList.toggle('active', vncOpen);
+
+    if (vncOpen && !rfb && vncToken) {
+      connectVnc();
+    }
+  });
+
+  // VNC login form
+  vncLoginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    vncLoginError.textContent = '';
+    vncLoginBtn.disabled = true;
+
+    try {
+      const res = await fetch('/api/vnc/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: vncPassword.value }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        vncLoginError.textContent = data.error || 'Authentication failed';
+        vncLoginBtn.disabled = false;
+        return;
+      }
+      const data = await res.json();
+      vncToken = data.token;
+      sessionStorage.setItem('vnc_token', vncToken);
+      connectVnc();
+    } catch (err) {
+      vncLoginError.textContent = 'Network error: ' + err.message;
+    }
+    vncLoginBtn.disabled = false;
+  });
+
+  // VNC reconnect
+  vncReconnectBtn.addEventListener('click', () => {
+    if (vncToken) {
+      connectVnc();
+    } else {
+      vncLogin.classList.remove('hidden');
+      vncDisplay.classList.add('hidden');
+    }
+  });
+
+  // VNC disconnect
+  vncDisconnectBtn.addEventListener('click', () => {
+    if (rfb) rfb.disconnect();
+  });
+
+  // VNC fullscreen
+  vncFullscreenBtn.addEventListener('click', () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      vncDisplay.requestFullscreen().catch(() => {});
+    }
+  });
 </script>
 </body>
 </html>
