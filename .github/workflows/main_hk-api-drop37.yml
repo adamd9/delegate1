@@ -29,7 +29,11 @@ jobs:
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_2DFEC4708A5843D7B6C62022D4531C96 }}
 
       - name: Login to ACR
-        run: az acr login --name appservicesdevacr
+        uses: docker/login-action@v3
+        with:
+          registry: appservicesdevacr.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
 
       - name: Build and push Docker image
         run: |
