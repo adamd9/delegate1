@@ -15,6 +15,7 @@
     "test:voice": "ts-node src/voice/voicePipeline.test.ts",
     "test:unit": "ts-node tests/unit/memory-deduplicator.test.ts",
     "test:copilot": "ts-node tests/unit/copilot-dispatch.test.ts",
+    "test:arbiter": "ts-node tests/unit/memory-arbiter.test.ts",
     "clean": "rm -rf node_modules dist",
     "script:token": "node scripts/twilio/generate-token.js",
     "script:list-apps": "node scripts/twilio/list-twiml-apps.js",

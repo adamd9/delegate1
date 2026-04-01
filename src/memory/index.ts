@@ -7,6 +7,7 @@ import { chatClients } from '../ws/clients';
 import { addConversationEvent } from '../db/sqlite';
 import { appendEvent, ensureSession } from '../observability/thoughtflow';
 import { MemoryDeduplicator, formatMemoryItems } from './deduplicator';
+import { MemoryArbiter } from './arbiter';
 
 const EXTRACTION_SYSTEM_PROMPT = `You extract durable personal facts about the USER from a completed conversation.
 
@@ -36,12 +37,14 @@ class MemoryModule {
   private _cacheUpdatedAt: number = 0;
   private _inflightRetrieve: Promise<string | null> | null = null;
   private _dedup: MemoryDeduplicator = new MemoryDeduplicator();
+  private _arbiter: MemoryArbiter = new MemoryArbiter();
 
   constructor() {
     conversationBus.onConversationComplete((conv) => {
       this._extractAndStore(conv).catch(() => {});
-      // Reset deduplicator state so the next conversation starts fresh
+      // Reset deduplicator and arbiter state so the next conversation starts fresh
       this._dedup.reset();
+      this._arbiter.reset();
     });
   }
 
@@ -270,19 +273,26 @@ class MemoryModule {
    * will invoke it when the fetch completes — callers supply their
    * channel-specific reaction (e.g. shadow turn) without needing to manage
    * the late-promise themselves.
+   *
+   * The arbiter agent (when enabled) gates any interruption that would result
+   * from new memories arriving.  If the arbiter denies, `newMemories` is
+   * returned as null and the `onLateArrival` callback is suppressed so the
+   * conversation is not interrupted.
    */
   async retrieveWithLate(query: string, opts?: {
     timeoutMs?: number;
     conversationId?: string;
     /** Called when memories arrive after the initial timeout. */
     onLateArrival?: (result: { memories: string | null; newMemories: string | null }) => void;
+    /** Optional free-text rationale / tags used by the arbiter for priority matching. */
+    rationale?: string;
   }): Promise<{
     /** All memories (new + known) — for system-prompt context */
     memories: string | null;
     /** Only items not previously surfaced — for deciding whether to interrupt */
     newMemories: string | null;
   }> {
-    const { timeoutMs, conversationId, onLateArrival } = opts ?? {};
+    const { timeoutMs, conversationId, onLateArrival, rationale } = opts ?? {};
 
     // Sync dedup config from runtime config before each lookup
     const cfg = getMemoryConfig();
@@ -291,6 +301,13 @@ class MemoryModule {
       expiryTurns: cfg.dedup_expiry_turns,
       expiryMs: cfg.dedup_expiry_ms,
       strictness: cfg.dedup_strictness,
+    });
+    // Sync arbiter config from runtime config
+    this._arbiter.configure({
+      enabled: cfg.arbiter_enabled,
+      rateLimitMs: cfg.arbiter_rate_limit_ms,
+      confidenceThreshold: cfg.arbiter_confidence_threshold,
+      priorityTags: cfg.arbiter_priority_tags,
     });
     this._dedup.advanceTurn();
 
@@ -302,6 +319,20 @@ class MemoryModule {
       const newMemories = dedupResult.newItems.length > 0 ? formatMemoryItems(dedupResult.newItems) : null;
       this._dedup.markSurfaced(dedupResult.newItems);
       this._persistDedupLog(dedupResult, conversationId);
+
+      // Arbiter gate: only allow the interruption if the arbiter approves
+      if (newMemories) {
+        const arbiterResult = this._arbiter.decide({
+          query,
+          newItemCount: dedupResult.newItems.length,
+          rationale,
+        });
+        this._persistArbiterLog(arbiterResult, conversationId);
+        if (arbiterResult.decision !== 'allow') {
+          return { memories, newMemories: null };
+        }
+      }
+
       return { memories, newMemories };
     }
 
@@ -315,6 +346,20 @@ class MemoryModule {
         const newMemories = dedupResult.newItems.length > 0 ? formatMemoryItems(dedupResult.newItems) : null;
         this._dedup.markSurfaced(dedupResult.newItems);
         this._persistDedupLog(dedupResult, conversationId);
+
+        // Arbiter gate for late arrivals
+        if (newMemories) {
+          const arbiterResult = this._arbiter.decide({
+            query,
+            newItemCount: dedupResult.newItems.length,
+            rationale,
+          });
+          this._persistArbiterLog(arbiterResult, conversationId);
+          if (arbiterResult.decision !== 'allow') {
+            return; // suppress interruption
+          }
+        }
+
         onLateArrival({ memories, newMemories });
       }).catch(e => console.warn('[memory] late-arrival callback error:', (e as any)?.message || e));
     }
@@ -345,6 +390,7 @@ class MemoryModule {
     this._cachedMemories = null;
     this._cacheUpdatedAt = 0;
     this._dedup.reset();
+    this._arbiter.reset();
   }
 
   private _persistDedupLog(
@@ -365,6 +411,31 @@ class MemoryModule {
           suppressed: result.suppressed,
           elapsed_ms: result.elapsedMs,
           log: result.log,
+        },
+        created_at_ms: ts,
+      });
+    } catch {}
+  }
+
+  private _persistArbiterLog(
+    result: import('./arbiter').ArbiterResult,
+    conversationId?: string
+  ): void {
+    // Always log to console regardless of conversationId (metadata only — no memory content)
+    console.log(
+      `[arbiter] decision=${result.decision} confidence=${result.confidence.toFixed(2)} reason="${result.reason}"`
+    );
+    if (!conversationId) return;
+    try {
+      const ts = Date.now();
+      addConversationEvent({
+        conversation_id: conversationId,
+        kind: 'memory_arbiter',
+        payload: {
+          decision: result.decision,
+          confidence: result.confidence,
+          reason: result.reason,
+          ...(result.suggestedDelayMs !== undefined ? { suggested_delay_ms: result.suggestedDelayMs } : {}),
         },
         created_at_ms: ts,
       });

@@ -24,6 +24,27 @@ export interface MemoryConfig {
    */
   dedup_strictness: DeduplicationStrictnessConfig;
   backend: 'mem0' | 'adaptive';
+  /**
+   * Enable the arbiter agent that decides whether a memory retrieval should
+   * interrupt the conversation (default: false — disabled by default).
+   */
+  arbiter_enabled: boolean;
+  /**
+   * Minimum milliseconds between two allowed memory interruptions.
+   * Only effective when arbiter_enabled is true (default: 30000 = 30 s).
+   */
+  arbiter_rate_limit_ms: number;
+  /**
+   * Minimum confidence score [0..1] required to allow an interruption.
+   * Retrievals scoring below this are silently suppressed (default: 0.5).
+   */
+  arbiter_confidence_threshold: number;
+  /**
+   * Comma-separated or array of keywords whose presence in the retrieval
+   * rationale forces an allow regardless of rate-limit / confidence rules
+   * (default: 'safety,billing,urgent,critical').
+   */
+  arbiter_priority_tags: string[];
 }
 
 const DEFAULTS: MemoryConfig = {
@@ -34,6 +55,10 @@ const DEFAULTS: MemoryConfig = {
   dedup_expiry_ms: 30 * 60 * 1000,
   dedup_strictness: 'normalized',
   backend: 'mem0',
+  arbiter_enabled: false,
+  arbiter_rate_limit_ms: 30_000,
+  arbiter_confidence_threshold: 0.5,
+  arbiter_priority_tags: ['safety', 'billing', 'urgent', 'critical'],
 };
 
 const RUNTIME_DIR = process.env.RUNTIME_DATA_DIR
@@ -84,6 +109,18 @@ export function saveMemoryConfig(updates: Partial<MemoryConfig>): MemoryConfig {
       ? updates.dedup_strictness
       : current.dedup_strictness,
     backend: updates.backend === 'adaptive' ? 'adaptive' : updates.backend === 'mem0' ? 'mem0' : current.backend,
+    arbiter_enabled: typeof updates.arbiter_enabled === 'boolean'
+      ? updates.arbiter_enabled
+      : current.arbiter_enabled,
+    arbiter_rate_limit_ms: typeof updates.arbiter_rate_limit_ms === 'number'
+      ? Math.max(0, updates.arbiter_rate_limit_ms)
+      : current.arbiter_rate_limit_ms,
+    arbiter_confidence_threshold: typeof updates.arbiter_confidence_threshold === 'number'
+      ? Math.max(0, Math.min(1, updates.arbiter_confidence_threshold))
+      : current.arbiter_confidence_threshold,
+    arbiter_priority_tags: Array.isArray(updates.arbiter_priority_tags)
+      ? updates.arbiter_priority_tags.filter((t): t is string => typeof t === 'string')
+      : current.arbiter_priority_tags,
   };
   if (!fs.existsSync(RUNTIME_DIR)) fs.mkdirSync(RUNTIME_DIR, { recursive: true });
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(next, null, 2), 'utf-8');
