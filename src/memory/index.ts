@@ -374,3 +374,46 @@ class MemoryModule {
 
 /** Singleton instance */
 export const memoryModule = new MemoryModule();
+
+/**
+ * Builds a context-enriched memory retrieval query by combining recent
+ * conversation turns with the current message. Providing more context improves
+ * the semantic similarity search in the memory backend.
+ *
+ * Handles two calling patterns:
+ * - **Chat path**: the current message has already been pushed to history before
+ *   retrieval is called, so the last item in history is the current message.
+ * - **Voice path**: the current transcript has not yet been appended to history
+ *   when retrieval is called, so the function appends it explicitly.
+ *
+ * @param currentMessage  The current user message or voice transcript.
+ * @param conversationHistory  The session's conversation history array.
+ * @param recentTurns  How many of the most recent turns to include as context (default: 3).
+ */
+export function buildMemoryQuery(
+  currentMessage: string,
+  conversationHistory: Array<{ type: string; content?: string }> | undefined,
+  recentTurns = 3,
+): string {
+  if (!conversationHistory || conversationHistory.length === 0) return currentMessage;
+
+  const textItems = conversationHistory
+    .filter(item => (item.type === 'user' || item.type === 'assistant') && typeof item.content === 'string')
+    .slice(-(recentTurns + 1));
+
+  if (textItems.length === 0) return currentMessage;
+
+  const lines = textItems.map(item =>
+    `${item.type === 'user' ? 'user' : 'assistant'}: ${(item.content as string).slice(0, 200)}`
+  );
+
+  // If the current message is already the last item in the history (chat path pushes
+  // the user message before calling retrieve), avoid duplicating it.
+  const lastContent = textItems[textItems.length - 1]?.content;
+  if (lastContent === currentMessage) {
+    return lines.join('\n');
+  }
+
+  // Voice path: current transcript not yet in history — append it.
+  return [...lines, `user: ${currentMessage.slice(0, 200)}`].join('\n');
+}

@@ -11,7 +11,7 @@ import { addConversationEvent } from "../db/sqlite";
 import { chatClients, logsClients } from "../ws/clients";
 import { getChatVoiceConfig } from "../voice/voiceConfig";
 import { classifyOpenAIError } from "../services/openaiErrors";
-import { memoryModule } from '../memory';
+import { memoryModule, buildMemoryQuery } from '../memory';
 import { getMemoryConfig } from '../memory/memoryConfig';
 
 
@@ -584,7 +584,9 @@ export function processRealtimeModelEvent(
         if (!alreadyInjected) {
           void ((): void => {
             // Use retrieveWithLate so late memories trigger a shadow turn via callback.
-            memoryModule.retrieveWithLate(transcript, {
+            // Enrich the query with recent conversation context for better semantic matching.
+            const memoryQuery = buildMemoryQuery(transcript, session.conversationHistory);
+            memoryModule.retrieveWithLate(memoryQuery, {
               timeoutMs: getMemoryConfig().retrieve_timeout_ms,
               onLateArrival: (lateResult) => {
                 if (lateResult.newMemories) {

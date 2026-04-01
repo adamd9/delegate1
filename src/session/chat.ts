@@ -16,7 +16,7 @@ import { replayHistoryOnConnect } from './history';
 import { getAdaptationTextById } from '../adaptations';
 import { createOpenAIClient } from "../services/openaiClient";
 import { classifyOpenAIError } from "../services/openaiErrors";
-import { memoryModule } from '../memory';
+import { memoryModule, buildMemoryQuery } from '../memory';
 import { getMemoryConfig } from '../memory/memoryConfig';
 
 export function establishChatSocket(
@@ -367,7 +367,9 @@ export async function handleTextChatMessage(
     // `memories` = all (for context), `newMemories` = only novel items.
     // If retrieval times out, the onLateArrival callback triggers a shadow turn
     // when genuinely new items arrive.
-    const { memories, newMemories } = await memoryModule.retrieveWithLate(content, {
+    // Use recent conversation context to enrich the query for better semantic matching.
+    const memoryQuery = buildMemoryQuery(content, session.conversationHistory);
+    const { memories, newMemories } = await memoryModule.retrieveWithLate(memoryQuery, {
       timeoutMs: getMemoryConfig().retrieve_timeout_ms,
       conversationId,
       onLateArrival: (lateResult) => {
