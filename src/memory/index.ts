@@ -302,7 +302,7 @@ class MemoryModule {
           { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
           { role: 'user', content: transcript },
         ],
-        max_tokens: 300,
+        max_completion_tokens: 300,
         temperature: 0,
       });
       const text: string = response.choices?.[0]?.message?.content?.trim() || '';

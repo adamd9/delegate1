@@ -122,7 +122,7 @@ async function analyzeDelta(
           content: `EXISTING MEMORY: ${existingContent}\n\nINCOMING MEMORY: ${incomingContent}`,
         },
       ],
-      max_tokens: 200,
+      max_completion_tokens: 200,
       temperature: 0,
       response_format: { type: 'json_object' },
     });
