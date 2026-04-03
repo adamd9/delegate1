@@ -823,6 +823,13 @@ function renderMemory() {
     .catch(err => {
       c.querySelector('.card-body').innerHTML = `<div class="error-msg">Failed to load: ${err.message}</div>`;
     });
+
+  // Saved Memories browser card
+  const mc = card('Saved Memories', body => {
+    body.innerHTML = '<div class="loading">Loading\u2026</div>';
+  });
+  content.appendChild(mc);
+  loadMemoriesList(mc.querySelector('.card-body'));
 }
 
 function buildMemoryForm(data) {
@@ -871,6 +878,89 @@ function buildMemoryForm(data) {
   modelInput.addEventListener('input', e => { memoryConfig.extraction_model = e.target.value; });
   modelWrap.appendChild(modelInput);
   fieldRow.appendChild(modelWrap);
+
+  // ── Context Window section ──
+  const cwHeader = el('div', {style: 'margin-top:10px;padding-top:14px;border-top:1px solid var(--border)'});
+  cwHeader.appendChild(el('label', {style: 'font-size:13px;font-weight:600;color:var(--text)'}, 'Context Window'));
+  cwHeader.appendChild(el('small', {style: 'display:block;font-size:11px;color:var(--text-muted);margin-top:2px'}, 'Include recent conversation turns in the retrieval query so memory search has richer context. Set turns to 0 to disable.'));
+  fieldRow.appendChild(cwHeader);
+
+  const cwTurnsWrap = el('div', {style: 'display:flex;flex-direction:column;gap:4px'});
+  cwTurnsWrap.appendChild(el('label', {style: 'font-size:13px;color:var(--text-muted)'}, 'Window size (turns)'));
+  cwTurnsWrap.appendChild(el('small', {style: 'font-size:11px;color:var(--text-muted)'}, 'Number of recent conversation turns to include (0\u201320)'));
+  const cwTurnsInput = el('input', {
+    type: 'number', min: '0', max: '20', step: '1',
+    value: String(data.context_window_turns ?? 4),
+    style: 'width:130px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px'
+  });
+  cwTurnsInput.addEventListener('input', e => { memoryConfig.context_window_turns = Number(e.target.value); });
+  cwTurnsWrap.appendChild(cwTurnsInput);
+  fieldRow.appendChild(cwTurnsWrap);
+
+  const cwCharsWrap = el('div', {style: 'display:flex;flex-direction:column;gap:4px'});
+  cwCharsWrap.appendChild(el('label', {style: 'font-size:13px;color:var(--text-muted)'}, 'Max context chars'));
+  cwCharsWrap.appendChild(el('small', {style: 'font-size:11px;color:var(--text-muted)'}, 'Character budget for the conversation context prefix (0\u20135000)'));
+  const cwCharsInput = el('input', {
+    type: 'number', min: '0', max: '5000', step: '100',
+    value: String(data.context_window_max_chars ?? 1500),
+    style: 'width:130px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px'
+  });
+  cwCharsInput.addEventListener('input', e => { memoryConfig.context_window_max_chars = Number(e.target.value); });
+  cwCharsWrap.appendChild(cwCharsInput);
+  fieldRow.appendChild(cwCharsWrap);
+
+  // ── Arbitrator section ──
+  const arbHeader = el('div', {style: 'margin-top:10px;padding-top:14px;border-top:1px solid var(--border)'});
+  arbHeader.appendChild(el('label', {style: 'font-size:13px;font-weight:600;color:var(--text)'}, 'Memory Arbitrator'));
+  arbHeader.appendChild(el('small', {style: 'display:block;font-size:11px;color:var(--text-muted);margin-top:2px'}, 'Optional LLM-based filter that assesses retrieved memories against the conversation and removes irrelevant ones before injection.'));
+  fieldRow.appendChild(arbHeader);
+
+  const arbToggleWrap = el('div', {style: 'display:flex;flex-direction:column;gap:4px'});
+  arbToggleWrap.appendChild(el('label', {style: 'font-size:13px;color:var(--text-muted)'}, 'Enabled'));
+  const arbToggleRow = el('div', {style: 'display:flex;gap:6px;margin-top:4px'});
+  [true, false].forEach(val => {
+    const btn = el('button', {
+      class: 'filter-btn' + ((data.arbitrator_enabled ?? false) === val ? ' active' : ''),
+      style: 'padding:5px 16px;font-size:12px',
+    }, val ? 'On' : 'Off');
+    btn.addEventListener('click', () => {
+      memoryConfig.arbitrator_enabled = val;
+      arbToggleRow.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      arbDetails.style.display = val ? 'flex' : 'none';
+    });
+    arbToggleRow.appendChild(btn);
+  });
+  arbToggleWrap.appendChild(arbToggleRow);
+  fieldRow.appendChild(arbToggleWrap);
+
+  const arbDetails = el('div', {style: 'display:' + (data.arbitrator_enabled ? 'flex' : 'none') + ';flex-direction:column;gap:14px'});
+
+  const arbModelWrap = el('div', {style: 'display:flex;flex-direction:column;gap:4px'});
+  arbModelWrap.appendChild(el('label', {style: 'font-size:13px;color:var(--text-muted)'}, 'Arbitrator model'));
+  arbModelWrap.appendChild(el('small', {style: 'font-size:11px;color:var(--text-muted)'}, 'Fast model for relevance filtering (e.g. gpt-4.1-nano)'));
+  const arbModelInput = el('input', {
+    type: 'text', value: data.arbitrator_model ?? 'gpt-4.1-nano',
+    style: 'width:240px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px'
+  });
+  arbModelInput.addEventListener('input', e => { memoryConfig.arbitrator_model = e.target.value; });
+  arbModelWrap.appendChild(arbModelInput);
+  arbDetails.appendChild(arbModelWrap);
+
+  const arbTimeoutWrap = el('div', {style: 'display:flex;flex-direction:column;gap:4px'});
+  arbTimeoutWrap.appendChild(el('label', {style: 'font-size:13px;color:var(--text-muted)'}, 'Arbitrator timeout (ms)'));
+  arbTimeoutWrap.appendChild(el('small', {style: 'font-size:11px;color:var(--text-muted)'}, 'Max wait before falling back to unfiltered memories (100\u20135000)'));
+  const arbTimeoutInput = el('input', {
+    type: 'number', min: '100', max: '5000', step: '100',
+    value: String(data.arbitrator_timeout_ms ?? 800),
+    style: 'width:130px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px'
+  });
+  arbTimeoutInput.addEventListener('input', e => { memoryConfig.arbitrator_timeout_ms = Number(e.target.value); });
+  arbTimeoutWrap.appendChild(arbTimeoutInput);
+  arbDetails.appendChild(arbTimeoutWrap);
+
+  fieldRow.appendChild(arbDetails);
+
   frag.appendChild(fieldRow);
 
   const saveRow = el('div', {style: 'display:flex;align-items:center;gap:12px;margin-top:20px'});
@@ -903,6 +993,117 @@ function buildMemoryForm(data) {
   });
 
   return frag;
+}
+
+// ── Saved Memories Browser ──
+
+function loadMemoriesList(body) {
+  fetch('/api/memories')
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(data => {
+      body.innerHTML = '';
+      if (!data.supported) {
+        body.appendChild(el('p', {style: 'font-size:12px;color:var(--text-mid)'}, data.message || 'Memory browsing is only available with the Adaptive backend.'));
+        return;
+      }
+      body.appendChild(buildMemoriesBrowser(data.memories, body));
+    })
+    .catch(err => {
+      body.innerHTML = '';
+      body.appendChild(el('div', {class: 'error-msg'}, 'Failed to load: ' + err.message));
+    });
+}
+
+function buildMemoriesBrowser(memories, containerBody) {
+  const frag = document.createDocumentFragment();
+
+  // Header row with count + refresh
+  const header = el('div', {style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px'});
+  header.appendChild(el('span', {style: 'font-size:12px;color:var(--text-mid)'}, memories.length + ' memor' + (memories.length === 1 ? 'y' : 'ies') + ' stored'));
+  const refreshBtn = el('button', {class: 'btn', style: 'font-size:11px;padding:3px 10px'}, '\u21bb Refresh');
+  refreshBtn.addEventListener('click', () => {
+    containerBody.innerHTML = '<div class="loading">Loading\u2026</div>';
+    loadMemoriesList(containerBody);
+  });
+  header.appendChild(refreshBtn);
+  frag.appendChild(header);
+
+  if (memories.length === 0) {
+    frag.appendChild(el('p', {style: 'font-size:12px;color:var(--text-dim);text-align:center;padding:20px 0'}, 'No memories stored yet.'));
+    return frag;
+  }
+
+  // Search / filter
+  const searchWrap = el('div', {style: 'margin-bottom:10px'});
+  const searchInput = el('input', {
+    type: 'text', placeholder: 'Filter memories\u2026',
+    style: 'width:100%;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:var(--font)'
+  });
+  searchWrap.appendChild(searchInput);
+  frag.appendChild(searchWrap);
+
+  // Memory list container
+  const list = el('div', {style: 'display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto'});
+
+  function renderItems(filter) {
+    list.innerHTML = '';
+    const lower = (filter || '').toLowerCase();
+    const filtered = lower ? memories.filter(m => m.content.toLowerCase().includes(lower)) : memories;
+    if (filtered.length === 0) {
+      list.appendChild(el('p', {style: 'font-size:12px;color:var(--text-dim);text-align:center;padding:12px 0'}, 'No matches.'));
+      return;
+    }
+    for (const mem of filtered) {
+      list.appendChild(buildMemoryRow(mem, containerBody));
+    }
+  }
+
+  searchInput.addEventListener('input', e => renderItems(e.target.value));
+  renderItems('');
+  frag.appendChild(list);
+  return frag;
+}
+
+function buildMemoryRow(mem, containerBody) {
+  const row = el('div', {style: 'display:flex;align-items:flex-start;gap:10px;padding:8px 10px;background:var(--surface2);border-radius:6px;border:1px solid var(--border)'});
+
+  // Content + meta
+  const info = el('div', {style: 'flex:1;min-width:0'});
+  const contentEl = el('div', {style: 'font-size:12px;color:var(--text);word-break:break-word'}, mem.content);
+  info.appendChild(contentEl);
+
+  const meta = el('div', {style: 'display:flex;gap:12px;margin-top:4px;font-size:10px;color:var(--text-dim);font-family:var(--font)'});
+  meta.appendChild(el('span', {}, 'strength: ' + mem.strength.toFixed(1)));
+  meta.appendChild(el('span', {}, 'retrieved: ' + mem.retrievalCount + '\u00d7'));
+  const date = new Date(mem.createdAt);
+  meta.appendChild(el('span', {}, date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})));
+  info.appendChild(meta);
+  row.appendChild(info);
+
+  // Delete button
+  const delBtn = el('button', {
+    style: 'flex-shrink:0;padding:3px 8px;font-size:10px;border:1px solid var(--red);border-radius:4px;background:transparent;color:var(--red);cursor:pointer;font-family:var(--font)',
+    title: 'Delete this memory'
+  }, '\u2715');
+  delBtn.addEventListener('click', async () => {
+    if (!confirm('Delete this memory?\n\n' + mem.content)) return;
+    delBtn.disabled = true;
+    delBtn.textContent = '\u2026';
+    try {
+      const res = await fetch('/api/memories/' + encodeURIComponent(mem.id), { method: 'DELETE' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      // Refresh the list
+      containerBody.innerHTML = '<div class="loading">Loading\u2026</div>';
+      loadMemoriesList(containerBody);
+    } catch (err) {
+      alert('Delete failed: ' + err.message);
+      delBtn.disabled = false;
+      delBtn.textContent = '\u2715';
+    }
+  });
+  row.appendChild(delBtn);
+
+  return row;
 }
 
 // ──────────────────────────────────────────────

@@ -18,6 +18,7 @@ import { registerDeepgramRoutes } from './server/routes/deepgram';
 import { registerVoiceMessageRoutes } from './server/routes/voiceMessage';
 import { registerVoiceDefaultsRoutes } from './server/routes/voiceDefaults';
 import { registerMemoryConfigRoutes } from './server/routes/memoryConfig';
+import { registerMemoriesRoutes } from './server/routes/memories';
 import { registerOpenAiSessionRoute } from './server/routes/openaiSession';
 import { registerCopilotRoutes } from './server/routes/copilot';
 import { registerVncRoutes } from './server/routes/vnc';
@@ -139,6 +140,8 @@ registerMcpConfigRoutes(app);
 registerVoiceDefaultsRoutes(app);
 // Memory config management API
 registerMemoryConfigRoutes(app);
+// Memory browsing/deletion API
+registerMemoriesRoutes(app);
 
 // OpenAI Realtime session token proxy
 registerOpenAiSessionRoute(app);

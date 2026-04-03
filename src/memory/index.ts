@@ -7,15 +7,36 @@ import { chatClients } from '../ws/clients';
 import { addConversationEvent } from '../db/sqlite';
 import { appendEvent, ensureSession } from '../observability/thoughtflow';
 import { MemoryDeduplicator, formatMemoryItems } from './deduplicator';
+import { filterMemoriesWithArbitrator } from './arbitrator';
 
-const EXTRACTION_SYSTEM_PROMPT = `You extract durable personal facts about the USER from a completed conversation.
+/** Minimal turn shape for building context queries — callers pass their own history items. */
+export interface ContextTurn {
+  role: 'user' | 'assistant';
+  text: string;
+}
 
+const EXTRACTION_SYSTEM_PROMPT = `You extract two kinds of durable facts from a completed conversation between a user and an AI assistant.
+
+## A. Personal facts about the user
 Rules:
 - Only extract facts explicitly stated or clearly confirmed by the USER, not inferred or suggested by the assistant.
 - Only include facts that are stable and long-lived: name, location, profession, relationships, firm preferences, accessibility needs, recurring patterns.
 - DO NOT store: transient discussion topics, questions the assistant asked, options the assistant offered, facts the assistant assumed, speculative or unconfirmed details.
-- Each fact must be a single plain-text line starting with "- ".
-- If there are no qualifying facts, return exactly: NONE`;
+
+## B. Operational lessons (how to do things better)
+Extract an insight ONLY when the assistant initially failed or under-performed and then arrived at a successful outcome after:
+  - the user explicitly corrected the assistant, OR
+  - the user had to prompt multiple times or rephrase before getting the desired result.
+Rules:
+- Capture WHAT went wrong and WHAT the successful approach was, so the assistant can use the right approach next time.
+- Focus on: tool usage patterns, query formulation, correct parameters, preferred workflows, formatting expectations, or any other repeatable technique.
+- Frame each insight as a reusable instruction (e.g. "When the user asks X, use tool Y with parameter Z" or "Always confirm X before doing Y").
+- DO NOT store lessons when the assistant handled the request well on the first attempt — only store lessons from corrections or repeated prompting.
+- DO NOT store vague observations; each insight must be specific and actionable.
+
+## Output format
+- Each fact or insight must be a single plain-text line starting with "- ".
+- If there are no qualifying facts or insights in either category, return exactly: NONE`;
 
 /** Jaccard similarity between two query strings (word-set overlap). */
 function queryOverlap(a: string, b: string): number {
@@ -27,6 +48,46 @@ function queryOverlap(a: string, b: string): number {
   let intersection = 0;
   for (const w of setA) if (setB.has(w)) intersection++;
   return intersection / (setA.size + setB.size - intersection);
+}
+
+/**
+ * Build a context-enriched query by prepending recent conversation turns to
+ * the current user message. This gives the embedding/search backend richer
+ * context so it can retrieve more relevant memories.
+ *
+ * Returns the original `currentMessage` unchanged when the context window is
+ * disabled (turns=0) or no history is available.
+ */
+export function buildContextQuery(
+  currentMessage: string,
+  history: ContextTurn[] | undefined,
+  maxTurns: number,
+  maxChars: number
+): string {
+  if (!history || history.length === 0 || maxTurns <= 0 || maxChars <= 0) {
+    return currentMessage;
+  }
+
+  // Take the most recent N turns (excluding the current message which is separate)
+  const recentTurns = history.slice(-maxTurns);
+
+  // Build compact transcript, newest last, within char budget
+  const lines: string[] = [];
+  let totalChars = 0;
+  // Walk from oldest to newest so we can trim from the oldest end
+  for (const turn of recentTurns) {
+    const prefix = turn.role === 'user' ? 'U' : 'A';
+    // Truncate very long individual turns
+    const text = turn.text.length > 400 ? turn.text.slice(0, 397) + '…' : turn.text;
+    const line = `${prefix}: ${text}`;
+    if (totalChars + line.length > maxChars) break;
+    lines.push(line);
+    totalChars += line.length;
+  }
+
+  if (lines.length === 0) return currentMessage;
+
+  return `[Recent conversation]\n${lines.join('\n')}\n\n[Current message]\n${currentMessage}`;
 }
 
 class MemoryModule {
@@ -274,6 +335,8 @@ class MemoryModule {
   async retrieveWithLate(query: string, opts?: {
     timeoutMs?: number;
     conversationId?: string;
+    /** Recent conversation turns for building a context-enriched retrieval query. */
+    conversationHistory?: ContextTurn[];
     /** Called when memories arrive after the initial timeout. */
     onLateArrival?: (result: { memories: string | null; newMemories: string | null }) => void;
   }): Promise<{
@@ -282,7 +345,7 @@ class MemoryModule {
     /** Only items not previously surfaced — for deciding whether to interrupt */
     newMemories: string | null;
   }> {
-    const { timeoutMs, conversationId, onLateArrival } = opts ?? {};
+    const { timeoutMs, conversationId, conversationHistory, onLateArrival } = opts ?? {};
 
     // Sync dedup config from runtime config before each lookup
     const cfg = getMemoryConfig();
@@ -294,32 +357,119 @@ class MemoryModule {
     });
     this._dedup.advanceTurn();
 
-    const rawMemories = await this.retrieve(query, timeoutMs, conversationId);
+    // Build context-enriched query from conversation history
+    const enrichedQuery = buildContextQuery(
+      query,
+      conversationHistory,
+      cfg.context_window_turns,
+      cfg.context_window_max_chars
+    );
+    if (enrichedQuery !== query) {
+      console.log(`[memory] context window — enriched query with ${conversationHistory?.length ?? 0} turns (${enrichedQuery.length} chars)`);
+    }
+
+    const rawMemories = await this.retrieve(enrichedQuery, timeoutMs, conversationId);
 
     if (rawMemories !== null) {
       const dedupResult = this._dedup.deduplicate(rawMemories);
-      const memories = dedupResult.allItems.length > 0 ? formatMemoryItems(dedupResult.allItems) : null;
-      const newMemories = dedupResult.newItems.length > 0 ? formatMemoryItems(dedupResult.newItems) : null;
+      let memories = dedupResult.allItems.length > 0 ? formatMemoryItems(dedupResult.allItems) : null;
+      let newMemories = dedupResult.newItems.length > 0 ? formatMemoryItems(dedupResult.newItems) : null;
       this._dedup.markSurfaced(dedupResult.newItems);
       this._persistDedupLog(dedupResult, conversationId);
+
+      // Run arbitrator if enabled — filters out irrelevant memories
+      if (cfg.arbitrator_enabled && memories) {
+        const arbResult = await this._runArbitrator(memories, newMemories, query, conversationHistory, conversationId);
+        memories = arbResult.memories;
+        newMemories = arbResult.newMemories;
+      }
+
       return { memories, newMemories };
     }
 
     // Timed out — wire up late-arrival callback if the fetch is still in-flight
     const inflightRef = this._inflightRetrieve;
     if (inflightRef && onLateArrival) {
-      inflightRef.then(lateRaw => {
+      inflightRef.then(async lateRaw => {
         if (!lateRaw) return;
         const dedupResult = this._dedup.deduplicate(lateRaw);
-        const memories = dedupResult.allItems.length > 0 ? formatMemoryItems(dedupResult.allItems) : null;
-        const newMemories = dedupResult.newItems.length > 0 ? formatMemoryItems(dedupResult.newItems) : null;
+        let memories = dedupResult.allItems.length > 0 ? formatMemoryItems(dedupResult.allItems) : null;
+        let newMemories = dedupResult.newItems.length > 0 ? formatMemoryItems(dedupResult.newItems) : null;
         this._dedup.markSurfaced(dedupResult.newItems);
         this._persistDedupLog(dedupResult, conversationId);
+
+        // Run arbitrator on late arrivals too
+        if (cfg.arbitrator_enabled && memories) {
+          const arbResult = await this._runArbitrator(memories, newMemories, query, conversationHistory, conversationId);
+          memories = arbResult.memories;
+          newMemories = arbResult.newMemories;
+        }
+
         onLateArrival({ memories, newMemories });
       }).catch(e => console.warn('[memory] late-arrival callback error:', (e as any)?.message || e));
     }
 
     return { memories: null, newMemories: null };
+  }
+
+  /**
+   * Run the arbitrator agent to filter irrelevant memories.
+   * Returns filtered memories, falling back to unfiltered on error/timeout.
+   */
+  private async _runArbitrator(
+    memories: string | null,
+    newMemories: string | null,
+    currentMessage: string,
+    conversationHistory: ContextTurn[] | undefined,
+    conversationId?: string
+  ): Promise<{ memories: string | null; newMemories: string | null }> {
+    if (!memories) return { memories, newMemories };
+
+    const cfg = getMemoryConfig();
+    const start = Date.now();
+    try {
+      const filtered = await filterMemoriesWithArbitrator({
+        currentMessage,
+        conversationHistory: conversationHistory ?? [],
+        retrievedMemories: memories,
+        model: cfg.arbitrator_model,
+        timeoutMs: cfg.arbitrator_timeout_ms,
+      });
+
+      const elapsed = Date.now() - start;
+      const inputCount = memories.split('\n').filter(Boolean).length;
+      const outputCount = filtered ? filtered.split('\n').filter(Boolean).length : 0;
+      console.log(`[memory] arbitrator — kept ${outputCount}/${inputCount} memories (${elapsed}ms)`);
+
+      // Observability
+      const arbTs = Date.now();
+      this._broadcast({ type: 'memory.arbitrator', input_count: inputCount, output_count: outputCount, elapsed_ms: elapsed, timestamp: arbTs });
+      if (conversationId) {
+        this._persist(conversationId, 'memory_arbitrator', { input_count: inputCount, output_count: outputCount, elapsed_ms: elapsed }, arbTs);
+        this._thoughtflowStep(conversationId, 'memory.arbitrator', { input_count: inputCount, output_count: outputCount, elapsed_ms: elapsed }, arbTs);
+      }
+
+      if (!filtered || outputCount === 0) {
+        return { memories: null, newMemories: null };
+      }
+
+      // Re-derive newMemories from the filtered set: keep only new items that survived filtering
+      const filteredLines = new Set(filtered.split('\n').map(l => l.trim()).filter(Boolean));
+      let filteredNew: string | null = null;
+      if (newMemories) {
+        const keptNewLines = newMemories.split('\n').filter(l => {
+          const trimmed = l.trim();
+          return trimmed && filteredLines.has(trimmed);
+        });
+        filteredNew = keptNewLines.length > 0 ? keptNewLines.join('\n') : null;
+      }
+
+      return { memories: filtered, newMemories: filteredNew };
+    } catch (e: any) {
+      const elapsed = Date.now() - start;
+      console.warn(`[memory] arbitrator error (${elapsed}ms), falling back to unfiltered:`, e?.message || e);
+      return { memories, newMemories };
+    }
   }
 
   /**

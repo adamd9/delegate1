@@ -17,6 +17,7 @@ import { getAdaptationTextById } from '../adaptations';
 import { createOpenAIClient } from "../services/openaiClient";
 import { classifyOpenAIError } from "../services/openaiErrors";
 import { memoryModule } from '../memory';
+import type { ContextTurn } from '../memory';
 import { getMemoryConfig } from '../memory/memoryConfig';
 
 export function establishChatSocket(
@@ -367,9 +368,16 @@ export async function handleTextChatMessage(
     // `memories` = all (for context), `newMemories` = only novel items.
     // If retrieval times out, the onLateArrival callback triggers a shadow turn
     // when genuinely new items arrive.
+    // Build ContextTurn[] from conversation history for context-enriched retrieval
+    const historyTurns: ContextTurn[] = (session.conversationHistory || [])
+      .filter((item): item is Extract<typeof item, { type: 'user' | 'assistant' }> =>
+        item.type === 'user' || item.type === 'assistant'
+      )
+      .map(item => ({ role: item.type as 'user' | 'assistant', text: item.content }));
     const { memories, newMemories } = await memoryModule.retrieveWithLate(content, {
       timeoutMs: getMemoryConfig().retrieve_timeout_ms,
       conversationId,
+      conversationHistory: historyTurns,
       onLateArrival: (lateResult) => {
         if (!lateResult.newMemories || session.currentRequest) return;
         console.log('[memory] shadow turn — late NEW memories arrived, starting follow-up');

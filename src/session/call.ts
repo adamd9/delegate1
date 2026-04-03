@@ -12,6 +12,7 @@ import { chatClients, logsClients } from "../ws/clients";
 import { getChatVoiceConfig } from "../voice/voiceConfig";
 import { classifyOpenAIError } from "../services/openaiErrors";
 import { memoryModule } from '../memory';
+import type { ContextTurn } from '../memory';
 import { getMemoryConfig } from '../memory/memoryConfig';
 
 
@@ -583,9 +584,16 @@ export function processRealtimeModelEvent(
         (session as any)._memoriesInjectedForTurn = false;
         if (!alreadyInjected) {
           void ((): void => {
+            // Build ContextTurn[] from voice conversation history
+            const voiceHistoryTurns: ContextTurn[] = (session.conversationHistory || [])
+              .filter((item): item is Extract<typeof item, { type: 'user' | 'assistant' }> =>
+                item.type === 'user' || item.type === 'assistant'
+              )
+              .map(item => ({ role: item.type as 'user' | 'assistant', text: item.content }));
             // Use retrieveWithLate so late memories trigger a shadow turn via callback.
             memoryModule.retrieveWithLate(transcript, {
               timeoutMs: getMemoryConfig().retrieve_timeout_ms,
+              conversationHistory: voiceHistoryTurns,
               onLateArrival: (lateResult) => {
                 if (lateResult.newMemories) {
                   scheduleVoiceShadowTurn(lateResult.memories || lateResult.newMemories, transcript);
