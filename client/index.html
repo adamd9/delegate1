@@ -709,6 +709,15 @@ function connect() {
   state.ws = ws;
 
   ws.onopen = () => {
+    // Clear stale UI state so the server replay starts fresh.
+    // Without this, every reconnect duplicates breadcrumbs/notes/events.
+    state.items = [];
+    state.historyHeaderCount = 0;
+    seenFunctionCallBreadcrumbs.clear();
+    const eventsEl = document.getElementById('events');
+    if (eventsEl) eventsEl.innerHTML = '';
+    updateHistoryHeader(0);
+
     setWsStatus('connected');
   };
 
