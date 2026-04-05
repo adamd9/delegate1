@@ -305,6 +305,12 @@
     .ev-group.history .ev-bubble { opacity: 0.55; }
     .ev-group.history .ev-group-meta { opacity: 0.55; }
 
+    .ev-bubble a.msg-link {
+      color: var(--accent); text-decoration: underline;
+      text-underline-offset: 2px; word-break: break-all;
+    }
+    .ev-bubble a.msg-link:hover { opacity: 0.8; }
+
     /* Breadcrumb / tool events — inline */
     .tool-ev {
       display: flex; align-items: flex-start; gap: 10px;
@@ -688,6 +694,14 @@ function esc(str) {
     .replace(/"/g,'&quot;');
 }
 
+/** Convert URLs in already-escaped text to clickable <a> tags. */
+function linkify(escaped) {
+  return escaped.replace(
+    /\b(https?:\/\/[^\s<&"')\]]+)/gi,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" class="msg-link">$1</a>'
+  );
+}
+
 function shortId(id) {
   if (!id) return '—';
   const parts = String(id).split('_');
@@ -1049,7 +1063,7 @@ function setText(id, text) {
   if (!item) return;
   item.title = text;
   const el = document.getElementById(`msg-${id}`);
-  if (el) el.textContent = text;
+  if (el) el.innerHTML = linkify(esc(text));
 }
 
 function addBreadcrumb(title, data, isHidden, timestamp) {
@@ -1152,7 +1166,7 @@ function renderItem(item, prepend) {
         <span class="ev-ch-tag ${esc(chTag)}">${esc(chTag)}</span>
         ${item.supervisor ? '<span class="ev-ch-tag text">supervisor</span>' : ''}
       </div>
-      <div class="ev-bubble"><span id="msg-${item.id}">${esc(item.title)}</span></div>
+      <div class="ev-bubble"><span id="msg-${item.id}">${linkify(esc(item.title))}</span></div>
     `;
   } else {
     // BREADCRUMB
