@@ -993,8 +993,11 @@ function handleEvent(event) {
       addSysEvent('conversation closed');
       state.inFlight = false;
       updateInFlight();
-      // Reload to see history
-      setTimeout(() => location.reload(), 500);
+      // Reconnect the WS so history replays cleanly, but stay on the page
+      // so we can still receive the memory.stored event that arrives ~1-2s later.
+      if (state.ws) {
+        state.ws.close();         // triggers onclose → reconnect after 3s
+      }
       break;
 
     case 'error':

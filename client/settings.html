@@ -1194,25 +1194,6 @@ function renderAbout() {
 // Boot
 // ──────────────────────────────────────────────
 setTab(getInitialTab());
-
-// Live-refresh: listen for memory.stored events to auto-update the Saved Memories browser
-(function connectMemoryWS() {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${proto}//${location.host}/chat`);
-  ws.onmessage = (evt) => {
-    try {
-      const data = JSON.parse(evt.data);
-      if (data.type === 'memory.stored') {
-        const body = document.getElementById('memories-browser-body');
-        if (body) {
-          body.innerHTML = '<div class="loading">Loading\u2026</div>';
-          loadMemoriesList(body);
-        }
-      }
-    } catch {}
-  };
-  ws.onclose = () => setTimeout(connectMemoryWS, 5000);
-})();
 </script>
 </body>
 </html>
