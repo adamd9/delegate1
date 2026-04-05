@@ -34,6 +34,13 @@ Rules:
 - DO NOT store lessons when the assistant handled the request well on the first attempt — only store lessons from corrections or repeated prompting.
 - DO NOT store vague observations; each insight must be specific and actionable.
 
+## Self-containment (CRITICAL)
+Every fact or insight you produce will be stored in a database and retrieved later WITHOUT the original conversation.
+Therefore each line MUST be fully self-contained and meaningful on its own:
+- NEVER use dangling references like "that context", "this situation", "in that case", "the topic above", etc.
+- ALWAYS inline the specific subject matter. Instead of "respond with X in that context" write "When asked about [specific topic], respond with X".
+- A reader with NO access to the conversation must understand exactly what the fact means.
+
 ## Output format
 - Each fact or insight must be a single plain-text line starting with "- ".
 - If there are no qualifying facts or insights in either category, return exactly: NONE`;
