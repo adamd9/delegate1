@@ -7,7 +7,7 @@ import { chatClients } from '../ws/clients';
 import { addConversationEvent } from '../db/sqlite';
 import { appendEvent, ensureSession } from '../observability/thoughtflow';
 import { MemoryDeduplicator, formatMemoryItems } from './deduplicator';
-import { filterMemoriesWithArbitrator } from './arbitrator';
+import { filterMemoriesWithArbitrator, type ArbitratorResult } from './arbitrator';
 
 /** Minimal turn shape for building context queries — callers pass their own history items. */
 export interface ContextTurn {
@@ -435,7 +435,7 @@ class MemoryModule {
     const cfg = getMemoryConfig();
     const start = Date.now();
     try {
-      const filtered = await filterMemoriesWithArbitrator({
+      const arbResult: ArbitratorResult = await filterMemoriesWithArbitrator({
         currentMessage,
         conversationHistory: conversationHistory ?? [],
         retrievedMemories: memories,
@@ -444,16 +444,52 @@ class MemoryModule {
       });
 
       const elapsed = Date.now() - start;
-      const inputCount = memories.split('\n').filter(Boolean).length;
-      const outputCount = filtered ? filtered.split('\n').filter(Boolean).length : 0;
-      console.log(`[memory] arbitrator — kept ${outputCount}/${inputCount} memories (${elapsed}ms)`);
+      const { filtered, kept, removed, timedOut } = arbResult;
+      const inputCount = kept.length + removed.length;
+      const outputCount = kept.length;
 
-      // Observability
+      // Detailed console logging
+      if (timedOut) {
+        console.warn(`[memory] arbitrator timed out (${elapsed}ms), returning all ${inputCount} memories unfiltered`);
+      } else {
+        console.log(`[memory] arbitrator — kept ${outputCount}/${inputCount} memories (${elapsed}ms)`);
+        if (kept.length > 0) {
+          console.log(`[memory] arbitrator kept:\n${kept.map(l => `  ✓ ${l}`).join('\n')}`);
+        }
+        if (removed.length > 0) {
+          console.log(`[memory] arbitrator removed:\n${removed.map(l => `  ✗ ${l}`).join('\n')}`);
+        }
+      }
+
+      // UI breadcrumbs — include content so the frontend can display decisions
       const arbTs = Date.now();
-      this._broadcast({ type: 'memory.arbitrator', input_count: inputCount, output_count: outputCount, elapsed_ms: elapsed, timestamp: arbTs });
+      this._broadcast({
+        type: 'memory.arbitrator',
+        input_count: inputCount,
+        output_count: outputCount,
+        elapsed_ms: elapsed,
+        timed_out: timedOut,
+        kept,
+        removed,
+        timestamp: arbTs,
+      });
       if (conversationId) {
-        this._persist(conversationId, 'memory_arbitrator', { input_count: inputCount, output_count: outputCount, elapsed_ms: elapsed }, arbTs);
-        this._thoughtflowStep(conversationId, 'memory.arbitrator', { input_count: inputCount, output_count: outputCount, elapsed_ms: elapsed }, arbTs);
+        this._persist(conversationId, 'memory_arbitrator', {
+          input_count: inputCount,
+          output_count: outputCount,
+          elapsed_ms: elapsed,
+          timed_out: timedOut,
+          kept,
+          removed,
+        }, arbTs);
+        this._thoughtflowStep(conversationId, 'memory.arbitrator', {
+          input_count: inputCount,
+          output_count: outputCount,
+          elapsed_ms: elapsed,
+          timed_out: timedOut,
+          kept,
+          removed,
+        }, arbTs);
       }
 
       if (!filtered || outputCount === 0) {

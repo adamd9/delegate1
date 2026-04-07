@@ -12,12 +12,22 @@ Rules:
 - Return ONLY the kept memory lines, one per line, preserving the original "- " prefix format.
 - If NO memories are relevant, return exactly: NONE`;
 
+export interface ArbitratorResult {
+  /** Filtered memory string (same "- " line format), or null if none relevant */
+  filtered: string | null;
+  /** Individual memories that were kept */
+  kept: string[];
+  /** Individual memories that were removed */
+  removed: string[];
+  /** Whether the result was produced by the LLM (vs. a timeout fallback) */
+  timedOut: boolean;
+}
+
 /**
  * Uses a fast LLM to filter retrieved memories for relevance against
  * the current conversation context.
  *
- * Returns the filtered memory string (same "- " line format), or null
- * if no memories are deemed relevant.
+ * Returns a detailed result with kept/removed breakdowns.
  */
 export async function filterMemoriesWithArbitrator(opts: {
   currentMessage: string;
@@ -25,7 +35,7 @@ export async function filterMemoriesWithArbitrator(opts: {
   retrievedMemories: string;
   model: string;
   timeoutMs: number;
-}): Promise<string | null> {
+}): Promise<ArbitratorResult> {
   const { currentMessage, conversationHistory, retrievedMemories, model, timeoutMs } = opts;
 
   const client = createOpenAIClient();
@@ -64,16 +74,18 @@ export async function filterMemoriesWithArbitrator(opts: {
 
   const result = await Promise.race([llmPromise, timeoutPromise]);
 
+  const inputLines = retrievedMemories.split('\n').map(l => l.trim()).filter(Boolean);
+
   if (result === TIMEOUT) {
     console.warn(`[arbitrator] timed out after ${timeoutMs}ms, returning unfiltered`);
-    return retrievedMemories;
+    return { filtered: retrievedMemories, kept: inputLines, removed: [], timedOut: true };
   }
 
   const response = result as Awaited<typeof llmPromise>;
   const text = response.choices?.[0]?.message?.content?.trim() || '';
 
   if (!text || text === 'NONE' || text.startsWith('NONE')) {
-    return null;
+    return { filtered: null, kept: [], removed: inputLines, timedOut: false };
   }
 
   // Parse and validate: keep only lines that look like memory items
@@ -81,5 +93,9 @@ export async function filterMemoriesWithArbitrator(opts: {
     .map(l => l.trim())
     .filter(l => l.startsWith('- ') && l.length > 3);
 
-  return keptLines.length > 0 ? keptLines.join('\n') : null;
+  const keptSet = new Set(keptLines);
+  const removedLines = inputLines.filter(l => !keptSet.has(l));
+
+  const filtered = keptLines.length > 0 ? keptLines.join('\n') : null;
+  return { filtered, kept: keptLines, removed: removedLines, timedOut: false };
 }
