@@ -28,7 +28,7 @@ Because `PLAYWRIGHT_CLI_SESSION=delegate` is set in your environment, you do **n
 If you encounter a CAPTCHA, a login wall, or a page that blocks automation:
 
 1. **Stop and report** — Do not attempt to bypass security controls. Report to the user that manual intervention is needed.
-2. **The user can take over** — A live monitoring dashboard (`playwright-cli show`) is running in the VNC display. The user can click into the browser session, solve the CAPTCHA or log in manually, and then instruct you to continue.
+2. **The user can take over** — The browser is running in headed mode on the VNC display. The user can click directly into the browser window, solve the CAPTCHA or log in manually, and then instruct you to continue.
 3. **Session persists** — Because `--persistent` is always used, the login cookies and solved CAPTCHA state will be retained for your subsequent commands.
 
 Never try to programmatically solve or circumvent CAPTCHAs.

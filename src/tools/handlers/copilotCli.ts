@@ -2,7 +2,7 @@ import { FunctionHandler } from '../../agentConfigs/types';
 import { spawn, ChildProcess } from 'child_process';
 import { execFile } from 'child_process';
 import fs from 'fs';
-import { COPILOT_WORK_DIR, COPILOT_HOME_DIR, commitAndPushWorkDir, GLOBAL_LOG_FILE } from '../../browser';
+import { COPILOT_WORK_DIR, COPILOT_HOME_DIR, BROWSER_PROFILE_DIR, commitAndPushWorkDir, GLOBAL_LOG_FILE } from '../../browser';
 
 // GLOBAL_LOG_FILE is imported from browser/index.ts — it is an append-only log
 // file tailed by the persistent xterm in the VNC display.
@@ -161,6 +161,7 @@ export const copilotDispatchHandler: FunctionHandler = {
         COPILOT_GITHUB_TOKEN: process.env.COPILOT_GITHUB_TOKEN,
         COPILOT_HOME: process.env.COPILOT_HOME || COPILOT_HOME_DIR || '',
         PLAYWRIGHT_CLI_SESSION: 'delegate',
+        PLAYWRIGHT_DAEMON_SESSION_DIR: BROWSER_PROFILE_DIR,
         AGENT_CALLBACK_URL: `http://localhost:${port}`,
       };
       if (process.env.DISPLAY) {

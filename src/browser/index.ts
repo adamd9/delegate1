@@ -487,20 +487,35 @@ export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string
     xtermLogProc.unref();
     console.log(`[browser] xterm log started (pid ${xtermLogProc.pid})`);
 
-    // --- Playwright session monitor (left half: playwright-cli show dashboard) ---
-    // playwright-cli show opens a live visual dashboard that streams all active
-    // playwright-cli browser sessions (headless or headed). This is the correct way
-    // to observe what the copilot browser agent is doing in real time.
+    // --- Persistent headed browser (left half of VNC) ---
+    // Launch the actual Chromium browser in headed + persistent mode using the
+    // same session name ("delegate") that copilot dispatch uses. This means:
+    //  1. The user can interact with the browser via VNC (log into sites, etc.)
+    //  2. When copilot dispatch runs, it reuses this exact browser context —
+    //     same cookies, storage, and login sessions.
+    //  3. The user can watch copilot's actions in real time through VNC.
+    // PLAYWRIGHT_DAEMON_SESSION_DIR points at the runtime-data volume so
+    // profiles survive container restarts.
     try {
-      chromiumProc = spawn('playwright-cli', ['show'], {
+      chromiumProc = spawn('playwright-cli', [
+        'open', 'about:blank',
+        '--persistent',
+        '--headed',
+        '--browser=chromium',
+      ], {
         detached: true,
         stdio: 'ignore',
-        env: { ...process.env, DISPLAY: ':99' },
+        env: {
+          ...process.env,
+          DISPLAY: ':99',
+          PLAYWRIGHT_CLI_SESSION: 'delegate',
+          PLAYWRIGHT_DAEMON_SESSION_DIR: BROWSER_PROFILE_DIR,
+        },
       });
       chromiumProc.unref();
-      console.log(`[browser] playwright-cli show started (pid ${chromiumProc.pid})`);
+      console.log(`[browser] persistent headed browser started (pid ${chromiumProc.pid}), daemon dir: ${BROWSER_PROFILE_DIR}`);
     } catch (_) {
-      console.warn('[browser] playwright-cli show failed to start — skipping session monitor');
+      console.warn('[browser] failed to start persistent headed browser — copilot will launch its own on first use');
     }
 
     running = true;
