@@ -399,6 +399,56 @@ function killProc(name: string, proc: ChildProcess | null): void {
 }
 
 // ---------------------------------------------------------------------------
+// Deferred browser launch
+// ---------------------------------------------------------------------------
+
+/**
+ * Launch the persistent headed Chromium browser via playwright-cli.
+ * Called after startup probe passes so Chromium doesn't starve the health check.
+ */
+function _launchHeadedBrowser(): void {
+  try {
+    const browserEnv = {
+      ...process.env,
+      DISPLAY: ':99',
+      PLAYWRIGHT_CLI_SESSION: 'delegate',
+      PLAYWRIGHT_DAEMON_SESSION_DIR: BROWSER_PROFILE_DIR,
+    };
+
+    chromiumProc = spawn('playwright-cli', [
+      'open', 'about:blank',
+      '--persistent',
+      '--headed',
+      '--browser=chromium',
+    ], {
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: browserEnv,
+    });
+
+    // Capture output for debugging — playwright-cli open is a short-lived
+    // client command that tells the daemon to launch the browser, then exits.
+    let stdout = '';
+    let stderr = '';
+    chromiumProc.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
+    chromiumProc.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+    chromiumProc.on('exit', (code: number | null) => {
+      if (code === 0) {
+        console.log(`[browser] playwright-cli open exited successfully`);
+      } else {
+        console.warn(`[browser] playwright-cli open exited with code ${code}`);
+        if (stdout.trim()) console.warn(`[browser]   stdout: ${stdout.trim()}`);
+        if (stderr.trim()) console.warn(`[browser]   stderr: ${stderr.trim()}`);
+      }
+    });
+    chromiumProc.unref();
+    console.log(`[browser] persistent headed browser starting (pid ${chromiumProc.pid}), daemon dir: ${BROWSER_PROFILE_DIR}`);
+  } catch (err: any) {
+    console.warn('[browser] failed to start persistent headed browser:', err?.message || err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -488,53 +538,11 @@ export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string
     console.log(`[browser] xterm log started (pid ${xtermLogProc.pid})`);
 
     // --- Persistent headed browser (left half of VNC) ---
-    // Launch the actual Chromium browser in headed + persistent mode using the
-    // same session name ("delegate") that copilot dispatch uses. This means:
-    //  1. The user can interact with the browser via VNC (log into sites, etc.)
-    //  2. When copilot dispatch runs, it reuses this exact browser context —
-    //     same cookies, storage, and login sessions.
-    //  3. The user can watch copilot's actions in real time through VNC.
-    // PLAYWRIGHT_DAEMON_SESSION_DIR points at the runtime-data volume so
-    // profiles survive container restarts.
-    try {
-      const browserEnv = {
-        ...process.env,
-        DISPLAY: ':99',
-        PLAYWRIGHT_CLI_SESSION: 'delegate',
-        PLAYWRIGHT_DAEMON_SESSION_DIR: BROWSER_PROFILE_DIR,
-      };
-
-      chromiumProc = spawn('playwright-cli', [
-        'open', 'about:blank',
-        '--persistent',
-        '--headed',
-        '--browser=chromium',
-      ], {
-        detached: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: browserEnv,
-      });
-
-      // Capture output for debugging — playwright-cli open is a short-lived
-      // client command that tells the daemon to launch the browser, then exits.
-      let stdout = '';
-      let stderr = '';
-      chromiumProc.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
-      chromiumProc.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
-      chromiumProc.on('exit', (code: number | null) => {
-        if (code === 0) {
-          console.log(`[browser] playwright-cli open exited successfully`);
-        } else {
-          console.warn(`[browser] playwright-cli open exited with code ${code}`);
-          if (stdout.trim()) console.warn(`[browser]   stdout: ${stdout.trim()}`);
-          if (stderr.trim()) console.warn(`[browser]   stderr: ${stderr.trim()}`);
-        }
-      });
-      chromiumProc.unref();
-      console.log(`[browser] persistent headed browser starting (pid ${chromiumProc.pid}), daemon dir: ${BROWSER_PROFILE_DIR}`);
-    } catch (err: any) {
-      console.warn('[browser] failed to start persistent headed browser:', err?.message || err);
-    }
+    // Deferred: launch after a short delay so the HTTP server can pass the
+    // Azure startup health probe before Chromium consumes resources.
+    setTimeout(() => {
+      _launchHeadedBrowser();
+    }, 10_000);
 
     running = true;
     return { ok: true };
