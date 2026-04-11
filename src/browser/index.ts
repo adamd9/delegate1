@@ -497,6 +497,13 @@ export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string
     // PLAYWRIGHT_DAEMON_SESSION_DIR points at the runtime-data volume so
     // profiles survive container restarts.
     try {
+      const browserEnv = {
+        ...process.env,
+        DISPLAY: ':99',
+        PLAYWRIGHT_CLI_SESSION: 'delegate',
+        PLAYWRIGHT_DAEMON_SESSION_DIR: BROWSER_PROFILE_DIR,
+      };
+
       chromiumProc = spawn('playwright-cli', [
         'open', 'about:blank',
         '--persistent',
@@ -504,18 +511,29 @@ export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string
         '--browser=chromium',
       ], {
         detached: true,
-        stdio: 'ignore',
-        env: {
-          ...process.env,
-          DISPLAY: ':99',
-          PLAYWRIGHT_CLI_SESSION: 'delegate',
-          PLAYWRIGHT_DAEMON_SESSION_DIR: BROWSER_PROFILE_DIR,
-        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: browserEnv,
+      });
+
+      // Capture output for debugging — playwright-cli open is a short-lived
+      // client command that tells the daemon to launch the browser, then exits.
+      let stdout = '';
+      let stderr = '';
+      chromiumProc.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
+      chromiumProc.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+      chromiumProc.on('exit', (code: number | null) => {
+        if (code === 0) {
+          console.log(`[browser] playwright-cli open exited successfully`);
+        } else {
+          console.warn(`[browser] playwright-cli open exited with code ${code}`);
+          if (stdout.trim()) console.warn(`[browser]   stdout: ${stdout.trim()}`);
+          if (stderr.trim()) console.warn(`[browser]   stderr: ${stderr.trim()}`);
+        }
       });
       chromiumProc.unref();
-      console.log(`[browser] persistent headed browser started (pid ${chromiumProc.pid}), daemon dir: ${BROWSER_PROFILE_DIR}`);
-    } catch (_) {
-      console.warn('[browser] failed to start persistent headed browser — copilot will launch its own on first use');
+      console.log(`[browser] persistent headed browser starting (pid ${chromiumProc.pid}), daemon dir: ${BROWSER_PROFILE_DIR}`);
+    } catch (err: any) {
+      console.warn('[browser] failed to start persistent headed browser:', err?.message || err);
     }
 
     running = true;
