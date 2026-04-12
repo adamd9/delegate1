@@ -144,6 +144,11 @@ function setupWorkDirFromRemote(remoteUrl: string, token: string): void {
   const gitDir = path.join(COPILOT_WORK_DIR, '.git');
   const cloneUrl = authedUrl(remoteUrl, token);
 
+  // Mark the workdir as safe to avoid "dubious ownership" errors in containers
+  try {
+    execSync(`git config --global --add safe.directory "${COPILOT_WORK_DIR}"`, { stdio: 'ignore' });
+  } catch { /* best-effort */ }
+
   // If there's already a .git dir, check if origin matches
   if (fs.existsSync(gitDir)) {
     try {
