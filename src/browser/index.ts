@@ -183,7 +183,11 @@ function setupWorkDirFromRemote(remoteUrl: string, token: string): void {
       { cwd: parentDir, encoding: 'utf8' }
     );
     // Replace the authed origin with the clean URL (don't persist token in .git/config)
-    execSync(`git remote set-url origin "${remoteUrl}"`, { cwd: COPILOT_WORK_DIR, stdio: 'ignore' });
+    try {
+      execSync(`git remote set-url origin "${remoteUrl}"`, { cwd: COPILOT_WORK_DIR, encoding: 'utf8' });
+    } catch (setUrlErr: any) {
+      console.warn('[browser] set-url failed (non-fatal):', setUrlErr.stderr || setUrlErr.message);
+    }
     console.log(`[browser] cloned ${remoteUrl} into ${COPILOT_WORK_DIR}`);
   } catch (err: any) {
     console.warn('[browser] clone failed:', err.message || err);
@@ -405,17 +409,24 @@ function killProc(name: string, proc: ChildProcess | null): void {
 /**
  * Launch the persistent headed Chromium browser via playwright-cli.
  * Called after startup probe passes so Chromium doesn't starve the health check.
+ *
+ * IMPORTANT: We must NOT set PLAYWRIGHT_CLI_SESSION in the env here.
+ * The startDaemon() code in playwright-core incorrectly passes that env var
+ * as --endpoint to the daemon, which treats it as a browser WebSocket endpoint
+ * to connect to (not a session name), causing "connect ENOENT delegate".
+ * Instead we pass the session name via the -s CLI flag.
  */
 function _launchHeadedBrowser(): void {
   try {
-    const browserEnv = {
-      ...process.env,
+    // Strip PLAYWRIGHT_CLI_SESSION from env to avoid the --endpoint bug
+    const { PLAYWRIGHT_CLI_SESSION: _stripped, ...cleanEnv } = process.env;
+    const browserEnv: Record<string, string> = {
+      ...(cleanEnv as Record<string, string>),
       DISPLAY: ':99',
-      PLAYWRIGHT_CLI_SESSION: 'delegate',
-      PLAYWRIGHT_DAEMON_SESSION_DIR: BROWSER_PROFILE_DIR,
     };
 
     chromiumProc = spawn('playwright-cli', [
+      '-s=delegate',
       'open', 'about:blank',
       '--persistent',
       '--headed',
@@ -424,6 +435,7 @@ function _launchHeadedBrowser(): void {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: browserEnv,
+      cwd: COPILOT_WORK_DIR,
     });
 
     // Capture output for debugging — playwright-cli open is a short-lived
@@ -435,6 +447,7 @@ function _launchHeadedBrowser(): void {
     chromiumProc.on('exit', (code: number | null) => {
       if (code === 0) {
         console.log(`[browser] playwright-cli open exited successfully`);
+        if (stdout.trim()) console.log(`[browser]   stdout: ${stdout.trim()}`);
       } else {
         console.warn(`[browser] playwright-cli open exited with code ${code}`);
         if (stdout.trim()) console.warn(`[browser]   stdout: ${stdout.trim()}`);
@@ -442,7 +455,7 @@ function _launchHeadedBrowser(): void {
       }
     });
     chromiumProc.unref();
-    console.log(`[browser] persistent headed browser starting (pid ${chromiumProc.pid}), daemon dir: ${BROWSER_PROFILE_DIR}`);
+    console.log(`[browser] persistent headed browser starting (pid ${chromiumProc.pid}), cwd: ${COPILOT_WORK_DIR}`);
   } catch (err: any) {
     console.warn('[browser] failed to start persistent headed browser:', err?.message || err);
   }
