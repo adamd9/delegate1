@@ -7,6 +7,7 @@ import { ensureSession, appendEvent, ThoughtFlowStepType } from '../../observabi
 import { session } from '../../session/state';
 
 import { supervisorAgentConfig } from '../../agentConfigs/supervisorAgentConfig';
+import { summarizeRequestForLog } from '../../utils/logSanitize';
 
 // Helper to avoid flooding breadcrumbs; returns either parsed JSON, truncated string, or object with length
 function safeTruncateJson(input: any, maxLen = 1200): any {
@@ -184,7 +185,7 @@ export async function handleSupervisorToolCalls(
     }
   } catch {}
 
-  console.log("[DEBUG] Initial Responses API request:", JSON.stringify(requestBody, null, 2));
+  console.log("[DEBUG] Initial Responses API request:", JSON.stringify(summarizeRequestForLog(requestBody), null, 2));
   let currentResponse = await openai.responses.create(requestBody);
   try {
     ensureSession();
@@ -310,7 +311,7 @@ export async function handleSupervisorToolCalls(
     };
     
     addBreadcrumb?.("Supervisor Follow-up", { with_tools: true, outputs: functionCallOutputs.map(o => ({ call_id: o.call_id })) });
-    console.log("[DEBUG] Follow-up Responses API request:", JSON.stringify(followUpRequestBody, null, 2));
+    console.log("[DEBUG] Follow-up Responses API request:", JSON.stringify(summarizeRequestForLog(followUpRequestBody), null, 2));
     // ThoughtFlow: emit supervisor assistant_call (follow-up)
     let supFollowLlmStepId: string | undefined;
     try {

@@ -13,6 +13,7 @@ import { listConversations as dbListConversations, listConversationEvents, compl
 import { ensureSession, appendEvent, ThoughtFlowStepType, endSession } from "../observability/thoughtflow";
 import { addConversationEvent } from "../db/sqlite";
 import { replayHistoryOnConnect } from './history';
+import { summarizeRequestForLog } from '../utils/logSanitize';
 import { getAdaptationTextById } from '../adaptations';
 import { createOpenAIClient } from "../services/openaiClient";
 import { classifyOpenAIError } from "../services/openaiErrors";
@@ -449,7 +450,7 @@ export async function handleTextChatMessage(
       role: "user",
     };
     requestBody.input = [userInput];
-    console.log("[DEBUG] Responses API Request:", JSON.stringify(requestBody, null, 2));
+    console.log("[DEBUG] Responses API Request:", JSON.stringify(summarizeRequestForLog(requestBody), null, 2));
     // ThoughtFlow: LLM tool_call with prompt_provenance (Approach B)
     const llmStepId = `step_llm_${requestId}`;
     const provenanceParts = [
@@ -574,7 +575,7 @@ export async function handleTextChatMessage(
             ],
             tools: functionSchemas,
           };
-          console.log("[DEBUG] Follow-up Responses API request:", JSON.stringify(followUpBody, null, 2));
+          console.log("[DEBUG] Follow-up Responses API request:", JSON.stringify(summarizeRequestForLog(followUpBody), null, 2));
           const followUpResponse = await session.openaiClient.responses.create(followUpBody);
           if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
             console.log(`[${requestId}] Aborting after follow-up due to cancel`);

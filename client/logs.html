@@ -38,6 +38,17 @@
     .a94{color:#818cf8} .a95{color:#a78bfa} .a96{color:#67e8f9} .a97{color:#f3f4f6}
     .a1{font-weight:700} .a2{opacity:0.6} .a3{font-style:italic} .a4{text-decoration:underline}
     .empty { display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-dim); font-family: var(--font); font-size: 12px; flex: 1; }
+    .paused-notice { display: none; font-size: 10px; color: var(--amber); font-family: var(--font); padding: 0 8px; }
+    .paused-notice.visible { display: inline; }
+    /* Collapsible verbose log sections */
+    .log-collapsed { cursor: pointer; }
+    .log-collapsed .collapse-preview { color: var(--text-mid); }
+    .log-collapsed .collapse-toggle { color: var(--accent); font-size: 11px; margin-left: 4px; user-select: none; }
+    .log-collapsed .collapse-toggle:hover { text-decoration: underline; }
+    .log-collapsed .collapse-body { display: none; color: var(--text-dim); margin-left: 16px; }
+    .log-collapsed.expanded .collapse-body { display: block; }
+    .log-collapsed.expanded .collapse-toggle::after { content: '▾ collapse'; }
+    .log-collapsed:not(.expanded) .collapse-toggle::after { content: '▸ expand'; }
   </style>
 </head>
 <body>
@@ -53,6 +64,7 @@
       </label>
       <button class="refresh-btn" id="refresh-btn">refresh</button>
       <a id="raw-link" class="raw-link" target="_blank" rel="noopener noreferrer">raw</a>
+      <span id="paused-notice" class="paused-notice">⏸ paused (text selected)</span>
     </div>
   </header>
   <div id="status-bar" class="status-bar">loading…</div>
@@ -66,6 +78,48 @@
     '30':'a30','31':'a31','32':'a32','33':'a33','34':'a34','35':'a35','36':'a36','37':'a37',
     '90':'a90','91':'a91','92':'a92','93':'a93','94':'a94','95':'a95','96':'a96','97':'a97',
   };
+
+  /* Threshold: log lines with JSON payloads longer than this get collapsed */
+  const COLLAPSE_THRESHOLD = 500;
+  /* Patterns that identify verbose debug log lines worth collapsing */
+  const COLLAPSE_PATTERNS = [
+    /\[DEBUG\].*Responses API/,
+    /\[DEBUG\].*Follow-up Responses API/,
+  ];
+
+  function hasUserSelection() {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.toString().trim()) return false;
+    /* Only pause if selection is inside the log container */
+    const container = document.getElementById('log-container');
+    try {
+      return container && container.contains(sel.anchorNode);
+    } catch { return false; }
+  }
+
+  function shouldCollapse(rawText) {
+    if (rawText.length < COLLAPSE_THRESHOLD) return false;
+    return COLLAPSE_PATTERNS.some(p => p.test(rawText));
+  }
+
+  function renderCollapsedLine(line) {
+    /* Find the label part (before the JSON blob) */
+    const jsonStart = line.search(/[{\[]/);
+    if (jsonStart < 0) {
+      /* No JSON found, just truncate */
+      const preview = line.slice(0, 120);
+      return `<span class="log-line log-collapsed" onclick="this.classList.toggle('expanded')">`
+        + `<span class="collapse-preview">${ansiToHtml(preview)}…</span>`
+        + `<span class="collapse-toggle"></span>`
+        + `<span class="collapse-body">${ansiToHtml(line)}</span></span>`;
+    }
+    const label = line.slice(0, jsonStart).trim();
+    const body = line.slice(jsonStart);
+    return `<span class="log-line log-collapsed" onclick="this.classList.toggle('expanded')">`
+      + `<span class="collapse-preview">${ansiToHtml(label)} </span>`
+      + `<span class="collapse-toggle"></span>`
+      + `<span class="collapse-body">${ansiToHtml(body)}</span></span>`;
+  }
 
   function ansiToHtml(text) {
     let openSpans = 0;
@@ -107,6 +161,14 @@
   let intervalId = null;
 
   async function fetchLogs() {
+    const pausedEl = document.getElementById('paused-notice');
+    /* Skip DOM update if user has selected text — avoids losing the selection */
+    if (hasUserSelection()) {
+      pausedEl.classList.add('visible');
+      return;
+    }
+    pausedEl.classList.remove('visible');
+
     try {
       const res = await fetch(logsUrl, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -115,9 +177,10 @@
       const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 40;
 
       const lines = text.split('\n');
-      container.innerHTML = lines.map(line =>
-        `<span class="log-line">${ansiToHtml(line)}</span>`
-      ).join('');
+      container.innerHTML = lines.map(line => {
+        if (shouldCollapse(line)) return renderCollapsedLine(line);
+        return `<span class="log-line">${ansiToHtml(line)}</span>`;
+      }).join('');
 
       if (wasAtBottom) container.scrollTop = container.scrollHeight;
 
