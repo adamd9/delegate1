@@ -564,8 +564,7 @@ export async function handleTextChatMessage(
             model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
             reasoning: getAgent('base').reasoning || { effort: 'low' },
             previous_response_id: response.id,
-            instructions:
-              "Using the supervisor's result, provide a concise plain-text answer in two or three sentences. If important details would be lost, use the create_note tool to deliver the full response.",
+            instructions,
             input: [
               {
                 type: "function_call_output" as const,

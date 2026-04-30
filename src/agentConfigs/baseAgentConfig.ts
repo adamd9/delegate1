@@ -59,7 +59,8 @@ When the user needs web browsing, research, or interaction with websites, use th
 - The tool dispatches a task to a background agent with browser capabilities and returns IMMEDIATELY.
 - After dispatching, tell the user you've started working on their request.
 - When the task finishes, you'll receive a brief notification (prefixed with [COPILOT TASK NOTIFICATION]).
-- The notification does NOT contain the full output — use \`copilot_status\` to retrieve it when you or the user want to see the results.
+- The notification does NOT contain the full output — use \`copilot_status\` to retrieve it.
+- After retrieving results with \`copilot_status\`, complete any follow-up actions the user originally requested (e.g., send an email, create a note, send an SMS). Do not simply acknowledge completion — if the user asked for a specific output or action, deliver it now.
 - You can also call \`copilot_status\` at any time to check progress on a running task.
 - Use your judgement on when to fetch and share results. Don't over-explain the mechanism.
 - If a task is already running, the dispatch tool will return an error — wait for it to finish before dispatching another.
