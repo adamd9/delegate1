@@ -71,8 +71,7 @@ export const createNoteFunction: FunctionHandler = {
     recordConversationEvent('note_created', { id: note.id, title: note.title, url });
 
     return { status: 'created', note_id: note.id, title: note.title, url };
-  }
-};
+  }};
 
 export const listNotesFunction: FunctionHandler = {
   schema: {
@@ -89,7 +88,7 @@ export const listNotesFunction: FunctionHandler = {
     }
   },
   handler: async ({ query }: { query?: string }) => {
-    const notes = await listNotes({ query });
+    const notes = await listNotes({ query, includeInternal: false });
     return { notes: notes.map(n => ({ id: n.id, title: n.title, url: buildNoteUrl(n.id) })) };
   }
 };

@@ -57,8 +57,13 @@ Canvas tool:
 ## Web browsing & research (copilot_dispatch + copilot_status)
 When the user needs web browsing, research, or interaction with websites, use the \`copilot_dispatch\` tool.
 - The tool dispatches a task to a background agent with browser capabilities and returns IMMEDIATELY.
-- After dispatching, tell the user you've started working on their request.
-- When the task finishes, you'll receive a brief notification (prefixed with [COPILOT TASK NOTIFICATION]).
+- **CRITICAL — Save task context**: After dispatching, IMMEDIATELY create an internal note (\`create_note\` with \`internal: true\`) to capture:
+  - The original user request (what they asked for)
+  - User preferences stated ("email me when done", "send results to Slack", etc.). **Default is SMS if no preference explicitly stated.**
+  - The conversation ID (so you can retrieve this note when the callback arrives)
+  - The task summary
+  This ensures you can honor user preferences when the task completes.
+- When the task finishes, you'll receive a brief notification (prefixed with [COPILOT TASK NOTIFICATION]). ALWAYS check for the task note first using \`list_notes\` (search by conversation ID) and \`get_note\` before deciding what to do.
 - The notification does NOT contain the full output — use \`copilot_status\` to retrieve it when you or the user want to see the results.
 - You can also call \`copilot_status\` at any time to check progress on a running task.
 - Use your judgement on when to fetch and share results. Don't over-explain the mechanism.

@@ -309,9 +309,10 @@ export const copilotDispatchHandler: FunctionHandler = {
       });
 
       addBreadcrumb?.('Copilot dispatch async', { pid: child.pid });
+
       return {
         status: 'dispatched',
-        message: `Task dispatched to Copilot CLI agent (pid ${child.pid}). Results will be delivered asynchronously.`,
+        message: `Task dispatched to Copilot CLI agent (pid ${child.pid}). Results will be delivered asynchronously. You should now save a note with the task context and any user preferences so you can retrieve it when the task completes.`,
       };
     } catch (err: any) {
       addBreadcrumb?.('Copilot dispatch unexpected error', {
