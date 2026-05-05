@@ -423,6 +423,30 @@ function killProc(name: string, proc: ChildProcess | null): void {
  */
 function _launchHeadedBrowser(): void {
   try {
+    // Write playwright-cli config with Chromium flags required for container environments.
+    // --disable-dev-shm-usage: prevents Chrome crashes when /dev/shm is too small (Azure App Service).
+    // --no-sandbox:            required when running as root in containers.
+    // --disable-gpu:           avoids GPU-related crashes in headless/virtual display environments.
+    // --single-process:        reduces memory by merging renderer into the browser process.
+    const playwrightConfigDir = path.join(COPILOT_WORK_DIR, '.playwright');
+    fs.mkdirSync(playwrightConfigDir, { recursive: true });
+    const playwrightConfig = {
+      browser: {
+        launchOptions: {
+          args: [
+            '--disable-dev-shm-usage',
+            '--no-sandbox',
+            '--disable-gpu',
+            '--single-process',
+          ],
+        },
+      },
+    };
+    fs.writeFileSync(
+      path.join(playwrightConfigDir, 'cli.config.json'),
+      JSON.stringify(playwrightConfig, null, 2),
+    );
+
     // Strip PLAYWRIGHT_CLI_SESSION from env to avoid the --endpoint bug
     const { PLAYWRIGHT_CLI_SESSION: _stripped, ...cleanEnv } = process.env;
     const browserEnv: Record<string, string> = {
