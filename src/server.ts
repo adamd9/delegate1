@@ -22,6 +22,8 @@ import { registerMemoriesRoutes } from './server/routes/memories';
 import { registerOpenAiSessionRoute } from './server/routes/openaiSession';
 import { registerCopilotRoutes } from './server/routes/copilot';
 import { registerVncRoutes } from './server/routes/vnc';
+import { registerDevWalkieRoutes } from './server/routes/devWalkie';
+import { registerDevWalkieVoiceRoutes } from './server/routes/devWalkieVoice';
 import { getConfig } from './server/config/env';
 import { registerHealthRoutes, setReady } from './server/routes/health';
 import { registerBuildInfoRoutes } from './server/routes/buildInfo';
@@ -151,6 +153,10 @@ registerCopilotRoutes(app, { chatClients, logsClients });
 
 // VNC web viewer routes (noVNC static files + auth endpoint)
 registerVncRoutes(app);
+
+// TEMPORARY: ZeppOS walkie-talkie dev/debug routes (/_dev/walkie/*)
+registerDevWalkieRoutes(app);
+registerDevWalkieVoiceRoutes(app);
 
 // Serve the vanilla JS client (after all API routes so they take priority)
 app.use(express.static(vanillaClientDir, { extensions: ['html'] }));
