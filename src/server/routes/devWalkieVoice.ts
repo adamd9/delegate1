@@ -17,6 +17,7 @@ import {
   normalizeAudioForStt,
   transcribeAudio,
   synthesizeSpeech,
+  synthesizeSpeechZeppOpus,
   VoiceMessageError,
   getMaxAudioBytes,
 } from "../../voice/voicePipeline";
@@ -33,8 +34,9 @@ export function registerDevWalkieVoiceRoutes(app: Application) {
 
     try {
       const { audio_base64, audio_format, audio_name, conversation_id, response_format } = req.body || {};
-      // response_format: "text" (default) = text only, "audio" = include TTS mp3
+      // response_format: "text" (default) = text only, "audio" = include TTS mp3, "zepp_audio" = ZeppOS Opus
       const wantAudio = response_format === "audio";
+      const wantZeppAudio = response_format === "zepp_audio";
 
       if (!audio_base64 || typeof audio_base64 !== "string") {
         return res.status(400).json({ error: "missing_audio", message: "Missing audio_base64 field" });
@@ -109,7 +111,15 @@ export function registerDevWalkieVoiceRoutes(app: Application) {
       // TTS (only if client wants audio back)
       let ttsMs = 0;
       let ttsBase64: string | null = null;
-      if (wantAudio) {
+      let ttsFormat: string = "mp3";
+      if (wantZeppAudio) {
+        const ttsStart = Date.now();
+        const zeppBuffer = await synthesizeSpeechZeppOpus(chatResult.assistantText, openaiClient);
+        ttsMs = Date.now() - ttsStart;
+        ttsBase64 = zeppBuffer.toString("base64");
+        ttsFormat = "opus";
+        console.log(`[_dev/walkie/voice] ZeppOS TTS: ${ttsMs}ms, ${zeppBuffer.length} bytes`);
+      } else if (wantAudio) {
         const ttsStart = Date.now();
         const ttsBuffer = await synthesizeSpeech(chatResult.assistantText, openaiClient);
         ttsMs = Date.now() - ttsStart;
@@ -124,7 +134,7 @@ export function registerDevWalkieVoiceRoutes(app: Application) {
         conversation_id: chatResult.conversationId,
         user_text: transcript.text,
         assistant_text: chatResult.assistantText,
-        assistant_audio: ttsBase64 ? { format: "mp3", base64: ttsBase64 } : null,
+        assistant_audio: ttsBase64 ? { format: ttsFormat, base64: ttsBase64 } : null,
         timings_ms: { stt: sttMs, llm: llmMs, tts: ttsMs, total: totalMs },
       });
 

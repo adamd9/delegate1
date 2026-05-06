@@ -1,6 +1,7 @@
-import { extname } from "path";
+import { extname, join } from "path";
 import fs from "fs";
 import { execFileSync } from "child_process";
+import { tmpdir } from "os";
 import OpenAI from "openai";
 import { createOpenAIClient } from "../services/openaiClient";
 import { getChatVoiceConfig } from "./voiceConfig";
@@ -382,4 +383,135 @@ export async function synthesizeSpeech(text: string, openaiClient?: OpenAI): Pro
   });
   const arrayBuffer = await resp.arrayBuffer();
   return Buffer.from(arrayBuffer);
+}
+
+/**
+ * Synthesize speech and encode as ZeppOS-compatible Opus file.
+ * 
+ * Flow: text → OpenAI TTS (opus) → decode to PCM → re-encode as low-bitrate Opus frames → wrap in ZeppOS format.
+ * The ZeppOS format is: [4-byte BE length][4-byte metadata (zeros)][Opus frame data] repeated.
+ * 
+ * We use ffmpeg to: TTS mp3 → raw Opus packets via a low-bitrate encode.
+ * Then wrap those packets in the ZeppOS frame format.
+ */
+export async function synthesizeSpeechZeppOpus(text: string, openaiClient?: OpenAI): Promise<Buffer> {
+  const client = openaiClient || createOpenAIClient();
+  const voiceConfig = getChatVoiceConfig();
+  
+  // Get TTS as opus directly from OpenAI (smallest format they support)
+  const resp = await client.audio.speech.create({
+    model: voiceConfig.ttsModel,
+    voice: voiceConfig.voice,
+    input: text,
+    response_format: "opus",
+    speed: voiceConfig.speed,
+  });
+  const ttsBuffer = Buffer.from(await resp.arrayBuffer());
+
+  // Use ffmpeg to re-encode as low-bitrate mono Opus raw frames
+  // Output: raw Opus in OGG container at 16kHz mono, very low bitrate
+  const inputTmp = join(tmpdir(), `zepp_tts_in_${Date.now()}.opus`);
+  const outputTmp = join(tmpdir(), `zepp_tts_out_${Date.now()}.ogg`);
+  fs.writeFileSync(inputTmp, ttsBuffer);
+
+  const ffmpeg = ffmpegPath || "ffmpeg";
+  try {
+    execFileSync(ffmpeg, [
+      "-i", inputTmp,
+      "-c:a", "libopus",    // explicitly use Opus codec (not FLAC)
+      "-ar", "16000",       // 16kHz sample rate (matches ZeppOS recorder)
+      "-ac", "1",           // mono
+      "-b:a", "12k",        // very low bitrate for smallest file size
+      "-vbr", "off",
+      "-frame_duration", "20", // 20ms frames (matches ZeppOS)
+      "-application", "voip",
+      "-af", "volume=6dB",   // boost volume for tiny watch speaker
+      "-y", outputTmp,
+    ], { timeout: 15000 });
+  } catch (e: any) {
+    // Clean up
+    try { fs.unlinkSync(inputTmp); } catch {}
+    throw new Error(`ffmpeg re-encode for ZeppOS failed: ${e.message}`);
+  }
+  try { fs.unlinkSync(inputTmp); } catch {}
+
+  // Parse the OGG output to extract raw Opus frames
+  const oggData = fs.readFileSync(outputTmp);
+  try { fs.unlinkSync(outputTmp); } catch {}
+  
+  const opusFrames = extractOpusFramesFromOgg(oggData);
+  if (opusFrames.length === 0) {
+    throw new Error("No Opus frames extracted from ffmpeg output");
+  }
+
+  // Wrap in ZeppOS format: [4B BE length][4B zeros metadata][frame data]
+  const parts: Buffer[] = [];
+  for (let i = 0; i < opusFrames.length; i++) {
+    const frame = opusFrames[i];
+    const header = Buffer.alloc(8);
+    header.writeUInt32BE(frame.length, 0); // frame length
+    header.writeUInt32BE(i * 20, 4);       // timestamp-like metadata (ms)
+    parts.push(header);
+    parts.push(frame);
+  }
+
+  const result = Buffer.concat(parts);
+  console.log(`[voice] ZeppOS Opus encoded: ${opusFrames.length} frames, ${result.length} bytes, ~${opusFrames.length * 20}ms`);
+  return result;
+}
+
+/**
+ * Extract raw Opus frames from an OGG container.
+ * Skips the first two pages (OpusHead + OpusTags).
+ */
+function extractOpusFramesFromOgg(data: Buffer): Buffer[] {
+  const frames: Buffer[] = [];
+  let pos = 0;
+  let pageIndex = 0;
+
+  while (pos + 27 <= data.length) {
+    // Check OggS magic
+    if (data.toString("ascii", pos, pos + 4) !== "OggS") break;
+    
+    const numSegments = data[pos + 26];
+    if (pos + 27 + numSegments > data.length) break;
+    
+    // Read segment table
+    const segmentTable = data.slice(pos + 27, pos + 27 + numSegments);
+    let dataSize = 0;
+    for (let i = 0; i < numSegments; i++) {
+      dataSize += segmentTable[i];
+    }
+    
+    const pageDataStart = pos + 27 + numSegments;
+    if (pageDataStart + dataSize > data.length) break;
+
+    // Skip first two pages (OpusHead, OpusTags)
+    if (pageIndex >= 2) {
+      // Each segment of 255 bytes means continuation; collect until < 255
+      let segPos = pageDataStart;
+      let frameData: Buffer[] = [];
+      for (let i = 0; i < numSegments; i++) {
+        const segSize = segmentTable[i];
+        frameData.push(data.slice(segPos, segPos + segSize));
+        segPos += segSize;
+        // A segment < 255 means end of packet
+        if (segSize < 255) {
+          if (frameData.length > 0) {
+            frames.push(Buffer.concat(frameData));
+          }
+          frameData = [];
+        }
+      }
+      // Handle case where last segment is exactly 255 (unterminated)
+      if (frameData.length > 0) {
+        frames.push(Buffer.concat(frameData));
+      }
+    }
+
+    pos = pageDataStart + dataSize;
+    pageIndex++;
+  }
+
+  return frames;
 }
