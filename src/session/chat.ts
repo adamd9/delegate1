@@ -1,7 +1,7 @@
 import { RawData, WebSocket } from "ws";
 import { ResponsesTextInput } from "../types";
 import { getAgent, getDefaultAgent, FunctionHandler } from "../agentConfigs";
-import { executeFunctionCalls, executeFunctionCall } from "../tools/orchestrators/functionCallExecutor";
+import { executeFunctionCall } from "../tools/orchestrators/functionCallExecutor";
 import { contextInstructions, Context, Channel, getTimeContext } from "../agentConfigs/context";
 import { getSchemasForAgent } from "../tools/registry";
 import { isSmsWindowOpen, getNumbers } from "../smsState";
@@ -564,8 +564,7 @@ export async function handleTextChatMessage(
             model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
             reasoning: getAgent('base').reasoning || { effort: 'low' },
             previous_response_id: response.id,
-            instructions:
-              "Using the supervisor's result, provide a concise plain-text answer in two or three sentences. If important details would be lost, use the create_note tool to deliver the full response.",
+            instructions,
             input: [
               {
                 type: "function_call_output" as const,
@@ -591,72 +590,80 @@ export async function handleTextChatMessage(
             )
           );
           session.previousResponseId = followUpResponse.id;
-          const fuFunctionCalls = followUpResponse.output?.filter((o: any) => o.type === "function_call");
-          if (fuFunctionCalls && fuFunctionCalls.length > 0) {
-            // Delegate to orchestrator to execute one function_call (note preferred) and optionally confirm
-            const { handled, confirmText, confirmResponseId, executedCall } = await executeFunctionCalls(
-              fuFunctionCalls,
-              {
-                mode: 'chat',
-                logsClients,
-                openaiClient: session.openaiClient,
-                previousResponseId: followUpResponse.id,
-                confirm: true,
-                // Chain subsequent tool calls after the first tool step for ThoughtFlow sequencing
-                dependsOnStepId: toolStepId,
-              }
+
+          // Tool-call loop: continue executing tool calls and feeding results back to the LLM
+          // until it produces a text response (or we hit the iteration limit).
+          const MAX_TOOL_CALL_ITERATIONS = 8;
+          let currentLoopResponse = followUpResponse;
+          let loopIterations = 0;
+
+          while (loopIterations < MAX_TOOL_CALL_ITERATIONS) {
+            const loopFunctionCalls = currentLoopResponse.output?.filter((o: any) => o.type === "function_call");
+            if (!loopFunctionCalls || loopFunctionCalls.length === 0) break;
+
+            loopIterations++;
+            const loopCall = loopFunctionCalls[0];
+
+            // Execute the tool call via orchestrator
+            const loopResult = await executeFunctionCall(
+              loopCall,
+              { mode: 'chat', logsClients, dependsOnStepId: toolStepId }
             );
-            if (handled) {
-              // If a follow-up tool was executed, advance the chain anchor to that tool's step id
-              if (executedCall?.call_id) {
-                toolStepId = `step_tool_${executedCall.call_id}`;
-              }
-              if (confirmResponseId) session.previousResponseId = confirmResponseId;
-              const text = confirmText || followUpResponse.output_text || "(action completed)";
-              const assistantStepId_handled = `step_assistant_${Date.now()}`;
-              // Depend on the known local tool step; include supervisor-provided anchor if present for richer linking
-              const supAnchor = (functionResult && typeof functionResult === 'object' && (functionResult as any).supLastStepId) ? (functionResult as any).supLastStepId : undefined;
-              const dependsArr = supAnchor ? [toolStepId, supAnchor] : [toolStepId];
-              appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: assistantStepId_handled, label: ThoughtFlowStepType.AssistantMessage, payload: { text }, depends_on: dependsArr, timestamp: Date.now() });
-              try { (session as any).lastAssistantStepId = assistantStepId_handled; } catch {}
-              const assistantMessage = {
-                type: 'assistant' as const,
-                content: text,
-                timestamp: Date.now(),
-                channel: 'text' as const,
-                supervisor: true,
-              };
-              session.conversationHistory.push(assistantMessage);
-              try {
-                addConversationEvent({
-                  conversation_id: conversationId,
-                  kind: 'message_assistant',
-                  payload: { text, channel: 'text', supervisor: true },
-                  created_at_ms: assistantMessage.timestamp,
-                });
-              } catch {}
-              if (isSmsWindowOpen()) {
-                const { smsUserNumber, smsTwilioNumber } = getNumbers();
-                sendSms(text, smsTwilioNumber, smsUserNumber).catch((e) => console.error('sendSms error', e));
-              }
-              for (const ws of chatClients) {
-                if (isOpen(ws)) jsonSend(ws, { type: 'chat.response', content: text, timestamp: Date.now(), supervisor: true, session_id: sessionId, conversation_id: conversationId });
-              }
-              for (const ws of chatClients) {
-                if (isOpen(ws)) jsonSend(ws, { type: 'chat.done', request_id: requestId, timestamp: Date.now() });
-              }
-              session.currentRequest = undefined;
-              // No additional logs emit to avoid duplicate assistant messages; chat.response carries meta now.
-              appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_handled, timestamp: Date.now() });
-              return { conversationId, sessionId, requestId, assistantText: text, supervisor: true };
+
+            // Advance ThoughtFlow chain anchor
+            if (loopCall.call_id) {
+              toolStepId = `step_tool_${loopCall.call_id}`;
+            }
+
+            // Check cancel before continuing
+            if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
+              console.log(`[${requestId}] Aborting tool-call loop due to cancel`);
+              appendEvent({ type: 'conversation.aborted', conversation_id: conversationId, request_id: requestId, timestamp: Date.now() });
+              return;
+            }
+
+            // Submit tool result back to LLM for next iteration
+            const loopBody = {
+              model: getAgent('base').textModel || getAgent('base').model || "gpt-5-mini",
+              reasoning: getAgent('base').reasoning || { effort: 'low' },
+              previous_response_id: currentLoopResponse.id,
+              instructions,
+              input: [
+                {
+                  type: "function_call_output" as const,
+                  call_id: loopCall.call_id,
+                  output: typeof loopResult === "string" ? loopResult : JSON.stringify(loopResult),
+                },
+              ],
+              tools: functionSchemas,
+            };
+            console.log(`[DEBUG] Tool-call loop iteration ${loopIterations}, submitting ${loopCall.name} result back to LLM`);
+            currentLoopResponse = await session.openaiClient.responses.create(loopBody);
+            session.previousResponseId = currentLoopResponse.id;
+
+            console.log(
+              `[DEBUG] Tool-call loop response (iter ${loopIterations}):`,
+              JSON.stringify(
+                { id: currentLoopResponse.id, output_text: currentLoopResponse.output_text, output: currentLoopResponse.output },
+                null,
+                2
+              )
+            );
+
+            if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
+              console.log(`[${requestId}] Aborting tool-call loop after LLM response due to cancel`);
+              appendEvent({ type: 'conversation.aborted', conversation_id: conversationId, request_id: requestId, timestamp: Date.now() });
+              return;
             }
           }
-          const finalResponse = followUpResponse.output_text || "Supervisor agent completed.";
-          const assistantStepId_supervisor = `step_assistant_${Date.now()}`;
-          const supAnchor2 = (functionResult && typeof functionResult === 'object' && (functionResult as any).supLastStepId) ? (functionResult as any).supLastStepId : undefined;
-          const dependsArr2 = supAnchor2 ? [toolStepId, supAnchor2] : [toolStepId];
-          appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: assistantStepId_supervisor, label: ThoughtFlowStepType.AssistantMessage, payload: { text: finalResponse }, depends_on: dependsArr2, timestamp: Date.now() });
-          try { (session as any).lastAssistantStepId = assistantStepId_supervisor; } catch {}
+
+          // After the loop, currentLoopResponse should contain a text output
+          const finalResponse = currentLoopResponse.output_text || "(action completed)";
+          const assistantStepId_final = `step_assistant_${Date.now()}`;
+          const supAnchor = (functionResult && typeof functionResult === 'object' && (functionResult as any).supLastStepId) ? (functionResult as any).supLastStepId : undefined;
+          const dependsArr = supAnchor ? [toolStepId, supAnchor] : [toolStepId];
+          appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: assistantStepId_final, label: ThoughtFlowStepType.AssistantMessage, payload: { text: finalResponse }, depends_on: dependsArr, timestamp: Date.now() });
+          try { (session as any).lastAssistantStepId = assistantStepId_final; } catch {}
           const assistantMessage = {
             type: "assistant" as const,
             content: finalResponse,
@@ -700,8 +707,7 @@ export async function handleTextChatMessage(
             if (isOpen(ws)) jsonSend(ws, { type: "chat.done", request_id: requestId, timestamp: Date.now() });
           }
           session.currentRequest = undefined;
-          // No logs emit; chat.response above includes meta to avoid duplication
-          appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_supervisor, timestamp: Date.now() });
+          appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_final, timestamp: Date.now() });
           return { conversationId, sessionId, requestId, assistantText: finalResponse, supervisor: true };
         }
       } catch (err: any) {

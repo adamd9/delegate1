@@ -18,7 +18,7 @@ function formatNotification(task: string, status: string, conversationId?: strin
     `IMPORTANT: Before responding, check if there are any notes for this conversation ID that contain task context or user preferences for how to handle the result.\n\n` +
     `You can use the \`list_notes\` tool to search for notes with the conversation ID or task summary, and the \`get_note\` tool to read them.\n\n` +
     `Once you\'ve checked the task context (if any), you can use the \`copilot_status\` tool to retrieve the full output if needed.\n` +
-    `If the note has a preference (email, Slack, etc.), honor it. If no preference is recorded, default to SMS. Decide whether to fetch and share results with the user, or simply let them know the task is done.`
+    `If the note has a preference (email, Slack, etc.), honor it. If no preference is recorded, default to SMS. After retrieving the output, complete any originally requested follow-up action instead of only acknowledging completion.`
   );
 }
 
@@ -92,7 +92,7 @@ export function registerCopilotRoutes(
             `Task: "${task}"${convRef}\n\n` +
             `IMPORTANT: Before responding, check if there are any notes for this conversation ID that contain task context or user preferences.\n\n` +
             `You can use the \`list_notes\` tool to search by conversation ID, and \`get_note\` to read task details.\n\n` +
-            `Once checked, use \`copilot_status\` to see the full output. If the note has a preference, honor it; default to SMS if no preference recorded. Decide whether to inform the user or retry.`;
+            `Once checked, use \`copilot_status\` to see any available output. If the note has a preference, honor it; default to SMS if no preference is recorded. Inform the user about the error and, if appropriate, retry or complete any originally requested follow-up actions with whatever results are available.`;
 
           await handleTextChatMessage(message, chatClients, logsClients, 'copilot');
 
