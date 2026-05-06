@@ -16,8 +16,6 @@ import { tmpdir } from "os";
 import {
   normalizeAudioForStt,
   transcribeAudio,
-  synthesizeSpeech,
-  synthesizeSpeechZeppOpus,
   VoiceMessageError,
   getMaxAudioBytes,
 } from "../../voice/voicePipeline";
@@ -28,15 +26,10 @@ import { chatClients, logsClients } from "../../ws/clients";
 
 export function registerDevWalkieVoiceRoutes(app: Application) {
   app.post("/_dev/walkie/voice", async (req: Request, res: Response) => {
-    const totalStart = Date.now();
     let tempPath: string | undefined;
-    let normalizedPath: string | undefined;
 
     try {
-      const { audio_base64, audio_format, audio_name, conversation_id, response_format } = req.body || {};
-      // response_format: "text" (default) = text only, "audio" = include TTS mp3, "zepp_audio" = ZeppOS Opus
-      const wantAudio = response_format === "audio";
-      const wantZeppAudio = response_format === "zepp_audio";
+      const { audio_base64, audio_format, audio_name, conversation_id } = req.body || {};
 
       if (!audio_base64 || typeof audio_base64 !== "string") {
         return res.status(400).json({ error: "missing_audio", message: "Missing audio_base64 field" });
@@ -52,94 +45,78 @@ export function registerDevWalkieVoiceRoutes(app: Application) {
       const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       console.log(`[_dev/walkie/voice] Received ${audioBuffer.length} bytes (${audio_format || "opus"}) at ${ts}`);
 
-      // Save timestamped debug files
-      const debugDir = join(__dirname, "../../../../zeppos-walkie-talkie-v2/debug-audio");
-      try { fs.mkdirSync(debugDir, { recursive: true }); } catch {}
+      // Respond immediately — audio is valid, we'll process async
+      res.json({ ok: true, received_bytes: audioBuffer.length, ts });
 
-      const rawPath = join(debugDir, `${ts}_raw.opus`);
-      fs.writeFileSync(rawPath, audioBuffer);
+      // ─── ASYNC PROCESSING (fire-and-forget from client's perspective) ───
+      (async () => {
+        const totalStart = Date.now();
+        let normalizedPath: string | undefined;
+        try {
+          // Save timestamped debug files
+          const debugDir = join(__dirname, "../../../../zeppos-walkie-talkie/debug-audio");
+          try { fs.mkdirSync(debugDir, { recursive: true }); } catch {}
 
-      // Decode to WAV for STT
-      const ext = ".opus";
-      const filename = `walkie_${Date.now()}${ext}`;
-      tempPath = join(tmpdir(), filename);
-      fs.writeFileSync(tempPath, audioBuffer);
+          const rawPath = join(debugDir, `${ts}_raw.opus`);
+          fs.writeFileSync(rawPath, audioBuffer);
 
-      normalizedPath = await normalizeAudioForStt(tempPath, `audio/${audio_format || "opus"}`, audio_name);
+          // Decode to WAV for STT
+          const ext = ".opus";
+          const filename = `walkie_${Date.now()}${ext}`;
+          tempPath = join(tmpdir(), filename);
+          fs.writeFileSync(tempPath, audioBuffer);
 
-      // Save decoded WAV for debugging
-      const wavPath = join(debugDir, `${ts}_decoded.wav`);
-      fs.copyFileSync(normalizedPath, wavPath);
-      console.log(`[_dev/walkie/voice] Decoded WAV: ${fs.statSync(wavPath).size} bytes`);
+          normalizedPath = await normalizeAudioForStt(tempPath, `audio/${audio_format || "opus"}`, audio_name);
 
-      // STT
-      const openaiClient = session.openaiClient || createOpenAIClient();
-      session.openaiClient = openaiClient;
+          // Save decoded WAV for debugging
+          const wavPath = join(debugDir, `${ts}_decoded.wav`);
+          fs.copyFileSync(normalizedPath, wavPath);
+          console.log(`[_dev/walkie/voice] Decoded WAV: ${fs.statSync(wavPath).size} bytes`);
 
-      const sttStart = Date.now();
-      const transcript = await transcribeAudio(normalizedPath, openaiClient);
-      const sttMs = Date.now() - sttStart;
-      console.log(`[_dev/walkie/voice] STT: ${sttMs}ms, text="${transcript.text.slice(0, 80)}"`);
+          // STT
+          const openaiClient = session.openaiClient || createOpenAIClient();
+          session.openaiClient = openaiClient;
 
-      if (!transcript.text || transcript.text.trim().length === 0) {
-        return res.json({
-          conversation_id: conversation_id || null,
-          user_text: "",
-          assistant_text: "",
-          assistant_audio: null,
-          timings_ms: { stt: sttMs, llm: 0, tts: 0, total: Date.now() - totalStart },
-        });
-      }
+          const sttStart = Date.now();
+          const transcript = await transcribeAudio(normalizedPath, openaiClient);
+          const sttMs = Date.now() - sttStart;
+          console.log(`[_dev/walkie/voice] STT: ${sttMs}ms, text="${transcript.text.slice(0, 80)}"`);
 
-      // LLM
-      const llmStart = Date.now();
-      const chatResult = await handleTextChatMessage(
-        transcript.text,
-        chatClients,
-        logsClients,
-        "voice",
-        {},
-        { conversationId: conversation_id || undefined }
-      );
-      const llmMs = Date.now() - llmStart;
+          if (!transcript.text || transcript.text.trim().length === 0) {
+            console.log(`[_dev/walkie/voice] Empty transcript, skipping LLM`);
+            return;
+          }
 
-      if (!chatResult?.assistantText) {
-        throw new Error("Assistant response was empty");
-      }
-      console.log(`[_dev/walkie/voice] LLM: ${llmMs}ms, reply="${chatResult.assistantText.slice(0, 80)}"`);
+          // LLM
+          const llmStart = Date.now();
+          const chatResult = await handleTextChatMessage(
+            transcript.text,
+            chatClients,
+            logsClients,
+            "voice",
+            {},
+            { conversationId: conversation_id || undefined }
+          );
+          const llmMs = Date.now() - llmStart;
 
-      // TTS (only if client wants audio back)
-      let ttsMs = 0;
-      let ttsBase64: string | null = null;
-      let ttsFormat: string = "mp3";
-      if (wantZeppAudio) {
-        const ttsStart = Date.now();
-        const zeppBuffer = await synthesizeSpeechZeppOpus(chatResult.assistantText, openaiClient);
-        ttsMs = Date.now() - ttsStart;
-        ttsBase64 = zeppBuffer.toString("base64");
-        ttsFormat = "opus";
-        console.log(`[_dev/walkie/voice] ZeppOS TTS: ${ttsMs}ms, ${zeppBuffer.length} bytes`);
-      } else if (wantAudio) {
-        const ttsStart = Date.now();
-        const ttsBuffer = await synthesizeSpeech(chatResult.assistantText, openaiClient);
-        ttsMs = Date.now() - ttsStart;
-        ttsBase64 = ttsBuffer.toString("base64");
-        console.log(`[_dev/walkie/voice] TTS: ${ttsMs}ms, ${ttsBuffer.length} bytes`);
-      }
+          if (!chatResult?.assistantText) {
+            console.error("[_dev/walkie/voice] Assistant response was empty");
+            return;
+          }
+          const totalMs = Date.now() - totalStart;
+          console.log(`[_dev/walkie/voice] Done: STT=${sttMs}ms LLM=${llmMs}ms total=${totalMs}ms`);
+          console.log(`[_dev/walkie/voice] Reply: "${chatResult.assistantText.slice(0, 120)}"`);
 
-      const totalMs = Date.now() - totalStart;
-      console.log(`[_dev/walkie/voice] Total: ${totalMs}ms (audio=${wantAudio})`);
-
-      res.json({
-        conversation_id: chatResult.conversationId,
-        user_text: transcript.text,
-        assistant_text: chatResult.assistantText,
-        assistant_audio: ttsBase64 ? { format: ttsFormat, base64: ttsBase64 } : null,
-        timings_ms: { stt: sttMs, llm: llmMs, tts: ttsMs, total: totalMs },
-      });
+        } catch (err: any) {
+          console.error("[_dev/walkie/voice] Async processing error:", err?.message || err);
+        } finally {
+          // Cleanup temp files
+          try { if (tempPath) fs.unlinkSync(tempPath); } catch {}
+          try { if (normalizedPath) fs.unlinkSync(normalizedPath); } catch {}
+        }
+      })();
 
     } catch (err: any) {
-      const elapsed = Date.now() - totalStart;
       console.error("[_dev/walkie/voice] Error:", err?.message || err);
 
       if (err instanceof VoiceMessageError) {
@@ -152,7 +129,6 @@ export function registerDevWalkieVoiceRoutes(app: Application) {
       res.status(500).json({
         error: "server_error",
         message: err?.message || "Internal error",
-        elapsed_ms: elapsed,
       });
     }
   });
