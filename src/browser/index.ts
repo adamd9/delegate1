@@ -352,13 +352,18 @@ function delay(ms: number): Promise<void> {
  * Commit all changes in the copilot working directory and push to remote (if configured).
  * Called after each copilot session ends. Non-fatal — errors are logged but don't propagate.
  */
-export function commitAndPushWorkDir(taskSummary: string): void {
+export type GitSyncResult = {
+  status: 'no_changes' | 'committed' | 'pushed' | 'push_failed' | 'commit_failed';
+  message: string;
+};
+
+export function commitAndPushWorkDir(taskSummary: string): GitSyncResult {
   try {
     // Check for changes
     const status = execSync('git status --porcelain', { cwd: COPILOT_WORK_DIR, encoding: 'utf8' }).trim();
     if (!status) {
       console.log('[browser] no changes to commit after session');
-      return;
+      return { status: 'no_changes', message: 'No changes to commit' };
     }
 
     // Stage all changes
@@ -378,21 +383,28 @@ export function commitAndPushWorkDir(taskSummary: string): void {
       // No remote configured
     }
 
-    if (remoteUrl) {
-      const token = process.env.COPILOT_GITHUB_TOKEN;
-      try {
-        const pushUrl = token ? authedUrl(remoteUrl, token) : remoteUrl;
-        execSync(
-          `git push "${pushUrl}" main 2>&1`,
-          { cwd: COPILOT_WORK_DIR, encoding: 'utf8' }
-        );
-        console.log(`[browser] pushed to ${remoteUrl}`);
-      } catch (pushErr: any) {
-        console.warn('[browser] push failed (non-fatal):', pushErr.message || pushErr);
-      }
+    if (!remoteUrl) {
+      return { status: 'committed', message: 'Committed locally (no remote configured)' };
+    }
+
+    const token = process.env.COPILOT_GITHUB_TOKEN;
+    try {
+      const pushUrl = token ? authedUrl(remoteUrl, token) : remoteUrl;
+      execSync(
+        `git push "${pushUrl}" main 2>&1`,
+        { cwd: COPILOT_WORK_DIR, encoding: 'utf8' }
+      );
+      console.log(`[browser] pushed to ${remoteUrl}`);
+      return { status: 'pushed', message: 'Committed and pushed to origin' };
+    } catch (pushErr: any) {
+      const reason = pushErr.message || String(pushErr);
+      console.warn('[browser] push failed (non-fatal):', reason);
+      return { status: 'push_failed', message: `Committed locally but push failed: ${reason}` };
     }
   } catch (err: any) {
-    console.warn('[browser] commit failed (non-fatal):', err.message || err);
+    const reason = err.message || String(err);
+    console.warn('[browser] commit failed (non-fatal):', reason);
+    return { status: 'commit_failed', message: `Git commit failed: ${reason}` };
   }
 }
 

@@ -2,7 +2,7 @@ import { FunctionHandler } from '../../agentConfigs/types';
 import { spawn, ChildProcess } from 'child_process';
 import { execFile } from 'child_process';
 import fs from 'fs';
-import { COPILOT_WORK_DIR, COPILOT_HOME_DIR, BROWSER_PROFILE_DIR, commitAndPushWorkDir, GLOBAL_LOG_FILE } from '../../browser';
+import { COPILOT_WORK_DIR, COPILOT_HOME_DIR, BROWSER_PROFILE_DIR, commitAndPushWorkDir, GLOBAL_LOG_FILE, GitSyncResult } from '../../browser';
 
 // GLOBAL_LOG_FILE is imported from browser/index.ts — it is an append-only log
 // file tailed by the persistent xterm in the VNC display.
@@ -11,7 +11,7 @@ import { COPILOT_WORK_DIR, COPILOT_HOME_DIR, BROWSER_PROFILE_DIR, commitAndPushW
 let activeSession: { child: ChildProcess; task: string; startedAt: number; stdout: string; stderr: string } | null = null;
 
 // Preserved output from the last completed session (for copilot_status)
-let lastCompletedSession: { task: string; status: string; stdout: string; stderr: string; completedAt: number } | null = null;
+let lastCompletedSession: { task: string; status: string; stdout: string; stderr: string; completedAt: number; gitResult?: GitSyncResult } | null = null;
 
 export function getActiveSession() {
   return activeSession
@@ -44,8 +44,8 @@ export function setCopilotBroadcast(fn: ((msg: { type: string; [k: string]: any 
 
 // Fallback injector — set by the callback route so the close handler can inject
 // results if hooks didn't fire (crash, misconfiguration, etc.)
-let fallbackInjector: ((task: string, status: string, stdout: string, stderr: string) => void) | null = null;
-export function setFallbackInjector(fn: ((task: string, status: string, stdout: string, stderr: string) => void) | null) {
+let fallbackInjector: ((task: string, status: string, stdout: string, stderr: string, gitResult?: GitSyncResult) => void) | null = null;
+export function setFallbackInjector(fn: ((task: string, status: string, stdout: string, stderr: string, gitResult?: GitSyncResult) => void) | null) {
   fallbackInjector = fn;
 }
 
@@ -275,13 +275,17 @@ export const copilotDispatchHandler: FunctionHandler = {
           } catch (_) { /* share file may not exist if session crashed early */ }
         }
 
-        // Preserve output for copilot_status
+        // Commit + push session outputs to remote repo (non-fatal)
+        const gitResult = commitAndPushWorkDir(sessionTask);
+
+        // Preserve output for copilot_status (includes git result)
         lastCompletedSession = {
           task: sessionTask,
           status,
           stdout: sessionStdout,
           stderr: sessionStderr,
           completedAt: Date.now(),
+          gitResult,
         };
 
         activeSession = null;
@@ -297,14 +301,11 @@ export const copilotDispatchHandler: FunctionHandler = {
             `==============================\n`);
         } catch (_) { /* non-fatal */ }
 
-        // Commit + push session outputs to remote repo (non-fatal)
-        commitAndPushWorkDir(sessionTask);
-
         // Fallback: if the sessionEnd hook didn't fire (crash, hook misconfigured),
         // inject the result via the fallback callback
         if (!hookDelivered && fallbackInjector) {
           console.log('[copilot-dispatch] Hook did not deliver — using fallback injection');
-          fallbackInjector(sessionTask, status, sessionStdout, sessionStderr);
+          fallbackInjector(sessionTask, status, sessionStdout, sessionStderr, gitResult);
         }
       });
 
@@ -370,6 +371,9 @@ export const copilotGetResultHandler: FunctionHandler = {
         output: lastCompletedSession.stdout,
         stderr: lastCompletedSession.stderr || undefined,
         completedAt: new Date(lastCompletedSession.completedAt).toISOString(),
+        gitSync: lastCompletedSession.gitResult
+          ? { status: lastCompletedSession.gitResult.status, message: lastCompletedSession.gitResult.message }
+          : undefined,
       };
     }
 
