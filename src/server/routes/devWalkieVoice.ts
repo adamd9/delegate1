@@ -15,9 +15,8 @@ import { join } from "path";
 import { tmpdir } from "os";
 import {
   normalizeAudioForStt,
-  parseEndConversation,
-  synthesizeSpeech,
   transcribeAudio,
+  synthesizeSpeech,
   VoiceMessageError,
   getMaxAudioBytes,
 } from "../../voice/voicePipeline";
@@ -25,8 +24,6 @@ import { handleTextChatMessage } from "../../session/chat";
 import { session } from "../../session/state";
 import { createOpenAIClient } from "../../services/openaiClient";
 import { chatClients, logsClients } from "../../ws/clients";
-import { appendEvent } from "../../observability/thoughtflow";
-import { completeConversation } from "../../db/sqlite";
 
 export function registerDevWalkieVoiceRoutes(app: Application) {
   app.post("/_dev/walkie/voice", async (req: Request, res: Response) => {
@@ -35,7 +32,9 @@ export function registerDevWalkieVoiceRoutes(app: Application) {
     let normalizedPath: string | undefined;
 
     try {
-      const { audio_base64, audio_format, audio_name, conversation_id, end_conversation } = req.body || {};
+      const { audio_base64, audio_format, audio_name, conversation_id, response_format } = req.body || {};
+      // response_format: "text" (default) = text only, "audio" = include TTS mp3
+      const wantAudio = response_format === "audio";
 
       if (!audio_base64 || typeof audio_base64 !== "string") {
         return res.status(400).json({ error: "missing_audio", message: "Missing audio_base64 field" });
@@ -48,23 +47,36 @@ export function registerDevWalkieVoiceRoutes(app: Application) {
         return res.status(413).json({ error: "audio_too_large", message: `Audio exceeds ${maxBytes} bytes` });
       }
 
-      console.log(`[_dev/walkie/voice] Received ${audioBuffer.length} bytes (${audio_format || "opus"})`);
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      console.log(`[_dev/walkie/voice] Received ${audioBuffer.length} bytes (${audio_format || "opus"}) at ${ts}`);
 
-      // Write to temp file for processing
-      const ext = audio_format === "mp3" ? ".mp3" : audio_format === "wav" ? ".wav" : ".opus";
+      // Save timestamped debug files
+      const debugDir = join(__dirname, "../../../../zeppos-walkie-talkie-v2/debug-audio");
+      try { fs.mkdirSync(debugDir, { recursive: true }); } catch {}
+
+      const rawPath = join(debugDir, `${ts}_raw.opus`);
+      fs.writeFileSync(rawPath, audioBuffer);
+
+      // Decode to WAV for STT
+      const ext = ".opus";
       const filename = `walkie_${Date.now()}${ext}`;
       tempPath = join(tmpdir(), filename);
       fs.writeFileSync(tempPath, audioBuffer);
+
+      normalizedPath = await normalizeAudioForStt(tempPath, `audio/${audio_format || "opus"}`, audio_name);
+
+      // Save decoded WAV for debugging
+      const wavPath = join(debugDir, `${ts}_decoded.wav`);
+      fs.copyFileSync(normalizedPath, wavPath);
+      console.log(`[_dev/walkie/voice] Decoded WAV: ${fs.statSync(wavPath).size} bytes`);
 
       // STT
       const openaiClient = session.openaiClient || createOpenAIClient();
       session.openaiClient = openaiClient;
 
       const sttStart = Date.now();
-      normalizedPath = await normalizeAudioForStt(tempPath, `audio/${audio_format || "opus"}`, audio_name);
       const transcript = await transcribeAudio(normalizedPath, openaiClient);
       const sttMs = Date.now() - sttStart;
-
       console.log(`[_dev/walkie/voice] STT: ${sttMs}ms, text="${transcript.text.slice(0, 80)}"`);
 
       if (!transcript.text || transcript.text.trim().length === 0) {
@@ -79,7 +91,6 @@ export function registerDevWalkieVoiceRoutes(app: Application) {
 
       // LLM
       const llmStart = Date.now();
-      const endConversation = parseEndConversation(end_conversation);
       const chatResult = await handleTextChatMessage(
         transcript.text,
         chatClients,
@@ -93,45 +104,30 @@ export function registerDevWalkieVoiceRoutes(app: Application) {
       if (!chatResult?.assistantText) {
         throw new Error("Assistant response was empty");
       }
-
       console.log(`[_dev/walkie/voice] LLM: ${llmMs}ms, reply="${chatResult.assistantText.slice(0, 80)}"`);
 
-      // TTS
-      const ttsStart = Date.now();
-      const ttsBuffer = await synthesizeSpeech(chatResult.assistantText, openaiClient);
-      const ttsMs = Date.now() - ttsStart;
-
-      console.log(`[_dev/walkie/voice] TTS: ${ttsMs}ms, ${ttsBuffer.length} bytes`);
-
-      // End conversation if requested
-      if (endConversation && chatResult.conversationId) {
-        completeConversation({ id: chatResult.conversationId });
+      // TTS (only if client wants audio back)
+      let ttsMs = 0;
+      let ttsBase64: string | null = null;
+      if (wantAudio) {
+        const ttsStart = Date.now();
+        const ttsBuffer = await synthesizeSpeech(chatResult.assistantText, openaiClient);
+        ttsMs = Date.now() - ttsStart;
+        ttsBase64 = ttsBuffer.toString("base64");
+        console.log(`[_dev/walkie/voice] TTS: ${ttsMs}ms, ${ttsBuffer.length} bytes`);
       }
 
       const totalMs = Date.now() - totalStart;
-      console.log(`[_dev/walkie/voice] Total: ${totalMs}ms`);
-
-      // Log to thoughtflow
-      appendEvent({
-        type: "voice_message",
-        source: "walkie-v2",
-        data: {
-          user_text: transcript.text,
-          assistant_text: chatResult.assistantText.slice(0, 200),
-          timings: { stt: sttMs, llm: llmMs, tts: ttsMs, total: totalMs },
-        },
-      });
+      console.log(`[_dev/walkie/voice] Total: ${totalMs}ms (audio=${wantAudio})`);
 
       res.json({
         conversation_id: chatResult.conversationId,
         user_text: transcript.text,
         assistant_text: chatResult.assistantText,
-        assistant_audio: {
-          format: "mp3",
-          base64: ttsBuffer.toString("base64"),
-        },
+        assistant_audio: ttsBase64 ? { format: "mp3", base64: ttsBase64 } : null,
         timings_ms: { stt: sttMs, llm: llmMs, tts: ttsMs, total: totalMs },
       });
+
     } catch (err: any) {
       const elapsed = Date.now() - totalStart;
       console.error("[_dev/walkie/voice] Error:", err?.message || err);
@@ -148,9 +144,6 @@ export function registerDevWalkieVoiceRoutes(app: Application) {
         message: err?.message || "Internal error",
         elapsed_ms: elapsed,
       });
-    } finally {
-      try { if (tempPath) fs.unlinkSync(tempPath); } catch {}
-      try { if (normalizedPath && normalizedPath !== tempPath) fs.unlinkSync(normalizedPath); } catch {}
     }
   });
 

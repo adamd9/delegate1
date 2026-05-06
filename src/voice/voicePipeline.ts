@@ -198,17 +198,15 @@ function looksLikeZeppOpus(buf: Buffer): boolean {
 }
 
 function parseZeppOpusFrames(data: Buffer): Buffer[] {
+  // ZeppOS Opus format: [4-byte BE length][4-byte metadata/timestamp][opus frame data]
+  // See: https://docs.zepp.com/docs/guides/faq/opus-to-mp3/
   const frames: Buffer[] = [];
-  let offset = 0;
-  while (offset + 4 <= data.length) {
-    const len = data.readUInt32BE(offset);
-    if (len === 0 || len > 1275 || offset + 4 + len > data.length) break;
-    frames.push(data.slice(offset + 4, offset + 4 + len));
-    const end = offset + 4 + len;
-    if (end === data.length) {
-      break; // last frame has no trailing gap
-    }
-    offset = end + 4; // skip 4-byte gap
+  let pos = 0;
+  while (pos + 8 <= data.length) {
+    const len = data.readUInt32BE(pos);
+    if (len === 0 || len > 1275 || pos + 8 + len > data.length) break;
+    frames.push(data.slice(pos + 8, pos + 8 + len));
+    pos += 8 + len;
   }
   return frames;
 }
