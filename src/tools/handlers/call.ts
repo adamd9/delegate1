@@ -22,13 +22,17 @@ export const callUserTool: FunctionHandler = {
   handler: async ({ reason }: { reason: string }) => {
     console.log('[callUserTool] Invoked', { reason });
 
+    // Use the same credentials as the rest of the Twilio voice integration.
+    // Fall back through credential options: API key pair > Auth Token
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const apiKeySid = process.env.TWILIO_API_KEY_SID;
+    const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
     const publicUrl = process.env.PUBLIC_URL;
 
-    if (!accountSid || !authToken) {
-      console.warn('[callUserTool] Missing Twilio credentials');
-      return { status: 'failed', reason: 'missing Twilio credentials' };
+    if (!accountSid) {
+      console.warn('[callUserTool] Missing TWILIO_ACCOUNT_SID');
+      return { status: 'failed', reason: 'missing TWILIO_ACCOUNT_SID' };
     }
 
     if (!publicUrl) {
@@ -45,7 +49,18 @@ export const callUserTool: FunctionHandler = {
     }
 
     try {
-      const client = twilio(accountSid, authToken);
+      // Prefer API key auth (more common in production), fall back to auth token
+      let client: ReturnType<typeof twilio>;
+      if (apiKeySid && apiKeySecret) {
+        console.log('[callUserTool] Using API key auth');
+        client = twilio(apiKeySid, apiKeySecret, { accountSid, region: 'au1', edge: 'sydney' });
+      } else if (authToken) {
+        console.log('[callUserTool] Using auth token');
+        client = twilio(accountSid, authToken, { region: 'au1', edge: 'sydney' });
+      } else {
+        console.warn('[callUserTool] No auth credentials available');
+        return { status: 'failed', reason: 'missing Twilio auth credentials' };
+      }
 
       // Use the same /twiml endpoint that inbound calls use —
       // it returns TwiML that opens a WebSocket stream to /call,
