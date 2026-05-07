@@ -1,6 +1,7 @@
 import { AgentConfig } from './types';
 // import { getWeatherFunction } from '../tools/handlers/weather';
 import { sendSmsTool } from '../tools/handlers/sms';
+import { callUserTool } from '../tools/handlers/call';
 import { sendEmailTool } from '../tools/handlers/email';
 import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction, getNoteFunction } from '../tools/handlers/notes';
 import { hangupCallTool } from '../tools/handlers/hangup';
@@ -82,6 +83,7 @@ Persistent memory:
   voice: agentPersonality.voice,
   tools: [
     sendSmsTool,
+    callUserTool,
     sendEmailTool,
     createNoteFunction,
     listNotesFunction,
