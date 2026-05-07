@@ -87,6 +87,14 @@
     d2Module = mod;
     const D2 = mod.D2;
     d2Instance = new D2();
+    // d2Instance.ready resolves when the WASM worker sends "ready".
+    // If it never fires (OOM, browser restriction, etc.), hang forever — add a timeout.
+    await Promise.race([
+      d2Instance.ready,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(
+        'D2 WASM init timed out after 15 s — try reloading or use a Chromium-based browser'
+      )), 15000))
+    ]);
   }
 
   async function render() {

@@ -421,7 +421,8 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
 
 function sanitizeLabel(s?: string) {
   if (!s) return '';
-  return String(s).replace(/"/g, '\\"');
+  // Escape quotes and indent continuation lines so they stay inside |md blocks
+  return String(s).replace(/"/g, '\\"').replace(/\n/g, '\n      ');
 }
 
 function generateD2(consolidated: { session_id: string; conversations: Array<{ conversation_id: string; status?: string; duration_ms?: number; steps: Array<{ step_id: string; label?: string; duration_ms?: number; started_at?: string; ended_at?: string; payload_started?: any; payload_completed?: any; }> }> }) {
