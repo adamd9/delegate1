@@ -1,6 +1,7 @@
 import twilio from 'twilio';
 import { FunctionHandler } from '../../agentConfigs/types';
 import { getNumbers, ensureNumbersFromEnv } from '../../smsState';
+import { session } from '../../session/state';
 
 export const callUserTool: FunctionHandler = {
   schema: {
@@ -49,6 +50,21 @@ export const callUserTool: FunctionHandler = {
     }
 
     try {
+      // Snapshot recent conversation so the outbound call has continuity
+      const history = session.conversationHistory || [];
+      const recentTurns = history
+        .filter((t): t is Extract<typeof t, { type: 'user' | 'assistant' }> =>
+          t.type === 'user' || t.type === 'assistant')
+        .slice(-10)
+        .map(t => ({
+          role: t.type === 'user' ? 'user' : 'assistant',
+          content: t.content,
+        }));
+      session.outboundCallContext = {
+        conversationId: (session as any).currentConversationId || undefined,
+        recentTurns,
+      };
+
       // Prefer API key auth (more common in production), fall back to auth token
       let client: ReturnType<typeof twilio>;
       if (apiKeySid && apiKeySecret) {

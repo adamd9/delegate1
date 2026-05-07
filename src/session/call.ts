@@ -332,11 +332,15 @@ export function processRealtimeCallEvent(data: RawData) {
         // Reset dependency anchors at call start
         try { (session as any).lastAssistantStepId = undefined; } catch {}
         try { (session as any).lastUserStepId = undefined; } catch {}
-        const existingConv = (session as any).currentConversationId as string | undefined;
+        // If this is an agent-initiated outbound call, reuse the triggering conversation
+        const outboundCtx = session.outboundCallContext;
+        const existingConv = outboundCtx?.conversationId || (session as any).currentConversationId as string | undefined;
         if (!existingConv) {
           const convId = `conv_call_${Date.now()}`;
           (session as any).currentConversationId = convId;
           appendEvent({ type: 'conversation.started', conversation_id: convId, channel: 'voice', started_at: new Date().toISOString() });
+        } else {
+          (session as any).currentConversationId = existingConv;
         }
       } catch {}
       establishRealtimeModelConnection();
@@ -390,19 +394,35 @@ export function establishRealtimeModelConnection() {
 
   session.modelConn.on("open", () => {
     const sessionConfig = buildRealtimeSessionConfig('voice', 'g711_ulaw');
+
+    // If this is an agent-initiated outbound call, inject recent conversation as context
+    const outboundCtx = session.outboundCallContext;
+    if (outboundCtx && outboundCtx.recentTurns.length > 0) {
+      const turnsSummary = outboundCtx.recentTurns
+        .map(t => `${t.role === 'user' ? 'User' : 'You'}: ${t.content}`)
+        .join('\n');
+      const contextPrefix = `[Conversation context — you initiated this call as a continuation of the following exchange. Pick up naturally where you left off.]\n${turnsSummary}\n\n`;
+      sessionConfig.instructions = contextPrefix + sessionConfig.instructions;
+    }
+
     jsonSend(session.modelConn, {
       type: "session.update",
       session: sessionConfig,
     });
 
-    // Send a friendly greeting when a Twilio caller connects
+    // Send greeting — contextual if outbound, generic if inbound
     if (session.twilioConn) {
+      const greetingInstruction = outboundCtx && outboundCtx.recentTurns.length > 0
+        ? "You called the user as a follow-up to your prior conversation. Greet them briefly and continue naturally from where you left off."
+        : "Greet the caller briefly in English, in a style that aligns with your given personality, before awaiting input.";
       jsonSend(session.modelConn, {
         type: "response.create",
         response: {
-          instructions: "Greet the caller briefly in English, in a style that aligns with your given personality, before awaiting input.",
+          instructions: greetingInstruction,
         },
       });
+      // Clear outbound context after use
+      if (outboundCtx) session.outboundCallContext = undefined;
     }
   });
 

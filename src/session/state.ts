@@ -79,6 +79,11 @@ export interface Session {
   };
   // Pre-fetched memory retrieval promise for voice (started on speech_started, awaited on transcript)
   pendingMemoryPromise?: Promise<string | null>;
+  // Context from the triggering conversation when call_user initiates an outbound call
+  outboundCallContext?: {
+    conversationId?: string;
+    recentTurns: Array<{ role: string; content: string }>;
+  };
 }
 
 // Singleton session state
