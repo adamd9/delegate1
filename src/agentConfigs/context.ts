@@ -17,7 +17,7 @@ export function contextInstructions(context: Context): string {
     base += ' When the conversation is over or the caller says goodbye, use the hang_up tool to end the call.';
   }
   if (context.channel === 'walkie') {
-    base += ' This is a one-way voice message from the user\'s smartwatch (walkie-talkie style). There is no live conversation — the user recorded a short voice message and sent it. Keep your response concise and actionable. The user will not hear your reply spoken back; it is processed as text only.';
+    base += ' This is a one-way voice message from the user\'s smartwatch (walkie-talkie style). There is no live conversation — the user recorded a short voice message and sent it. Keep your response concise and actionable. The user will not hear your reply spoken back; it is processed as text only. IMPORTANT: When responding to a walkie message, use the send_sms tool to deliver your response via SMS by default, unless the user or memory explicitly requests a different delivery method.';
   }
   if (context.channel === 'copilot') {
     base += ' This message is from an automated Copilot CLI task running in the background — it is NOT from the user.';
