@@ -93,7 +93,7 @@ export function registerDevWalkieVoiceRoutes(app: Application) {
             transcript.text,
             chatClients,
             logsClients,
-            "voice",
+            "walkie",
             {},
             { conversationId: conversation_id || undefined }
           );
