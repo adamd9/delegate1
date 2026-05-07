@@ -227,7 +227,8 @@ export async function processChatSocketMessage(
         console.log(`✋ Cancel requested for ${session.currentRequest.id}`);
         try {
           ensureSession();
-          appendEvent({ type: 'conversation.aborted', conversation_id: `conv_${session.currentRequest.id}`, request_id: session.currentRequest.id, timestamp: Date.now() });
+          const activeConvId = ((session as any).currentConversationId as string | undefined) || `conv_${session.currentRequest.id}`;
+          appendEvent({ type: 'conversation.aborted', conversation_id: activeConvId, request_id: session.currentRequest.id, timestamp: Date.now() });
         } catch {}
         // Notify chat clients and logs
         for (const ws of chatClients) {

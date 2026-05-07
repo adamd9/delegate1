@@ -34,6 +34,13 @@ function safeParseArgs(args: any): any {
   return args || {};
 }
 
+function getActiveConversationId(): string | undefined {
+  const sticky = (session as any).currentConversationId as string | undefined;
+  if (sticky) return sticky;
+  const req = session.currentRequest;
+  return req ? `conv_${req.id}` : undefined;
+}
+
 function emitDelta(logsClients: Set<WebSocket>, name: string, data?: any, call_id?: string) {
   for (const ws of logsClients) {
     if (isOpen(ws)) jsonSend(ws, {
@@ -46,7 +53,7 @@ function emitDelta(logsClients: Set<WebSocket>, name: string, data?: any, call_i
   // Persist a created breadcrumb into the transcript ledger (only if we have an active conversation)
   try {
     ensureSession();
-    const convId = session.currentRequest ? `conv_${session.currentRequest.id}` : undefined;
+    const convId = getActiveConversationId();
     if (convId) {
       addConversationEvent({
         conversation_id: convId,
@@ -72,7 +79,7 @@ function emitDone(logsClients: Set<WebSocket>, name: string, originalArgs: any, 
   // Persist a completed breadcrumb into the transcript ledger (only if we have an active conversation)
   try {
     ensureSession();
-    const convId = session.currentRequest ? `conv_${session.currentRequest.id}` : undefined;
+    const convId = getActiveConversationId();
     if (convId) {
       addConversationEvent({
         conversation_id: convId,
@@ -102,9 +109,9 @@ export async function executeFunctionCall(call: FunctionCallItem, ctx: Orchestra
   if (ctx.mode === 'chat' && ctx.dependsOnStepId) {
     try {
       ensureSession();
-      const req = session.currentRequest;
-      if (req) {
-        tfConversationId = `conv_${req.id}`;
+      const convId = getActiveConversationId();
+      if (convId) {
+        tfConversationId = convId;
         tfStepId = `step_tool_${call.call_id || Date.now()}`;
         appendEvent({
           type: 'step.started',
@@ -198,9 +205,9 @@ export async function executeFunctionCalls(
     if (ctx.mode === 'chat') {
       try {
         ensureSession();
+        const convId = getActiveConversationId();
         const req = session.currentRequest;
-        if (req) {
-          const convId = `conv_${req.id}`;
+        if (convId && req) {
           const adaptStepId = `snp_adapt_confirm_${next.call_id || Date.now()}`;
           appendEvent({
             type: 'step.started',
