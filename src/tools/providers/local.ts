@@ -1,5 +1,6 @@
 import { registerTools, ToolOrigin } from "../registry";
 import { sendSmsTool } from "../handlers/sms";
+import { callUserTool } from "../handlers/call";
 import { sendEmailTool } from "../handlers/email";
 import { getNextResponseFromSupervisorFunction } from "../handlers/supervisor-escalation";
 import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction, getNoteFunction } from "../handlers/notes";
@@ -49,6 +50,14 @@ export function registerLocalTools() {
       'local',
       ['local', 'base-default'],
       (args) => sendSmsTool.handler(args)
+    ),
+    wrap(
+      callUserTool.schema.name,
+      callUserTool.schema.description,
+      callUserTool.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => callUserTool.handler(args)
     ),
     wrap(
       createNoteFunction.schema.name,
