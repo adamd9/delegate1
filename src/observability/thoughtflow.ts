@@ -421,8 +421,8 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
 
 function sanitizeLabel(s?: string) {
   if (!s) return '';
-  // Escape quotes and indent continuation lines so they stay inside |md blocks
-  return String(s).replace(/"/g, '\\"').replace(/\n/g, '\n      ');
+  // Escape quotes, `$` (D2 substitution), and indent continuation lines for |md blocks
+  return String(s).replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/\n/g, '\n      ');
 }
 
 function generateD2(consolidated: { session_id: string; conversations: Array<{ conversation_id: string; status?: string; duration_ms?: number; steps: Array<{ step_id: string; label?: string; duration_ms?: number; started_at?: string; ended_at?: string; payload_started?: any; payload_completed?: any; }> }> }) {
@@ -732,8 +732,10 @@ function extractFullText(step: { payload_started?: any }): string | undefined {
 function sanitizeTooltip(s: string): string {
   // In D2, for a string in quotes, `\n` creates a newline. We must escape backslashes from the content
   // and then convert actual newlines to the `\n` sequence.
+  // `$` must also be escaped — D2 treats `${...}` as substitution variables.
   const backslashEscaped = s.replace(/\\/g, '\\\\');
-  const quoteEscaped = backslashEscaped.replace(/"/g, "'"); // Use single quotes to avoid escaping hell
+  const dollarEscaped = backslashEscaped.replace(/\$/g, '\\$');
+  const quoteEscaped = dollarEscaped.replace(/"/g, "'"); // Use single quotes to avoid escaping hell
   return quoteEscaped.replace(/\n/g, '\\n');
 }
 
