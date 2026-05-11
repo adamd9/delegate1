@@ -28,7 +28,7 @@ function formatNotification(task: string, status: string, conversationId?: strin
     `Task: "${task}"${convRef}${gitLine}\n\n` +
     `IMPORTANT: Before responding, check if there are any notes for this conversation ID that contain task context or user preferences for how to handle the result.\n\n` +
     `You can use the \`list_notes\` tool to search for notes with the conversation ID or task summary, and the \`get_note\` tool to read them.\n\n` +
-    `Once you\'ve checked the task context (if any), you can use the \`copilot_status\` tool to retrieve the full output if needed.\n` +
+      `Once you\'ve checked the task context (if any), use the \`copilot_status\` tool to retrieve the full output, including any published GitHub URL reported by the agent.\n` +
     `If the note has a preference (email, Slack, etc.), honor it. If no preference is recorded, default to SMS. After retrieving the output, complete any originally requested follow-up action instead of only acknowledging completion.`
   );
 }
