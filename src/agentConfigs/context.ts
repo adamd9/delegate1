@@ -1,4 +1,4 @@
-export type Channel = 'voice' | 'text' | 'sms' | 'email' | 'copilot' | 'walkie';
+export type Channel = 'voice' | 'text' | 'sms' | 'email' | 'copilot' | 'walkie' | 'agent';
 
 export interface Context {
   channel: Channel;
@@ -22,6 +22,9 @@ export function contextInstructions(context: Context): string {
   if (context.channel === 'copilot') {
     base += ' This message is from an automated Copilot CLI task running in the background — it is NOT from the user.';
     base += ' Process the task result and share relevant findings with the user naturally. Do not mention the internal mechanism.';
+  }
+  if (context.channel === 'agent') {
+    base += ' This message is from an external agent or automated system. Process it naturally.';
   }
   return base;
 }

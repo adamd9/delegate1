@@ -21,6 +21,7 @@ import { registerMemoryConfigRoutes } from './server/routes/memoryConfig';
 import { registerMemoriesRoutes } from './server/routes/memories';
 import { registerOpenAiSessionRoute } from './server/routes/openaiSession';
 import { registerCopilotRoutes } from './server/routes/copilot';
+import { registerAgentMessageRoutes } from './server/routes/agentMessage';
 import { registerVncRoutes } from './server/routes/vnc';
 import { registerDevWalkieRoutes } from './server/routes/devWalkie';
 import { registerDevWalkieVoiceRoutes } from './server/routes/devWalkieVoice';
@@ -33,6 +34,7 @@ import { initToolsAndRegistry } from './server/startup/init';
 import { writeLatestStartupResults } from './server/startup/note';
 import { reloadAdaptations } from './adaptations';
 import { startBrowserInfra, stopBrowserInfra } from './browser';
+import { registerMcpServerRoutes } from './mcp/server';
 
 // Ensure we load the env file from this package even if process is started from repo root
 dotenv.config({ path: join(__dirname, '../.env') });
@@ -149,7 +151,11 @@ registerMemoriesRoutes(app);
 registerOpenAiSessionRoute(app);
 
 // Copilot CLI hook callback routes
-registerCopilotRoutes(app, { chatClients, logsClients });
+registerCopilotRoutes(app);
+
+// External agent injection routes
+registerMcpServerRoutes(app);
+registerAgentMessageRoutes(app);
 
 // VNC web viewer routes (noVNC static files + auth endpoint)
 registerVncRoutes(app);

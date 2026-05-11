@@ -256,12 +256,17 @@ export type ChatResult = {
   supervisor: boolean;
 };
 
+export type ChatMetadata = {
+  subject?: string;
+  [key: string]: unknown;
+};
+
 export async function handleTextChatMessage(
   content: string,
   chatClients: Set<WebSocket>,
   logsClients: Set<WebSocket>,
   channel: Channel = 'text',
-  metadata: { subject?: string } = {},
+  metadata: ChatMetadata = {},
   opts: { conversationId?: string; internal?: boolean } = {}
 ): Promise<ChatResult | undefined> {
   const { currentTime, timeZone } = getTimeContext();

@@ -1,8 +1,7 @@
 import type { Application, Request, Response } from 'express';
-import { WebSocket } from 'ws';
-import { handleTextChatMessage } from '../../session/chat';
 import { getLastCompletedSession, getSessionOutput, markHookDelivered, setFallbackInjector } from '../../tools/handlers/copilotCli';
 import type { GitSyncResult } from '../../browser';
+import { injectMessage } from '../../services/agentBridge';
 
 function formatNotification(task: string, status: string, conversationId?: string, gitResult?: GitSyncResult): string {
   const statusLine = status === 'complete' ? 'completed successfully'
@@ -34,17 +33,12 @@ function formatNotification(task: string, status: string, conversationId?: strin
   );
 }
 
-export function registerCopilotRoutes(
-  app: Application,
-  options: { chatClients: Set<WebSocket>; logsClients: Set<WebSocket> }
-) {
-  const { chatClients, logsClients } = options;
-
+export function registerCopilotRoutes(app: Application) {
   // Wire the fallback injector so the close handler can inject a notification if hooks don't fire
   setFallbackInjector((task, status, _stdout, _stderr, gitResult) => {
     const message = formatNotification(task, status, undefined, gitResult);
     console.log(`[copilot-callback] Fallback notification (status=${status}, git=${gitResult?.status || 'n/a'})`);
-    handleTextChatMessage(message, chatClients, logsClients, 'copilot').catch((err) => {
+    injectMessage({ message, channel: 'copilot' }).catch((err) => {
       console.error('[copilot-callback] Fallback notification failed:', err);
     });
   });
@@ -79,7 +73,7 @@ export function registerCopilotRoutes(
           } catch {}
 
           const message = formatNotification(task, reason, conversationId, gitResult);
-          await handleTextChatMessage(message, chatClients, logsClients, 'copilot');
+          await injectMessage({ message, channel: 'copilot' });
 
           console.log(`[copilot-callback] sessionEnd notification sent (reason=${reason})`);
           res.json({ ok: true, action: 'notified' });
@@ -108,7 +102,7 @@ export function registerCopilotRoutes(
             `You can use the \`list_notes\` tool to search by conversation ID, and \`get_note\` to read task details.\n\n` +
             `Once checked, use \`copilot_status\` to see any available output. If the note has a preference, honor it; default to SMS if no preference is recorded. Inform the user about the error and, if appropriate, retry or complete any originally requested follow-up actions with whatever results are available.`;
 
-          await handleTextChatMessage(message, chatClients, logsClients, 'copilot');
+          await injectMessage({ message, channel: 'copilot' });
 
           console.log(`[copilot-callback] errorOccurred notification (${errorName}: ${errorMsg})`);
           res.json({ ok: true, action: 'notified' });
