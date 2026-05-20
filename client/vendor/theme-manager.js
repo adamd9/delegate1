@@ -180,7 +180,10 @@
       preferred = DEFAULT_THEME;
     }
     applyTheme(preferred);
-    injectControl();
+    // Only inject control if element with id 'theme-control-target' exists (e.g., on settings page)
+    if (document.getElementById('theme-control-target')) {
+      injectControl();
+    }
   }
 
   if (document.readyState === 'loading') {
