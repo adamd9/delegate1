@@ -1,6 +1,8 @@
 import express from 'express';
 import dotenv from "dotenv";
 import http from "http";
+import session from 'express-session';
+import { randomBytes } from 'crypto';
 import { join } from "path";
 import cors from "cors";
 import { startEmailPolling } from './emailPoller';
@@ -19,6 +21,7 @@ import { registerVoiceMessageRoutes } from './server/routes/voiceMessage';
 import { registerVoiceDefaultsRoutes } from './server/routes/voiceDefaults';
 import { registerMemoryConfigRoutes } from './server/routes/memoryConfig';
 import { registerMemoriesRoutes } from './server/routes/memories';
+import { registerConfigRoutes } from './server/routes/config';
 import { registerOpenAiSessionRoute } from './server/routes/openaiSession';
 import { registerCopilotRoutes } from './server/routes/copilot';
 import { registerAgentMessageRoutes } from './server/routes/agentMessage';
@@ -35,6 +38,10 @@ import { writeLatestStartupResults } from './server/startup/note';
 import { reloadAdaptations } from './adaptations';
 import { startBrowserInfra, stopBrowserInfra } from './browser';
 import { registerMcpServerRoutes } from './mcp/server';
+import { configService } from './config';
+import { getDb } from './db/sqlite';
+import { installGuard, requireAuth } from './server/middleware/auth';
+import { registerAuthRoutes } from './server/routes/auth';
 
 // Ensure we load the env file from this package even if process is started from repo root
 dotenv.config({ path: join(__dirname, '../.env') });
@@ -46,6 +53,51 @@ const OPENAI_API_KEY = cfg.openaiApiKey;
 const SESSION_HISTORY_LIMIT = cfg.sessionHistoryLimit;
 
 // Finalize any sessions that were left open (no session.ended) across restarts handled by startup module
+
+const BetterSqlite3SessionStore = require('better-sqlite3-session-store');
+const SqliteStore = BetterSqlite3SessionStore(session);
+const SESSION_TABLE_NAME = 'http_sessions';
+
+function createSessionStoreClient(database: ReturnType<typeof getDb>) {
+  const rewriteSql = (sql: string) => sql.replace(/\bsessions\b/g, SESSION_TABLE_NAME);
+  return {
+    exec(sql: string) {
+      return database.exec(rewriteSql(sql));
+    },
+    prepare(sql: string) {
+      return database.prepare(rewriteSql(sql));
+    },
+  };
+}
+
+function getSessionSecret(): string {
+  const existingSecret = configService.get('_session_secret');
+  if (existingSecret) {
+    return existingSecret;
+  }
+
+  const generatedSecret = randomBytes(32).toString('hex');
+  configService.set('_session_secret', generatedSecret, false);
+  return generatedSecret;
+}
+
+function allowPublicWithoutAuth(pathname: string): boolean {
+  return pathname === '/login'
+    || pathname === '/login.html'
+    || pathname === '/install'
+    || pathname === '/install.html'
+    || pathname === '/logout'
+    || pathname === '/health'
+    || pathname === '/ready'
+    || pathname === '/build-info.json'
+    || pathname === '/public-url'
+    || pathname === '/twiml'
+    || pathname === '/sms'
+    || pathname === '/auth/status'
+    || pathname === '/api/install'
+    || pathname === '/api/copilot/callback'
+    || pathname.startsWith('/_dev/walkie');
+}
 
 const app = express();
 app.use(cors({ origin: true }));
@@ -101,6 +153,29 @@ startEmailPolling(chatClients, logsClients);
 app.use(express.urlencoded({ extended: false }));
 // Enable JSON body parsing for API endpoints
 app.use(express.json());
+const sessionMiddleware = session({
+  secret: getSessionSecret(),
+  resave: false,
+  saveUninitialized: false,
+  store: new SqliteStore({ client: createSessionStoreClient(getDb()) }),
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: false,
+  },
+});
+
+app.use(sessionMiddleware);
+
+registerAuthRoutes(app);
+app.use(installGuard);
+app.use((req, res, next) => {
+  if (allowPublicWithoutAuth(req.path)) {
+    next();
+    return;
+  }
+  requireAuth(req, res, next);
+});
 
 // Health endpoints
 registerHealthRoutes(app);
@@ -146,6 +221,8 @@ registerVoiceDefaultsRoutes(app);
 registerMemoryConfigRoutes(app);
 // Memory browsing/deletion API
 registerMemoriesRoutes(app);
+// App config management API
+registerConfigRoutes(app);
 
 // OpenAI Realtime session token proxy
 registerOpenAiSessionRoute(app);
@@ -175,6 +252,7 @@ attachWebSockets(server, {
   chatClients,
   logsClients,
   openAIApiKey: OPENAI_API_KEY,
+  sessionMiddleware,
 });
 
 server.listen(PORT, () => {

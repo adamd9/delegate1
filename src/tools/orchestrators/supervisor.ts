@@ -5,6 +5,7 @@ import { executeBySanitizedName } from '../registry';
 import { getAdaptationTextById } from '../../adaptations';
 import { ensureSession, appendEvent, ThoughtFlowStepType } from '../../observability/thoughtflow';
 import { session } from '../../session/state';
+import { configService } from '../../config';
 
 import { supervisorAgentConfig } from '../../agentConfigs/supervisorAgentConfig';
 import { summarizeRequestForLog } from '../../utils/logSanitize';
@@ -36,10 +37,10 @@ export async function handleSupervisorToolCalls(
   let iterations = 0;
   const maxIterations = 5;
   let finalText = "";
-  const options: ClientOptions = { apiKey: process.env.OPENAI_API_KEY };
-  if (process.env.CODEX_CLI === 'true' && process.env.HTTPS_PROXY) {
+  const options: ClientOptions = { apiKey: configService.get('OPENAI_API_KEY') };
+  if (configService.get('CODEX_CLI') === 'true' && configService.get('HTTPS_PROXY')) {
     try {
-      const dispatcher = new ProxyAgent(process.env.HTTPS_PROXY);
+      const dispatcher = new ProxyAgent(configService.get('HTTPS_PROXY')!);
       options.fetch = (url, init: any = {}) => {
         return (globalThis.fetch as any)(url, { ...(init || {}), dispatcher });
       };

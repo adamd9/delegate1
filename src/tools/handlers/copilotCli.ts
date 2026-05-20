@@ -3,6 +3,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { execFile } from 'child_process';
 import fs from 'fs';
 import { COPILOT_WORK_DIR, COPILOT_HOME_DIR, BROWSER_PROFILE_DIR, commitAndPushWorkDir, GLOBAL_LOG_FILE, GitSyncResult } from '../../browser';
+import { configService } from '../../config';
 
 // GLOBAL_LOG_FILE is imported from browser/index.ts — it is an append-only log
 // file tailed by the persistent xterm in the VNC display.
@@ -127,14 +128,14 @@ export const copilotDispatchHandler: FunctionHandler = {
       }
 
       // 1. Check BROWSER_ENABLED
-      if (process.env.BROWSER_ENABLED !== 'true') {
+      if (configService.get('BROWSER_ENABLED') !== 'true') {
         return {
           error: 'Browser agent not enabled. Set BROWSER_ENABLED=true to use this tool.',
         };
       }
 
       // 2. Check auth token
-      if (!process.env.COPILOT_GITHUB_TOKEN) {
+      if (!configService.get('COPILOT_GITHUB_TOKEN')) {
         return {
           error: 'COPILOT_GITHUB_TOKEN not set. Provide a GitHub PAT with Copilot permissions.',
         };
@@ -158,7 +159,7 @@ export const copilotDispatchHandler: FunctionHandler = {
       const port = process.env.PORT || '8081';
       const env: Record<string, string> = {
         ...(process.env as Record<string, string>),
-        COPILOT_GITHUB_TOKEN: process.env.COPILOT_GITHUB_TOKEN,
+        COPILOT_GITHUB_TOKEN: configService.get('COPILOT_GITHUB_TOKEN') || '',
         COPILOT_HOME: process.env.COPILOT_HOME || COPILOT_HOME_DIR || '',
         PLAYWRIGHT_CLI_SESSION: 'delegate',
         PLAYWRIGHT_DAEMON_SESSION_DIR: BROWSER_PROFILE_DIR,
@@ -171,7 +172,7 @@ export const copilotDispatchHandler: FunctionHandler = {
       // 6. Timeout — default 30 min for research/browsing tasks.
       // Copilot CLI catches SIGTERM and finishes its current step before exiting,
       // so we send SIGTERM first and escalate to SIGKILL after a 30 s grace period.
-      const timeoutMs = parseInt(process.env.COPILOT_TIMEOUT_MS || '1800000', 10);
+      const timeoutMs = parseInt(configService.get('COPILOT_TIMEOUT_MS') || '1800000', 10);
       const sigkillGraceMs = 30000;
 
       // 7. Spawn copilot process (async — returns immediately, results via hooks)

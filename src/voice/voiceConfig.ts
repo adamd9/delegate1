@@ -1,4 +1,5 @@
 import { getAgent } from "../agentConfigs";
+import { configService } from "../config";
 
 export type ChatVoiceConfig = {
   voice: string;
@@ -7,8 +8,8 @@ export type ChatVoiceConfig = {
   ttsFormat: "mp3";
 };
 
-const DEFAULT_TTS_MODEL = process.env.DELEGATE_TTS_MODEL || "gpt-4o-mini-tts";
-const DEFAULT_VOICE_SPEED = Number(process.env.DELEGATE_CHAT_VOICE_SPEED || "1.3");
+const DEFAULT_TTS_MODEL = configService.get("DELEGATE_TTS_MODEL") || "gpt-4o-mini-tts";
+const DEFAULT_VOICE_SPEED = Number(configService.get("DELEGATE_CHAT_VOICE_SPEED") || "1.3");
 
 export function getChatVoiceConfig(): ChatVoiceConfig {
   const base = getAgent("base");

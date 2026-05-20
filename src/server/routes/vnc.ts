@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import type { Application } from 'express';
 import { generateVncToken } from '../../browser/vncProxy';
+import { configService } from '../../config';
 
 export function registerVncRoutes(app: Application): void {
-  if (process.env.BROWSER_ENABLED !== 'true') {
+  if (configService.get('BROWSER_ENABLED') !== 'true') {
     return;
   }
 
@@ -12,7 +13,7 @@ export function registerVncRoutes(app: Application): void {
   // Password authentication — issues a short-lived token
   router.post('/api/vnc/auth', (req, res) => {
     const { password } = req.body || {};
-    const expected = process.env.VNC_PASSWORD || 'delegate';
+    const expected = configService.get('VNC_PASSWORD') || 'delegate';
 
     if (!password || password !== expected) {
       res.status(401).json({ error: 'Invalid password' });

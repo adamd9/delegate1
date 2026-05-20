@@ -1,10 +1,11 @@
 import type { Application, Request, Response } from 'express';
 import { fetch } from 'undici';
+import { configService } from '../../config';
 
 export function registerDeepgramRoutes(app: Application) {
   app.post('/deepgram/token', async (req: Request, res: Response) => {
     try {
-      const apiKey = process.env.DEEPGRAM_API_KEY || '';
+      const apiKey = configService.get('DEEPGRAM_API_KEY') || '';
       if (!apiKey) {
         res.status(500).json({ error: 'Server configuration error', message: 'DEEPGRAM_API_KEY is not set' });
         return;

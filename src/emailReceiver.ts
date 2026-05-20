@@ -1,22 +1,23 @@
 import imaps from 'imap-simple';
 import { simpleParser } from 'mailparser';
 import dotenv from 'dotenv';
+import { configService } from './config';
 dotenv.config();
 
 const config = {
   imap: {
-    user: process.env.EMAIL_IMAP_USER || '',
-    password: process.env.EMAIL_IMAP_PASSWORD || '',
-    host: process.env.EMAIL_IMAP_HOST || '',
-    port: parseInt(process.env.EMAIL_IMAP_PORT || '993', 10),
-    tls: (process.env.EMAIL_IMAP_TLS || 'true') === 'true',
+    user: configService.get('EMAIL_IMAP_USER') || '',
+    password: configService.get('EMAIL_IMAP_PASSWORD') || '',
+    host: configService.get('EMAIL_IMAP_HOST') || '',
+    port: parseInt(configService.get('EMAIL_IMAP_PORT') || '993', 10),
+    tls: (configService.get('EMAIL_IMAP_TLS') || 'true') === 'true',
     authTimeout: 3000
   }
 };
 
-const recipientAddress = process.env.EMAIL_DEFAULT_FROM || '';
-const processedMailbox = process.env.EMAIL_PROCESSED_MAILBOX;
-const isReceivingFilterEnabled = (process.env.EMAIL_RECEIVING_FILTER_ENABLED || 'true') === 'true';
+const recipientAddress = configService.get('EMAIL_DEFAULT_TO') || '';
+const processedMailbox = configService.get('EMAIL_PROCESSED_MAILBOX');
+const isReceivingFilterEnabled = (configService.get('EMAIL_RECEIVING_FILTER_ENABLED') || 'true') === 'true';
 
 export async function checkInbox() {
   if (!config.imap.user || !config.imap.password || !config.imap.host) {

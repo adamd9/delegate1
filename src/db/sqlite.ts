@@ -11,16 +11,21 @@ const DB_FILE = RUNTIME_DATA_DIR
   ? join(RUNTIME_DATA_DIR, 'db', 'assistant.sqlite')
   : join(__dirname, '..', '..', 'runtime-data', 'db', 'assistant.sqlite');
 
-let db: any | null = null;
+let databaseInstance: any | null = null;
 const LEDGER_DEBUG = (process.env.LEDGER_DEBUG || '').toLowerCase() === 'true';
 
 export function getDb() {
-  if (db) return db;
+  if (databaseInstance) return databaseInstance;
   const dir = dirname(DB_FILE);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  db = new Database(DB_FILE);
-  db.pragma('journal_mode = WAL');
-  db.exec(`
+  databaseInstance = new Database(DB_FILE);
+  databaseInstance.pragma('journal_mode = WAL');
+  databaseInstance.exec(`
+    CREATE TABLE IF NOT EXISTS config (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      sensitive INTEGER DEFAULT 0
+    );
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       started_at TEXT,
@@ -87,8 +92,16 @@ export function getDb() {
     CREATE INDEX IF NOT EXISTS idx_deepgram_transcripts_created_at
       ON deepgram_transcripts(created_at_ms);
   `);
-  return db;
+  return databaseInstance;
 }
+
+export const db = new Proxy({} as any, {
+  get(_target, prop) {
+    const database = getDb();
+    const value = database[prop];
+    return typeof value === 'function' ? value.bind(database) : value;
+  },
+});
 
 export function upsertSession(id: string, started_at?: string) {
   const db = getDb();

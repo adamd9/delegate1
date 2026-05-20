@@ -1,9 +1,10 @@
 import { WebSocket } from 'ws';
 import type { RawData } from 'ws';
 import { addDeepgramTranscript } from '../db/sqlite';
+import { configService } from '../config';
 
 export function establishDeepgramProxy(clientWs: WebSocket) {
-  const apiKey = process.env.DEEPGRAM_API_KEY || '';
+  const apiKey = configService.get('DEEPGRAM_API_KEY') || '';
   if (!apiKey) {
     try {
       clientWs.send(JSON.stringify({ type: 'error', message: 'DEEPGRAM_API_KEY is not set on server' }));

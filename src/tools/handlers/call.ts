@@ -2,6 +2,7 @@ import twilio from 'twilio';
 import { FunctionHandler } from '../../agentConfigs/types';
 import { getNumbers, ensureNumbersFromEnv } from '../../smsState';
 import { session } from '../../session/state';
+import { configService } from '../../config';
 
 export const callUserTool: FunctionHandler = {
   schema: {
@@ -25,11 +26,11 @@ export const callUserTool: FunctionHandler = {
 
     // Use the same credentials as the rest of the Twilio voice integration.
     // Fall back through credential options: API key pair > Auth Token
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const apiKeySid = process.env.TWILIO_API_KEY_SID;
-    const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
-    const publicUrl = process.env.PUBLIC_URL;
+    const accountSid = configService.get('TWILIO_ACCOUNT_SID');
+    const authToken = configService.get('TWILIO_AUTH_TOKEN');
+    const apiKeySid = configService.get('TWILIO_API_KEY_SID');
+    const apiKeySecret = configService.get('TWILIO_API_KEY_SECRET');
+    const publicUrl = configService.get('PUBLIC_URL');
 
     if (!accountSid) {
       console.warn('[callUserTool] Missing TWILIO_ACCOUNT_SID');

@@ -1,14 +1,15 @@
 import OpenAI, { ClientOptions } from "openai";
 import { ProxyAgent } from "undici";
+import { configService } from "../config";
 
 export function createOpenAIClient(): OpenAI {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!configService.get("OPENAI_API_KEY")) {
     throw new Error("OPENAI_API_KEY environment variable is required");
   }
-  const options: ClientOptions = { apiKey: process.env.OPENAI_API_KEY };
-  if (process.env.CODEX_CLI === "true" && process.env.HTTPS_PROXY) {
+  const options: ClientOptions = { apiKey: configService.get("OPENAI_API_KEY") };
+  if (configService.get("CODEX_CLI") === "true" && configService.get("HTTPS_PROXY")) {
     try {
-      const dispatcher = new ProxyAgent(process.env.HTTPS_PROXY);
+      const dispatcher = new ProxyAgent(configService.get("HTTPS_PROXY")!);
       options.fetch = (url, init: any = {}) => {
         return (globalThis.fetch as any)(url, { ...(init || {}), dispatcher });
       };

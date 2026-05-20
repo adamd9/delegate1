@@ -1,11 +1,12 @@
 import type { MemoryBackend } from '../types';
+import { configService } from '../../config';
 
 // Cache the client instance — dynamic import + construction only happens once
 let _client: any = null;
 
 async function getClient() {
   if (_client) return _client;
-  const apiKey = process.env.MEM0_API_KEY;
+  const apiKey = configService.get('MEM0_API_KEY');
   if (!apiKey) throw new Error('MEM0_API_KEY is not set');
   const dynImport = new Function('m', 'return import(m)') as (m: string) => Promise<any>;
   let mod: any;
@@ -15,7 +16,7 @@ async function getClient() {
     catch { throw new Error("Mem SDK not installed. Install 'mem0ai' or '@mem0ai/mem0' in websocket-server"); }
   }
   const MemoryClient = mod?.default || mod?.MemoryClient || mod;
-  const host = process.env.MEM0_API_HOST;
+  const host = configService.get('MEM0_API_HOST');
   _client = host ? new MemoryClient({ apiKey, host }) : new MemoryClient({ apiKey });
   console.log('[memory:mem0] client initialised');
   return _client;
@@ -25,7 +26,7 @@ export class Mem0Backend implements MemoryBackend {
   readonly available: boolean;
 
   constructor() {
-    this.available = Boolean(process.env.MEM0_API_KEY);
+    this.available = Boolean(configService.get('MEM0_API_KEY'));
   }
 
   async retrieve(query: string, limit = 5): Promise<string | null> {

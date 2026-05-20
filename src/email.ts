@@ -1,15 +1,16 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
+import { configService } from './config';
 dotenv.config();
 
 export async function sendEmail(subject: string, text: string, to: string, from?: string) {
-  const host = process.env.EMAIL_SMTP_HOST;
-  const port = process.env.EMAIL_SMTP_PORT;
-  const user = process.env.EMAIL_SMTP_USER;
-  const pass = process.env.EMAIL_SMTP_PASS;
-  const defaultTo = process.env.EMAIL_DEFAULT_TO;
-  const replyTo = process.env.EMAIL_DEFAULT_FROM;
-  const isSendingRestricted = (process.env.EMAIL_SENDING_RESTRICTED || 'true') === 'true';
+  const host = configService.get('EMAIL_SMTP_HOST');
+  const port = configService.get('EMAIL_SMTP_PORT');
+  const user = configService.get('EMAIL_SMTP_USER');
+  const pass = configService.get('EMAIL_SMTP_PASS');
+  const defaultTo = configService.get('EMAIL_DEFAULT_TO');
+  const replyTo = configService.get('EMAIL_DEFAULT_FROM');
+  const isSendingRestricted = (configService.get('EMAIL_SENDING_RESTRICTED') || 'true') === 'true';
 
   if (!host || !port || !user || !pass) {
     console.warn('[sendEmail] Skipping send: SMTP configuration is missing in environment variables.');

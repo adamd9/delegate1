@@ -1,5 +1,7 @@
 export type Channel = 'voice' | 'text' | 'sms' | 'email' | 'copilot' | 'walkie' | 'agent';
 
+import { configService } from '../config';
+
 export interface Context {
   channel: Channel;
   currentTime: string;
@@ -33,7 +35,7 @@ export function contextInstructions(context: Context): string {
 // If TIMEZONE (IANA, e.g., "Australia/Sydney", "America/Los_Angeles") is set, use it.
 // Otherwise, use the server's local time and timezone.
 export function getTimeContext(): { currentTime: string; timeZone: string; localDate: string } {
-  const envTz = (process.env.TIMEZONE || '').trim();
+  const envTz = (configService.get('TIMEZONE') || '').trim();
   const now = new Date();
   if (envTz) {
     const formatter = new Intl.DateTimeFormat('en-GB', {

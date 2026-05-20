@@ -1,13 +1,14 @@
 import { spawn, execSync, ChildProcess } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { configService } from '../config';
 
 // ---------------------------------------------------------------------------
 // Config: resolve paths based on Docker vs local-dev environment
 // ---------------------------------------------------------------------------
 
 const isDocker = (): boolean =>
-  process.env.DOCKER === 'true' || fs.existsSync('/.dockerenv');
+  configService.get('DOCKER') === 'true' || fs.existsSync('/.dockerenv');
 
 const RUNTIME_DATA_DIR = process.env.RUNTIME_DATA_DIR;
 
@@ -236,8 +237,8 @@ function scaffoldWorkDir(): void {
   // ---- Git repository setup ----
   // Strategy: if COPILOT_REMOTE_REPO is set, use it. Otherwise auto-create one.
   // Always ensure local workdir is a clean clone of the remote.
-  const token = process.env.COPILOT_GITHUB_TOKEN;
-  let remoteRepo = process.env.COPILOT_REMOTE_REPO;
+  const token = configService.get('COPILOT_GITHUB_TOKEN');
+  let remoteRepo = configService.get('COPILOT_REMOTE_REPO');
 
   if (token && !remoteRepo) {
     // Auto-create a default repo if none specified
@@ -387,7 +388,7 @@ export function commitAndPushWorkDir(taskSummary: string): GitSyncResult {
       return { status: 'committed', message: 'Committed locally (no remote configured)' };
     }
 
-    const token = process.env.COPILOT_GITHUB_TOKEN;
+    const token = configService.get('COPILOT_GITHUB_TOKEN');
     try {
       const pushUrl = token ? authedUrl(remoteUrl, token) : remoteUrl;
       execSync(
@@ -507,7 +508,7 @@ function _launchHeadedBrowser(): void {
 // ---------------------------------------------------------------------------
 
 export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string }> {
-  if (process.env.BROWSER_ENABLED !== 'true') {
+  if (configService.get('BROWSER_ENABLED') !== 'true') {
     return { ok: true };
   }
 
@@ -559,7 +560,7 @@ export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string
     });
     console.log(`[browser] fluxbox started (pid ${fluxboxProc.pid})`);
 
-    const vncPassword = process.env.VNC_PASSWORD || 'delegate';
+    const vncPassword = configService.get('VNC_PASSWORD') || 'delegate';
     x11vncProc = spawn(
       'x11vnc',
       ['-display', ':99', '-passwd', vncPassword, '-forever', '-shared', '-rfbport', '5900'],
@@ -632,7 +633,7 @@ export function stopBrowserInfra(): void {
 export function getBrowserStatus(): BrowserStatus {
   const docker = isDocker();
   const status: BrowserStatus = {
-    enabled: process.env.BROWSER_ENABLED === 'true',
+    enabled: configService.get('BROWSER_ENABLED') === 'true',
     running,
     dockerMode: docker,
     profileDir: BROWSER_PROFILE_DIR,

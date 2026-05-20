@@ -1,6 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type http from 'http';
-import { IncomingMessage } from 'http';
+import { IncomingMessage, ServerResponse } from 'http';
+import type { Duplex } from 'stream';
+import type { RequestHandler } from 'express';
 import { establishCallSocket } from '../session/call';
 import { establishBrowserCallSocket } from '../session/browserCall';
 import { establishChatSocket } from '../session/chat';
@@ -15,22 +17,79 @@ import { handleVncWebSocket, validateVncToken } from '../browser/vncProxy';
  *
  * logs websocket is decommissioned; it is treated as closed.
  */
+type SessionRequest = IncomingMessage & {
+  session?: {
+    authenticated?: boolean;
+  };
+};
+
+function isProtectedWebSocketPath(type: string): boolean {
+  return type === 'chat' || type === 'browser-call' || type === 'deepgram' || type === 'copilot';
+}
+
+function rejectUpgrade(socket: Duplex, statusCode: number, statusText: string) {
+  socket.write(`HTTP/1.1 ${statusCode} ${statusText}\r\nConnection: close\r\n\r\n`);
+  socket.destroy();
+}
+
+function loadSession(req: IncomingMessage, sessionMiddleware: RequestHandler): Promise<SessionRequest> {
+  return new Promise((resolve, reject) => {
+    const response = new ServerResponse(req);
+    sessionMiddleware(req as SessionRequest & Parameters<RequestHandler>[0], response as Parameters<RequestHandler>[1], (err?: unknown) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(req as SessionRequest);
+    });
+  });
+}
+
 export function attachWebSockets(
   server: http.Server,
   options: {
     chatClients: Set<WebSocket>;
     logsClients: Set<WebSocket>;
     openAIApiKey: string;
+    sessionMiddleware: RequestHandler;
   }
 ) {
-  const { chatClients, logsClients, openAIApiKey } = options;
+  const { chatClients, logsClients, openAIApiKey, sessionMiddleware } = options;
   const copilotClients = new Set<WebSocket>();
   setCopilotBroadcast((msg) => {
     for (const ws of copilotClients) {
       if (isOpen(ws)) jsonSend(ws, msg);
     }
   });
-  const wss = new WebSocketServer({ server });
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', async (req, socket, head) => {
+    const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
+    const type = url.pathname.split('/').filter(Boolean)[0] || '';
+
+    if (!type) {
+      rejectUpgrade(socket, 404, 'Not Found');
+      return;
+    }
+
+    if (isProtectedWebSocketPath(type)) {
+      try {
+        const sessionReq = await loadSession(req, sessionMiddleware);
+        if (sessionReq.session?.authenticated !== true) {
+          rejectUpgrade(socket, 401, 'Unauthorized');
+          return;
+        }
+      } catch (error) {
+        console.error('[ws][attach] Failed to load session for websocket upgrade:', error);
+        rejectUpgrade(socket, 500, 'Internal Server Error');
+        return;
+      }
+    }
+
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req);
+    });
+  });
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     const url = new URL(req.url || '', `http://${req.headers.host}`);

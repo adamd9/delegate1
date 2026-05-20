@@ -1,11 +1,12 @@
 import twilio from 'twilio';
 import dotenv from 'dotenv';
+import { configService } from './config';
 dotenv.config();
 
 export async function sendSms(text: string, from: string, to: string) {
-  const accountSid = process.env.TWILIO_SMS_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_SMS_AUTH_TOKEN;
-  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+  const accountSid = configService.get('TWILIO_SMS_ACCOUNT_SID');
+  const authToken = configService.get('TWILIO_SMS_AUTH_TOKEN');
+  const messagingServiceSid = configService.get('TWILIO_MESSAGING_SERVICE_SID');
   if (!accountSid || !authToken) {
     console.warn('[sendSms] Skipping send: Twilio credentials missing');
     return;

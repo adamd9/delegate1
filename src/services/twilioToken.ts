@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { configService } from '../config';
 
 export interface TwilioAccessTokenResult {
   token: string;
@@ -17,10 +18,10 @@ export function createTwilioAccessToken(identity: string): TwilioAccessTokenResu
   const AccessToken = twilio.jwt.AccessToken;
   const VoiceGrant = AccessToken.VoiceGrant;
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const apiKeySid = process.env.TWILIO_API_KEY_SID;
-  const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
-  const twimlAppSid = process.env.TWILIO_TWIML_APP_SID;
+  const accountSid = configService.get('TWILIO_ACCOUNT_SID');
+  const apiKeySid = configService.get('TWILIO_API_KEY_SID');
+  const apiKeySecret = configService.get('TWILIO_API_KEY_SECRET');
+  const twimlAppSid = configService.get('TWILIO_TWIML_APP_SID');
 
   if (!accountSid || !apiKeySid || !apiKeySecret || !twimlAppSid) {
     throw new TwilioConfigError('Missing required Twilio credentials in environment variables');

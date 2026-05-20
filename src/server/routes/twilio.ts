@@ -4,10 +4,11 @@ import { join } from 'path';
 import { setNumbers } from '../../smsState';
 import { createTwilioAccessToken, TwilioConfigError } from '../../services/twilioToken';
 import { processSmsWebhook } from '../../session/sms';
+import { configService } from '../../config';
 
 function getTwilioClient() {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const accountSid = configService.get('TWILIO_ACCOUNT_SID');
+  const authToken = configService.get('TWILIO_AUTH_TOKEN');
   if (!accountSid || !authToken) return null;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const twilio = require('twilio');
@@ -33,7 +34,7 @@ export function registerTwilioRoutes(app: Application, opts: { effectivePublicUr
 
     const from = (req.query?.From as string) || '';
     const to = (req.query?.To as string) || '';
-    const defaultTo = process.env.TWILIO_SMS_DEFAULT_TO || '';
+    const defaultTo = configService.get('TWILIO_SMS_DEFAULT_TO') || '';
     try {
       setNumbers({ userFrom: defaultTo || from, twilioTo: to });
     } catch (e) {
@@ -84,7 +85,7 @@ export function registerTwilioRoutes(app: Application, opts: { effectivePublicUr
   // Check whether Twilio credentials are configured
   app.get('/api/twilio', (_req: Request, res: Response) => {
     const credentialsSet = Boolean(
-      process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+      configService.get('TWILIO_ACCOUNT_SID') && configService.get('TWILIO_AUTH_TOKEN')
     );
     res.json({ credentialsSet, timestamp: new Date().toISOString() });
   });
