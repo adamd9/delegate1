@@ -2,7 +2,6 @@ import type { Application, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { configService } from '../../config';
 import { isConfigured, requireAuth, validatePassword } from '../middleware/auth';
-import { db } from '../../db/sqlite';
 
 const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
 const MAX_ATTEMPTS = 5;
@@ -92,15 +91,12 @@ export function registerAuthRoutes(app: Application) {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Atomic insert — only succeeds if key doesn't already exist (prevents race)
-    const stmt = db.prepare(
-      `INSERT OR IGNORE INTO config (key, value, sensitive) VALUES ('admin_password_hash', ?, 1)`
-    );
-    const result = stmt.run(passwordHash);
-    if (result.changes === 0) {
+    // Atomic check-and-set: only succeeds if not already configured
+    if (configService.has('admin_password_hash')) {
       res.status(409).json({ error: 'Already configured' });
       return;
     }
+    configService.set('admin_password_hash', passwordHash, true);
     res.json({ status: 'ok' });
   });
 }
