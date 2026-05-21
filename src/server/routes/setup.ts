@@ -36,7 +36,7 @@ const SETUP_GROUPS: SetupGroupDefinition[] = [
     required: true,
     items: [
       { key: 'OPENAI_API_KEY', label: 'OpenAI API Key' },
-      { key: 'PUBLIC_URL', label: 'Public URL' },
+      { key: 'PUBLIC_URL', label: 'Webhook / Callback URL' },
       { key: 'TIMEZONE', label: 'Timezone' },
     ],
   },
@@ -121,6 +121,15 @@ const SETUP_GROUPS: SetupGroupDefinition[] = [
       { key: 'COPILOT_GITHUB_TOKEN', label: 'Copilot GitHub Token' },
       { key: 'COPILOT_REMOTE_REPO', label: 'Copilot Remote Repo' },
       { key: 'VNC_PASSWORD', label: 'VNC Password' },
+    ],
+  },
+  {
+    id: 'advanced',
+    name: 'Advanced',
+    description: 'Optional tuning with sensible defaults',
+    required: false,
+    items: [
+      { key: 'SESSION_HISTORY_LIMIT', label: 'Session History Limit' },
     ],
   },
 ];
