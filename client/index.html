@@ -506,6 +506,7 @@
     }
   </style>
 <script src="/auth-guard.js"></script>
+<script src="/components/setup-wizard.js"></script>
 </head>
 <body>
 
@@ -580,7 +581,7 @@
 
     <div class="lp-label">setup</div>
     <div id="checklist-section" style="padding: 0 18px 12px;">
-      <div class="checklist-row"><span class="check-icon wait">○</span><span>checking…</span></div>
+      <div style="color:var(--text-dim);font-size:11px;padding:4px 0;">Loading setup status…</div>
     </div>
 
     <div class="end-zone">
@@ -1400,55 +1401,9 @@ function openNote(data) {
 
 // ─── Checklist ────────────────────────────────────────────────────────────────
 async function runChecklist() {
-  const section = document.getElementById('checklist-section');
-  if (!section) return;
-
-  const results = [];
-
-  // Check OpenAI (session endpoint)
-  let openaiOk = false;
-  try {
-    const r = await fetch('/api/session', { method: 'GET' });
-    openaiOk = r.ok;
-  } catch {}
-  results.push({ label: 'OpenAI API', ok: openaiOk });
-
-  // Check Twilio
-  let twilioOk = false;
-  let phoneNumber = null;
-  try {
-    const r = await fetch('/api/twilio');
-    if (r.ok) {
-      twilioOk = true;
-      const body = await r.json();
-      if (body.accountSid) twilioOk = true;
-    }
-  } catch {}
-  results.push({ label: 'Twilio account', ok: twilioOk });
-
-  // Check phone numbers
-  try {
-    const r = await fetch('/api/twilio/numbers');
-    if (r.ok) {
-      const body = await r.json();
-      const numbers = body.numbers || body.incomingPhoneNumbers || [];
-      if (numbers.length > 0) {
-        phoneNumber = numbers[0].phoneNumber || numbers[0].phone_number;
-        results.push({ label: `Phone: ${phoneNumber}`, ok: true });
-      } else {
-        results.push({ label: 'No phone numbers', ok: false });
-      }
-    }
-  } catch {
-    results.push({ label: 'Phone numbers', ok: false });
+  if (typeof SetupWizard !== 'undefined') {
+    SetupWizard.init('#checklist-section', 'compact');
   }
-
-  section.innerHTML = results.map(r => `
-    <div class="checklist-row">
-      <span class="check-icon ${r.ok ? 'ok' : 'fail'}">${r.ok ? '✓' : '✗'}</span>
-      <span>${esc(r.label)}</span>
-    </div>
-  `).join('');
 }
 
 // ─── Event bindings ───────────────────────────────────────────────────────────

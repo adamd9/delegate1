@@ -22,6 +22,7 @@ import { registerVoiceDefaultsRoutes } from './server/routes/voiceDefaults';
 import { registerMemoryConfigRoutes } from './server/routes/memoryConfig';
 import { registerMemoriesRoutes } from './server/routes/memories';
 import { registerConfigRoutes } from './server/routes/config';
+import { registerSetupRoutes } from './server/routes/setup';
 import { registerOpenAiSessionRoute } from './server/routes/openaiSession';
 import { registerCopilotRoutes } from './server/routes/copilot';
 import { registerAgentMessageRoutes } from './server/routes/agentMessage';
@@ -223,6 +224,7 @@ registerMemoryConfigRoutes(app);
 registerMemoriesRoutes(app);
 // App config management API
 registerConfigRoutes(app);
+registerSetupRoutes(app);
 
 // OpenAI Realtime session token proxy
 registerOpenAiSessionRoute(app);
