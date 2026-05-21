@@ -75,7 +75,6 @@ The memory module (`src/memory/`) manages persistent user context across convers
 
 ## Key Conventions
 
-- **Never start or restart dev servers from an AI assistant session** — always ask the user to do it.
 - **Voice interruption guard**: always check `isResponseActivelyStreaming()` before calling `response.cancel` in voice/barge-in logic (`src/session/call.ts`).
 - **`responseStartTimestamp`** tracks active audio streaming state: set on first audio delta, cleared on `response.audio.done` or truncation.
 - Build copies `src/twiml.xml` and `src/config/*` to `dist/` as non-TS assets (`npm run copy-assets`).
