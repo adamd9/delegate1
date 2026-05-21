@@ -213,6 +213,7 @@
     @media (max-width: 600px) { .mobile-tab-select { display: block; } }
   </style>
 <script src="/auth-guard.js"></script>
+<script src="/components/setup-wizard.js"></script>
 </head>
 <body>
   <!-- Top bar -->
@@ -937,6 +938,16 @@ function renderConfig(prefetchedItems = null) {
     body.appendChild(el('div', { class: 'section-description' }, 'Manage runtime environment values without editing files. Sensitive values stay masked after save; leave them blank to keep the existing secret.'));
   });
   content.appendChild(intro);
+
+  // Setup wizard status overview
+  const wizardCard = card('Setup Status', body => {
+    const wizardEl = el('div', { id: 'settings-setup-wizard' });
+    body.appendChild(wizardEl);
+    if (typeof SetupWizard !== 'undefined') {
+      SetupWizard.init(wizardEl, 'full');
+    }
+  });
+  content.appendChild(wizardCard);
 
   const configMap = buildConfigMap(prefetchedItems);
   CONFIG_SECTIONS.forEach(section => content.appendChild(buildConfigSectionCard(section, configMap)));
