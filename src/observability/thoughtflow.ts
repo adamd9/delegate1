@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { join, sep } from 'path';
 import { session } from '../session/state';
 import { upsertSession, finalizeSession, upsertConversation, updateConversationStatus, addConversationEvent, getLastEventTimestampForConversation, upsertThoughtflowArtifact } from '../db/sqlite';
+import { getEffectivePublicUrl } from '../server/config/env';
 
 // Explicit step types for ThoughtFlow events
 export enum ThoughtFlowStepType {
@@ -69,13 +70,11 @@ export function appendEvent(event: any) {
           // Generate per-conversation ThoughtFlow artifacts at completion
           try {
             const { artifactId } = writeConversationArtifacts(sid, convId);
-            const PORT = parseInt(process.env.PORT || '8081', 10);
-            const PUBLIC_URL = process.env.PUBLIC_URL || '';
-            const EFFECTIVE_PUBLIC_URL = (PUBLIC_URL && PUBLIC_URL.trim()) || `http://localhost:${PORT}`;
+            const effectivePublicUrl = getEffectivePublicUrl();
             const baseName = artifactId;
-            const url_json = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.json`;
-            const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.d2`;
-            const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${baseName}.d2`;
+            const url_json = `${effectivePublicUrl}/thoughtflow/${baseName}.json`;
+            const url_d2 = `${effectivePublicUrl}/thoughtflow/${baseName}.d2`;
+            const url_d2_raw = `${effectivePublicUrl}/thoughtflow/raw/${baseName}.d2`;
             const url_d2_viewer = `/thoughtflow/viewer?id=${encodeURIComponent(baseName)}`;
             const lastTs = getLastEventTimestampForConversation(convId) || Date.now();
             addConversationEvent({
@@ -387,13 +386,11 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
         // Best-effort: ensure per-conversation ThoughtFlow artifact links exist (if not already added during conversation.completed)
         try {
           const { artifactId } = writeConversationArtifacts(id, convId);
-          const PORT = parseInt(process.env.PORT || '8081', 10);
-          const PUBLIC_URL = process.env.PUBLIC_URL || '';
-          const EFFECTIVE_PUBLIC_URL = (PUBLIC_URL && PUBLIC_URL.trim()) || `http://localhost:${PORT}`;
+          const effectivePublicUrl = getEffectivePublicUrl();
           const baseName = artifactId;
-          const url_json = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.json`;
-          const url_d2 = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/${baseName}.d2`;
-          const url_d2_raw = `${EFFECTIVE_PUBLIC_URL}/thoughtflow/raw/${baseName}.d2`;
+          const url_json = `${effectivePublicUrl}/thoughtflow/${baseName}.json`;
+          const url_d2 = `${effectivePublicUrl}/thoughtflow/${baseName}.d2`;
+          const url_d2_raw = `${effectivePublicUrl}/thoughtflow/raw/${baseName}.d2`;
           const url_d2_viewer = `/thoughtflow/viewer?id=${encodeURIComponent(baseName)}`;
           const lastTs = getLastEventTimestampForConversation(convId) || Date.now();
           addConversationEvent({

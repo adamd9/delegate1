@@ -2,6 +2,7 @@ import type { MemoryBackend } from '../types';
 import { Mem0Backend } from './mem0';
 import { AdaptiveMemoryBackend } from './adaptive';
 import { getMemoryConfig } from '../memoryConfig';
+import { configService } from '../../config';
 
 /** No-op backend used when no memory provider is configured */
 class NullBackend implements MemoryBackend {
@@ -22,7 +23,7 @@ export function getMemoryBackend(): MemoryBackend {
   if (selected === 'adaptive') {
     _backend = new AdaptiveMemoryBackend();
     console.log('[memory] Backend: Adaptive');
-  } else if (process.env.MEM0_API_KEY) {
+  } else if (configService.get('MEM0_API_KEY')) {
     _backend = new Mem0Backend();
     console.log('[memory] Backend: Mem0');
   } else {

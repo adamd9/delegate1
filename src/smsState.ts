@@ -1,23 +1,21 @@
 // Centralized, minimal SMS state (single-user assumption)
-import dotenv from 'dotenv';
-dotenv.config();
+import { configService } from './config';
 
 const DEFAULT_WINDOW_MS = 30_000;
 
 let replyWindowMs = DEFAULT_WINDOW_MS;
 let smsReplyUntil = 0;
 
-// Allow fallbacks via env vars (support a few aliases) and trim values
-function readEnvNumber(...keys: string[]): string {
-  for (const k of keys) {
-    const v = process.env[k];
-    if (typeof v === 'string' && v.trim().length > 0) return v.trim();
+function readConfigValue(...keys: string[]): string {
+  for (const key of keys) {
+    const value = configService.get(key);
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
   }
   return '';
 }
 
-const DEFAULT_SMS_TO = readEnvNumber('TWILIO_SMS_DEFAULT_TO', 'SMS_DEFAULT_TO');
-const DEFAULT_SMS_FROM = readEnvNumber('TWILIO_SMS_FROM', 'TWILIO_SMS_DEFAULT_FROM', 'SMS_FROM');
+const DEFAULT_SMS_TO = readConfigValue('TWILIO_SMS_DEFAULT_TO', 'SMS_DEFAULT_TO');
+const DEFAULT_SMS_FROM = readConfigValue('TWILIO_SMS_FROM', 'TWILIO_SMS_DEFAULT_FROM', 'SMS_FROM');
 
 let smsUserNumber = DEFAULT_SMS_TO;     // Destination (user) number
 let smsTwilioNumber = DEFAULT_SMS_FROM; // Our Twilio sender number

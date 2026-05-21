@@ -12,7 +12,7 @@ import { session, parseMessage, jsonSend, isOpen } from "./state";
 import { listConversations as dbListConversations, listConversationEvents, completeConversation, getConversationById } from "../db/sqlite";
 import { ensureSession, appendEvent, ThoughtFlowStepType, endSession } from "../observability/thoughtflow";
 import { addConversationEvent } from "../db/sqlite";
-import { replayHistoryOnConnect } from './history';
+import { getSessionHistoryLimit, replayHistoryOnConnect } from './history';
 import { summarizeRequestForLog } from '../utils/logSanitize';
 import { getAdaptationTextById } from '../adaptations';
 import { createOpenAIClient } from "../services/openaiClient";
@@ -103,7 +103,7 @@ export async function processChatSocketMessage(
     }
     case "history.request": {
       try {
-        const limit = Math.max(1, Math.min(50, Number((msg as any).limit) || Number(process.env.SESSION_HISTORY_LIMIT || 3)));
+        const limit = Math.max(1, Math.min(50, Number((msg as any).limit) || getSessionHistoryLimit()));
         const conversations: any[] = dbListConversations(limit) || [];
         console.debug(`[history.request] limit=${limit} conversations=${conversations.length}`);
         // Only include ended conversations for history; exclude any active/un-ended runs

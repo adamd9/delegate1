@@ -1,6 +1,7 @@
 import { spawn, execSync, ChildProcess } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { homedir } from 'os';
 import { configService } from '../config';
 
 // ---------------------------------------------------------------------------
@@ -21,6 +22,7 @@ const _runtimeBase: string = RUNTIME_DATA_DIR
 export const BROWSER_PROFILE_DIR: string = path.join(_runtimeBase, 'browser-profile');
 export const COPILOT_WORK_DIR: string    = path.join(_runtimeBase, 'copilot-workdir');
 export const COPILOT_HOME_DIR: string    = path.join(_runtimeBase, 'copilot-home');
+export const BROWSER_DISPLAY = ':99';
 
 /** Append-only log file shared by all copilot sessions — tailed by the persistent VNC terminal. */
 export const GLOBAL_LOG_FILE = '/tmp/copilot-session.log';
@@ -341,7 +343,6 @@ function setupCopilotHome(): void {
     trusted_folders: [COPILOT_WORK_DIR],
   };
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-  process.env.COPILOT_HOME = COPILOT_HOME_DIR;
   console.log(`[browser] Copilot home configured — ${configPath} (trusted: ${COPILOT_WORK_DIR})`);
 }
 
@@ -461,10 +462,11 @@ function _launchHeadedBrowser(): void {
     );
 
     // Strip PLAYWRIGHT_CLI_SESSION from env to avoid the --endpoint bug
-    const { PLAYWRIGHT_CLI_SESSION: _stripped, ...cleanEnv } = process.env;
+    const cleanEnv = { ...(process['env'] as Record<string, string>) };
+    delete cleanEnv.PLAYWRIGHT_CLI_SESSION;
     const browserEnv: Record<string, string> = {
-      ...(cleanEnv as Record<string, string>),
-      DISPLAY: ':99',
+      ...cleanEnv,
+      DISPLAY: BROWSER_DISPLAY,
     };
 
     chromiumProc = spawn('playwright-cli', [
@@ -531,19 +533,17 @@ export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string
 
     console.log('[browser] Docker mode detected — starting display infrastructure');
 
-    xvfbProc = spawn('Xvfb', [':99', '-screen', '0', '1280x1024x24', '-ac'], {
+    xvfbProc = spawn('Xvfb', [BROWSER_DISPLAY, '-screen', '0', '1280x1024x24', '-ac'], {
       detached: false,
       stdio: 'ignore',
     });
     console.log(`[browser] Xvfb started (pid ${xvfbProc.pid})`);
 
-    process.env.DISPLAY = ':99';
-
     // Give Xvfb a moment to initialise the display
     await delay(500);
 
     // Write a minimal fluxbox config to enforce 1 workspace
-    const fluxboxDir = path.join(process.env.HOME || '/root', '.fluxbox');
+    const fluxboxDir = path.join(homedir() || '/root', '.fluxbox');
     fs.mkdirSync(fluxboxDir, { recursive: true });
     const fluxboxInit = path.join(fluxboxDir, 'init');
     if (!fs.existsSync(fluxboxInit)) {
@@ -556,14 +556,14 @@ export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string
     fluxboxProc = spawn('fluxbox', [], {
       detached: false,
       stdio: 'ignore',
-      env: { ...process.env, DISPLAY: ':99' },
+      env: { ...(process['env'] as Record<string, string>), DISPLAY: BROWSER_DISPLAY },
     });
     console.log(`[browser] fluxbox started (pid ${fluxboxProc.pid})`);
 
     const vncPassword = configService.get('VNC_PASSWORD') || 'delegate';
     x11vncProc = spawn(
       'x11vnc',
-      ['-display', ':99', '-passwd', vncPassword, '-forever', '-shared', '-rfbport', '5900'],
+      ['-display', BROWSER_DISPLAY, '-passwd', vncPassword, '-forever', '-shared', '-rfbport', '5900'],
       { detached: false, stdio: 'ignore' },
     );
     console.log(`[browser] x11vnc started (pid ${x11vncProc.pid})`);
@@ -587,7 +587,7 @@ export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string
     ], {
       detached: true,
       stdio: 'ignore',
-      env: { ...process.env, DISPLAY: ':99' },
+      env: { ...(process['env'] as Record<string, string>), DISPLAY: BROWSER_DISPLAY },
     });
     xtermLogProc.unref();
     console.log(`[browser] xterm log started (pid ${xtermLogProc.pid})`);

@@ -1,6 +1,7 @@
 import { FunctionHandler } from '../../agentConfigs/types';
 import { sendEmail } from '../../email';
 import { getReplyTo } from '../../emailState';
+import { configService } from '../../config';
 
 export const sendEmailTool: FunctionHandler = {
   schema: {
@@ -20,7 +21,7 @@ export const sendEmailTool: FunctionHandler = {
   handler: async ({ subject, message }: { subject: string; message: string }) => {
     console.debug('[sendEmailTool] Invoked', { hasSubject: Boolean(subject?.length), hasBody: Boolean(message?.length) });
     const currentReplyTo = getReplyTo();
-    const defaultRecipient = process.env.EMAIL_DEFAULT_TO || '';
+    const defaultRecipient = configService.get('EMAIL_DEFAULT_TO') || '';
     const recipient = currentReplyTo || defaultRecipient;
 
     if (!recipient) {

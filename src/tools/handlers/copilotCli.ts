@@ -2,8 +2,10 @@ import { FunctionHandler } from '../../agentConfigs/types';
 import { spawn, ChildProcess } from 'child_process';
 import { execFile } from 'child_process';
 import fs from 'fs';
+import { homedir } from 'os';
 import { COPILOT_WORK_DIR, COPILOT_HOME_DIR, BROWSER_PROFILE_DIR, commitAndPushWorkDir, GLOBAL_LOG_FILE, GitSyncResult } from '../../browser';
 import { configService } from '../../config';
+import { getPort } from '../../server/config/env';
 
 // GLOBAL_LOG_FILE is imported from browser/index.ts — it is an append-only log
 // file tailed by the persistent xterm in the VNC display.
@@ -71,7 +73,7 @@ function getCopilotInfo(): Promise<{ path: string; ghMode: boolean } | null> {
         return resolve(copilotCache);
       }
       // Check the well-known path where `gh copilot` auto-downloads the binary
-      const home = process.env.HOME || '/root';
+      const home = homedir() || '/root';
       const knownBin = `${home}/.local/share/gh/copilot/copilot`;
       if (require('fs').existsSync(knownBin)) {
         copilotCache = { path: knownBin, ghMode: false };
@@ -156,19 +158,16 @@ export const copilotDispatchHandler: FunctionHandler = {
       }
 
       // 5. Build env
-      const port = process.env.PORT || '8081';
+      const port = String(getPort());
+      const envSource = process['env'] as Record<string, string>;
       const env: Record<string, string> = {
-        ...(process.env as Record<string, string>),
+        ...envSource,
         COPILOT_GITHUB_TOKEN: configService.get('COPILOT_GITHUB_TOKEN') || '',
-        COPILOT_HOME: process.env.COPILOT_HOME || COPILOT_HOME_DIR || '',
+        COPILOT_HOME: COPILOT_HOME_DIR || '',
         PLAYWRIGHT_CLI_SESSION: 'delegate',
         PLAYWRIGHT_DAEMON_SESSION_DIR: BROWSER_PROFILE_DIR,
         AGENT_CALLBACK_URL: `http://localhost:${port}`,
       };
-      if (process.env.DISPLAY) {
-        env.DISPLAY = process.env.DISPLAY;
-      }
-
       // 6. Timeout — default 30 min for research/browsing tasks.
       // Copilot CLI catches SIGTERM and finishes its current step before exiting,
       // so we send SIGTERM first and escalate to SIGKILL after a 30 s grace period.

@@ -4,13 +4,10 @@ import { session, jsonSend, type ConversationItem } from '../../session/state';
 import { chatClients } from '../../ws/clients';
 import { ensureSession } from '../../observability/thoughtflow';
 import { addConversationEvent } from '../../db/sqlite';
-
-const PUBLIC_URL = process.env.PUBLIC_URL || '';
-const DEFAULT_PORT = process.env.PORT || '8081';
-const EFFECTIVE_PUBLIC_URL = (PUBLIC_URL && PUBLIC_URL.trim()) || `http://localhost:${DEFAULT_PORT}`;
+import { getEffectivePublicUrl } from '../../server/config/env';
 
 function buildNoteUrl(noteId: string): string {
-  const base = EFFECTIVE_PUBLIC_URL.replace(/\/$/, '');
+  const base = getEffectivePublicUrl().replace(/\/$/, '');
   return `${base}/notes/${noteId}`;
 }
 

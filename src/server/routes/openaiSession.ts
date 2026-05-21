@@ -1,14 +1,21 @@
 import type { Application, Request, Response } from 'express';
+import { configService } from '../../config';
 
 // Proxy route for OpenAI Realtime session token generation.
 // Keeps the API key server-side; browser never sees it.
 export function registerOpenAiSessionRoute(app: Application) {
   app.get('/api/session', async (_req: Request, res: Response) => {
     try {
+      const apiKey = configService.get('OPENAI_API_KEY');
+      if (!apiKey) {
+        res.status(500).json({ error: 'Server configuration error', message: 'OPENAI_API_KEY is not set' });
+        return;
+      }
+
       const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

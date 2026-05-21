@@ -1,5 +1,6 @@
 import assert from "assert";
 import { getAgent } from "../agentConfigs";
+import { configService } from "../config";
 import { getChatVoiceConfig } from "./voiceConfig";
 import { requireAudioFile, VoiceMessageError } from "./voicePipeline";
 
@@ -18,15 +19,16 @@ function testRequestValidation() {
 }
 
 function testAudioSizeLimit() {
-  const prev = process.env.DELEGATE_MAX_AUDIO_BYTES;
-  process.env.DELEGATE_MAX_AUDIO_BYTES = "10";
+  const key = 'DELEGATE_MAX_AUDIO_BYTES';
+  const prev = configService.get(key);
+  configService.set(key, '10');
   try {
     expectVoiceMessageError(() => requireAudioFile({ size: 11 }), 413);
   } finally {
     if (prev === undefined) {
-      delete process.env.DELEGATE_MAX_AUDIO_BYTES;
+      configService.delete(key);
     } else {
-      process.env.DELEGATE_MAX_AUDIO_BYTES = prev;
+      configService.set(key, prev);
     }
   }
 }

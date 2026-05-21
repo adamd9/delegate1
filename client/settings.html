@@ -166,10 +166,17 @@
 
     /* ── Configuration ── */
     .section-description { font-size: 12px; color: var(--text-mid); line-height: 1.5; margin-bottom: 14px; }
+    .config-layout {
+      display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(280px, 1fr); gap: 20px; align-items: start;
+    }
+    .config-main { min-width: 0; }
+    .config-sidebar { min-width: 0; }
+    .config-sidebar-inner { position: sticky; top: 20px; }
     .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
     .config-field {
       display: flex; flex-direction: column; gap: 8px; min-width: 0;
       padding: 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface2);
+      scroll-margin-top: 20px; transition: border-color 0.18s ease, box-shadow 0.18s ease;
     }
     .config-field-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
     .config-field-title { font-size: 13px; font-weight: 600; color: var(--text); }
@@ -184,6 +191,8 @@
       background: var(--surface3); color: var(--text); font-size: 13px; outline: none;
     }
     .config-input:focus, .config-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(129,140,248,0.12); }
+    .config-section-focus { box-shadow: 0 0 0 1px rgba(129,140,248,0.5), 0 0 0 5px rgba(129,140,248,0.08); }
+    .config-field-focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(129,140,248,0.16); }
     .input-with-action { display: flex; align-items: center; gap: 8px; }
     .input-with-action > *:first-child { flex: 1; min-width: 0; }
     .section-actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
@@ -201,6 +210,11 @@
     .toast.err { border-color: rgba(248,113,113,0.35); }
 
     /* ── Mobile ── */
+    @media (max-width: 900px) {
+      .config-layout { grid-template-columns: 1fr; }
+      .config-sidebar { order: -1; }
+      .config-sidebar-inner { position: static; }
+    }
     @media (max-width: 600px) {
       .sidebar { display: none; }
       .topbar .mobile-tab-select { display: block; }
@@ -754,7 +768,7 @@ function createConfigControl(field, item, idSuffix) {
 function buildConfigField(field, item, sectionId) {
   const fieldId = `config-${sectionId}-${field.key.toLowerCase()}`;
   const control = createConfigControl(field, item, fieldId);
-  const wrap = el('div', { class: 'config-field' });
+  const wrap = el('div', { class: 'config-field', 'data-config-field-key': field.key });
   const head = el('div', { class: 'config-field-head' });
   const titleWrap = el('div', { style: { minWidth: '0' } });
   titleWrap.appendChild(el('label', { class: 'config-field-title', for: fieldId }, field.label));
@@ -768,7 +782,7 @@ function buildConfigField(field, item, sectionId) {
 }
 
 function buildConfigSectionCard(section, configMap) {
-  return card(section.title, body => {
+  const sectionCard = card(section.title, body => {
     body.appendChild(el('div', { class: 'section-description' }, section.description));
     const grid = el('div', { class: 'config-grid' });
     section.fields.forEach(field => grid.appendChild(buildConfigField(field, configMap.get(field.key), section.id)));
@@ -825,6 +839,9 @@ function buildConfigSectionCard(section, configMap) {
     actions.appendChild(msg);
     body.appendChild(actions);
   });
+  sectionCard.id = `config-section-${section.id}`;
+  sectionCard.dataset.sectionId = section.id;
+  return sectionCard;
 }
 
 function buildPasswordField(id, labelText, placeholder) {
@@ -852,6 +869,64 @@ function buildPasswordField(id, labelText, placeholder) {
   row.appendChild(toggle);
   wrap.appendChild(row);
   return { wrap, input };
+}
+
+let configFocusTimer = null;
+
+function clearConfigFocusState() {
+  document.querySelectorAll('.config-section-focus').forEach(node => node.classList.remove('config-section-focus'));
+  document.querySelectorAll('.config-field-focus').forEach(node => node.classList.remove('config-field-focus'));
+  if (configFocusTimer) {
+    clearTimeout(configFocusTimer);
+    configFocusTimer = null;
+  }
+}
+
+function scheduleConfigFocusClear() {
+  if (configFocusTimer) clearTimeout(configFocusTimer);
+  configFocusTimer = setTimeout(() => clearConfigFocusState(), 2200);
+}
+
+function scrollToConfigSection(sectionId) {
+  const section = document.getElementById(`config-section-${sectionId}`);
+  if (!section) return false;
+  clearConfigFocusState();
+  section.classList.add('config-section-focus');
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  scheduleConfigFocusClear();
+  return true;
+}
+
+function focusConfigField(sectionId, fieldKey) {
+  const input = document.getElementById(`config-${sectionId}-${fieldKey.toLowerCase()}`)
+    || document.querySelector(`[data-config-key="${fieldKey}"]`);
+  if (!input) return false;
+  const section = document.getElementById(`config-section-${sectionId}`);
+  const field = input.closest('.config-field');
+  clearConfigFocusState();
+  if (section) {
+    section.classList.add('config-section-focus');
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (field) field.classList.add('config-field-focus');
+  setTimeout(() => {
+    input.focus({ preventScroll: true });
+    if (typeof input.select === 'function' && input.tagName === 'INPUT' && input.type !== 'password') input.select();
+  }, 160);
+  scheduleConfigFocusClear();
+  return true;
+}
+
+function applyConfigTargetFromLocation() {
+  if (activeTab !== 'config') return;
+  const params = new URLSearchParams(window.location.search);
+  const sectionId = params.get('section');
+  const fieldKey = params.get('field');
+  if (!sectionId) return;
+  requestAnimationFrame(() => {
+    if (fieldKey && focusConfigField(sectionId, fieldKey)) return;
+    scrollToConfigSection(sectionId);
+  });
 }
 
 function buildChangePasswordCard() {
@@ -939,7 +1014,15 @@ function renderConfig(prefetchedItems = null) {
   });
   content.appendChild(intro);
 
-  // Setup wizard status overview
+  const layout = el('div', { class: 'config-layout' });
+  const mainColumn = el('div', { class: 'config-main' });
+  const sidebarColumn = el('div', { class: 'config-sidebar' });
+  const sidebarInner = el('div', { class: 'config-sidebar-inner' });
+  sidebarColumn.appendChild(sidebarInner);
+  layout.appendChild(mainColumn);
+  layout.appendChild(sidebarColumn);
+  content.appendChild(layout);
+
   const wizardCard = card('Setup Status', body => {
     const wizardEl = el('div', { id: 'settings-setup-wizard' });
     body.appendChild(wizardEl);
@@ -947,11 +1030,12 @@ function renderConfig(prefetchedItems = null) {
       SetupWizard.init(wizardEl, 'full');
     }
   });
-  content.appendChild(wizardCard);
+  sidebarInner.appendChild(wizardCard);
 
   const configMap = buildConfigMap(prefetchedItems);
-  CONFIG_SECTIONS.forEach(section => content.appendChild(buildConfigSectionCard(section, configMap)));
-  content.appendChild(buildChangePasswordCard());
+  CONFIG_SECTIONS.forEach(section => mainColumn.appendChild(buildConfigSectionCard(section, configMap)));
+  mainColumn.appendChild(buildChangePasswordCard());
+  applyConfigTargetFromLocation();
 }
 
 // ──────────────────────────────────────────────

@@ -20,9 +20,7 @@ const IV_LENGTH = 12;
 
 class ConfigService {
   get(key: string): string | undefined {
-    const dbValue = this.getRaw(key);
-    if (dbValue !== undefined) return dbValue;
-    return process.env[key];
+    return this.getRaw(key);
   }
 
   set(key: string, value: string, sensitive = false): void {

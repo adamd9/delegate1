@@ -1,9 +1,9 @@
 import type { Application, Request, Response } from 'express';
 import { listConversations as dbListConversations, getConversationById, listConversationEvents } from '../../db/sqlite';
+import { getSessionHistoryLimit, isItemsDebugEnabled } from '../config/env';
 
 export function registerConversationRoutes(app: Application, opts?: { defaultLimit?: number }) {
-  const SESSION_HISTORY_LIMIT = Number(process.env.SESSION_HISTORY_LIMIT || 3);
-  const defaultLimit = opts?.defaultLimit ?? SESSION_HISTORY_LIMIT;
+  const defaultLimit = opts?.defaultLimit ?? getSessionHistoryLimit();
 
   // Conversations list endpoint (conversation-centric)
   app.get('/api/conversations', (req: Request, res: Response) => {
@@ -44,7 +44,7 @@ export function registerConversationRoutes(app: Application, opts?: { defaultLim
         payload: (() => { try { return JSON.parse(row.payload_json || '{}'); } catch { return {}; } })(),
         created_at_ms: row.created_at_ms,
       }));
-      if ((process.env.ITEMS_DEBUG || '').toLowerCase() === 'true') {
+      if (isItemsDebugEnabled()) {
         try {
           const counts: Record<string, number> = {};
           for (const it of out) counts[it.kind] = (counts[it.kind] || 0) + 1;

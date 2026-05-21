@@ -1,5 +1,6 @@
 import { registerTools } from "../registry";
 import { copilotDispatchHandler, copilotGetResultHandler } from "../handlers/copilotCli";
+import { configService } from '../../config';
 
 function wrapHandler(h: typeof copilotDispatchHandler) {
   return async (args: any) => {
@@ -10,7 +11,7 @@ function wrapHandler(h: typeof copilotDispatchHandler) {
 }
 
 export function registerCopilotCliTools() {
-  if (process.env.BROWSER_ENABLED !== 'true') {
+  if (configService.get('BROWSER_ENABLED') !== 'true') {
     console.log('[copilot-cli] BROWSER_ENABLED not set, skipping copilot tool registration');
     return;
   }

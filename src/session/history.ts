@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
 import { jsonSend, isOpen } from './state';
 import { listConversations as dbListConversations, listConversationEvents } from '../db/sqlite';
+import { configService } from '../config';
 
 function toNumber(value: any, fallback: number): number {
   const n = Number(value);
@@ -8,7 +9,7 @@ function toNumber(value: any, fallback: number): number {
 }
 
 export function getSessionHistoryLimit(): number {
-  const raw = process.env.SESSION_HISTORY_LIMIT;
+  const raw = configService.get('SESSION_HISTORY_LIMIT');
   const n = toNumber(raw, 3);
   return Math.min(50, Math.max(1, n));
 }

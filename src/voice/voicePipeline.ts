@@ -1,10 +1,10 @@
 import { extname, join } from "path";
 import fs from "fs";
 import { execFileSync } from "child_process";
-import { tmpdir } from "os";
 import OpenAI from "openai";
 import { createOpenAIClient } from "../services/openaiClient";
 import { getChatVoiceConfig } from "./voiceConfig";
+import { configService } from "../config";
 
 // ffmpeg-static provides a bundled ffmpeg binary path
 let ffmpegPath: string | null = null;
@@ -58,8 +58,12 @@ const STT_DIRECT_MIMES = new Set([
   "audio/mpga",
 ]);
 
+const VOICE_TEMP_DIR = process.env.RUNTIME_DATA_DIR
+  ? join(process.env.RUNTIME_DATA_DIR, 'voice-temp')
+  : join(__dirname, '..', '..', 'runtime-data', 'voice-temp');
+
 export function getMaxAudioBytes(): number {
-  const raw = process.env.DELEGATE_MAX_AUDIO_BYTES || "2097152";
+  const raw = configService.get('DELEGATE_MAX_AUDIO_BYTES') || '2097152';
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) return 2097152;
   return parsed;
@@ -410,8 +414,9 @@ export async function synthesizeSpeechZeppOpus(text: string, openaiClient?: Open
 
   // Use ffmpeg to re-encode as low-bitrate mono Opus raw frames
   // Output: raw Opus in OGG container at 16kHz mono, very low bitrate
-  const inputTmp = join(tmpdir(), `zepp_tts_in_${Date.now()}.opus`);
-  const outputTmp = join(tmpdir(), `zepp_tts_out_${Date.now()}.ogg`);
+  fs.mkdirSync(VOICE_TEMP_DIR, { recursive: true });
+  const inputTmp = join(VOICE_TEMP_DIR, `zepp_tts_in_${Date.now()}.opus`);
+  const outputTmp = join(VOICE_TEMP_DIR, `zepp_tts_out_${Date.now()}.ogg`);
   fs.writeFileSync(inputTmp, ttsBuffer);
 
   const ffmpeg = ffmpegPath || "ffmpeg";
