@@ -23,7 +23,7 @@ export interface MemoryConfig {
    * lower-cases and strips punctuation (default: 'normalized')
    */
   dedup_strictness: DeduplicationStrictnessConfig;
-  backend: 'mem0' | 'adaptive';
+  backend: 'adaptive';
   /** Max recent conversation turns to include in the retrieval query (default: 4) */
   context_window_turns: number;
   /** Max characters of conversation context to prepend to the retrieval query (default: 1500) */
@@ -43,7 +43,7 @@ const DEFAULTS: MemoryConfig = {
   dedup_expiry_turns: 10,
   dedup_expiry_ms: 30 * 60 * 1000,
   dedup_strictness: 'normalized',
-  backend: 'mem0',
+  backend: 'adaptive',
   context_window_turns: 4,
   context_window_max_chars: 1500,
   arbitrator_enabled: false,
@@ -64,7 +64,7 @@ function loadFromDisk(): MemoryConfig {
     if (fs.existsSync(CONFIG_FILE)) {
       const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
-      return { ...DEFAULTS, ...parsed };
+      return { ...DEFAULTS, ...parsed, backend: 'adaptive' };
     }
   } catch (err) {
     console.warn('[memory-config] Failed to load from disk, using defaults', err);
@@ -98,7 +98,7 @@ export function saveMemoryConfig(updates: Partial<MemoryConfig>): MemoryConfig {
     dedup_strictness: (updates.dedup_strictness === 'exact' || updates.dedup_strictness === 'normalized')
       ? updates.dedup_strictness
       : current.dedup_strictness,
-    backend: updates.backend === 'adaptive' ? 'adaptive' : updates.backend === 'mem0' ? 'mem0' : current.backend,
+    backend: 'adaptive',
     context_window_turns: typeof updates.context_window_turns === 'number'
       ? Math.max(0, Math.min(20, Math.round(updates.context_window_turns)))
       : current.context_window_turns,

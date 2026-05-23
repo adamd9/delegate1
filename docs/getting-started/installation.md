@@ -44,7 +44,7 @@ delegate1/
 │   ├── server.ts       # entry point
 │   ├── agentConfigs/   # base + supervisor agents
 │   ├── tools/          # tool registry + handlers
-│   ├── memory/         # adaptive memory + mem0
+│   ├── memory/         # adaptive memory
 │   ├── voice/          # voice pipeline
 │   ├── session/        # /chat /call /browser-call WS handlers
 │   └── ...

@@ -70,6 +70,6 @@ See the full table in **[Reference → Env Vars](../../reference/env-vars/)**.
 | `PORT` | `.env` only | Read once on startup |
 | `RUNTIME_DATA_DIR` | `.env` only | Determines where the in-app store lives |
 | `ADMIN_PASSWORD` | `.env` *or* install flow | Either works |
-| `OPENAI_API_KEY`, `TWILIO_*`, `EMAIL_*`, `MEM0_*`, `DEEPGRAM_API_KEY`, `PUBLIC_URL`, `BROWSER_ENABLED`, `COPILOT_GITHUB_TOKEN`, etc. | Settings UI *or* `.env` | UI is preferred for prod (encrypted at rest) |
+| `OPENAI_API_KEY`, `TWILIO_*`, `EMAIL_*`, `DEEPGRAM_API_KEY`, `PUBLIC_URL`, `BROWSER_ENABLED`, `COPILOT_GITHUB_TOKEN`, etc. | Settings UI *or* `.env` | UI is preferred for prod (encrypted at rest) |
 
 Next: [First run](../first-run/).

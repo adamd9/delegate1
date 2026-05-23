@@ -91,16 +91,6 @@ const SETUP_GROUPS: SetupGroupDefinition[] = [
     ],
   },
   {
-    id: 'memory',
-    name: 'Memory',
-    description: 'Persistent memory backend configuration',
-    required: false,
-    items: [
-      { key: 'MEM0_API_KEY', label: 'Mem0 API Key' },
-      { key: 'MEM0_API_HOST', label: 'Mem0 API Host' },
-    ],
-  },
-  {
     id: 'voice',
     name: 'Voice',
     description: 'Speech-to-text and voice tuning settings',

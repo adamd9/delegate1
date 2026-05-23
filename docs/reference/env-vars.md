@@ -59,12 +59,9 @@ Almost every key here can be set in `.env` **or** in the in-app config store (vi
 | `EMAIL_DEFAULT_FROM` / `EMAIL_DEFAULT_TO` | Default addresses |
 | `EMAIL_SENDING_RESTRICTED` | Restrict outbound to allow-list |
 
-### Memory (Mem0)
+### Memory
 
-| Key | Purpose |
-|---|---|
-| `MEM0_API_KEY` | Enable Mem0 |
-| `MEM0_API_HOST` | Override host |
+Adaptive memory is configured through the in-app Memory settings and `runtime-data/memory-config.json`. There are no dedicated memory environment variables.
 
 ### Browser agent
 

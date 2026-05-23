@@ -674,15 +674,6 @@ const CONFIG_SECTIONS = [
     ],
   },
   {
-    id: 'memory',
-    title: 'Memory',
-    description: 'Hosted memory backend connection details.',
-    fields: [
-      { key: 'MEM0_API_KEY', label: 'Mem0 API Key', help: 'API key for the Mem0 hosted memory backend.', type: 'password', sensitive: true },
-      { key: 'MEM0_API_HOST', label: 'Mem0 API Host', help: 'Custom Mem0 endpoint override, if used.', type: 'text' },
-    ],
-  },
-  {
     id: 'voice',
     title: 'Voice',
     description: 'Speech transcription and audio tuning settings.',
@@ -1383,24 +1374,15 @@ function buildMemoryForm(data) {
   const frag = document.createDocumentFragment();
   const fieldRow = el('div', {style: 'display:flex;flex-direction:column;gap:14px;max-width:420px'});
 
-  // Backend toggle
+  // Native backend info
   const backendWrap = el('div', {style: 'display:flex;flex-direction:column;gap:4px'});
   backendWrap.appendChild(el('label', {style: 'font-size:13px;color:var(--text-muted)'}, 'Memory backend'));
-  backendWrap.appendChild(el('small', {style: 'font-size:11px;color:var(--text-muted)'}, 'Mem0 uses a hosted cloud service. Adaptive uses local SQLite with embeddings, strength scoring, and consolidation.'));
-  const toggleRow = el('div', {style: 'display:flex;gap:6px;margin-top:4px'});
-  ['mem0', 'adaptive'].forEach(val => {
-    const btn = el('button', {
-      class: 'filter-btn' + (data.backend === val ? ' active' : ''),
-      style: 'padding:5px 16px;font-size:12px',
-    }, val === 'mem0' ? 'Mem0' : 'Adaptive');
-    btn.addEventListener('click', () => {
-      memoryConfig.backend = val;
-      toggleRow.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    });
-    toggleRow.appendChild(btn);
-  });
-  backendWrap.appendChild(toggleRow);
+  backendWrap.appendChild(el('small', {style: 'font-size:11px;color:var(--text-muted)'}, 'Adaptive uses local SQLite with embeddings, strength scoring, and consolidation.'));
+  memoryConfig.backend = 'adaptive';
+  backendWrap.appendChild(el('div', {
+    class: 'filter-btn active',
+    style: 'display:inline-flex;align-items:center;gap:6px;width:max-content;padding:5px 16px;font-size:12px;margin-top:4px;pointer-events:none'
+  }, 'Adaptive'));
   fieldRow.appendChild(backendWrap);
 
   const timeoutWrap = el('div', {style: 'display:flex;flex-direction:column;gap:4px'});

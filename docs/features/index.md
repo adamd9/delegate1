@@ -19,7 +19,7 @@ Delegate 1 is built around a single conversation thread that surfaces through ma
 
 ## Memory & data
 
-- **[Memory](memory/)** — adaptive local memory + optional Mem0 backend
+- **[Memory](memory/)** — adaptive local memory
 - **[Notes](notes/)** — persistent notes the agent can read and write
 
 ## Agents, tools, and integrations

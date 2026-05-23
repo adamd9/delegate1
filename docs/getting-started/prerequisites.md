@@ -22,7 +22,6 @@ You need a small amount of tooling on your local machine and at least one OpenAI
 |---|---|
 | **Twilio account + number** | Inbound phone calls, SMS sending/receiving |
 | **ngrok** (or any public tunnel) | Exposing your local server to Twilio webhooks |
-| **Mem0 API key** | If you want hosted long-term memory instead of the local adaptive memory only |
 | **Deepgram API key** | Used by the dev "walkie" voice route |
 | **GitHub PAT** | Required to run the embedded browser agent (Copilot CLI) |
 

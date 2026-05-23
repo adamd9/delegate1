@@ -71,7 +71,7 @@ const dir = process.env.RUNTIME_DATA_DIR
 
 ### Memory System
 
-The memory module (`src/memory/`) manages persistent user context across conversations. It includes an adaptive backend, Mem0 integration, a conversation bus for real-time memory extraction, and a deduplicator (`src/memory/deduplicator.ts`) that suppresses repeated memory insertions. Memory config is managed at runtime via `runtime-data/` and the settings UI.
+The memory module (`src/memory/`) manages persistent user context across conversations. It includes the native adaptive backend, a conversation bus for real-time memory extraction, and a deduplicator (`src/memory/deduplicator.ts`) that suppresses repeated memory insertions. Memory config is managed at runtime via `runtime-data/` and the settings UI.
 
 ## Key Conventions
 

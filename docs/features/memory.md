@@ -20,10 +20,10 @@ Something you mention once is noted lightly. Something that comes up again and a
 
 When similar memories start to pile up, the system consolidates them — deciding whether to reinforce, merge, or discard — so your memory store stays clean and meaningful rather than filling with noise.
 
-## Two memory backends
+## Native adaptive memory
 
-- **Local memory** is always on. It builds up a picture of you on your own device, stored privately.
-- **Mem0** is an optional hosted memory service that adds semantic search over your memories. You can enable it by adding a Mem0 API key in Settings.
+- **Adaptive memory** is always on. It builds up a picture of you on your own device, stored privately.
+- Retrieval, reinforcement, deduplication, and consolidation all run through the native memory system in `src/memory/`.
 
 ## Viewing and managing your memories
 
@@ -36,8 +36,7 @@ You can see what your delegate remembers about you at any time:
 ## Technical details
 
 - All memory code lives under `src/memory/`.
-- **Adaptive (local) memory** extracts facts in-process and stores them on disk (`runtime-data/`). Always on.
-- **Mem0** integration uses the `mem0ai` hosted backend. Enabled when `MEM0_API_KEY` is set in environment config. `MEM0_API_HOST` can override the default cloud endpoint.
+- **Adaptive memory** extracts facts in-process and stores them on disk (`runtime-data/`).
 - **Conversation bus** — a real-time pub/sub that lets the memory subsystem listen to assistant turns and extract memorable facts asynchronously after each turn.
 - **Deduplicator** (`src/memory/deduplicator.ts`) — suppresses near-duplicate inserts. Unit-tested via `npm run test:unit`.
 - Local memory config: `runtime-data/memory-config.json`, editable via `GET/PUT /memory-config`.

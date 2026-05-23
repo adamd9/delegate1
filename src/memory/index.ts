@@ -145,8 +145,8 @@ class MemoryModule {
    *
    * Stale-while-revalidate:
    * - If cache is warm, return it immediately (0ms) and kick off a background refresh.
-   * - If cache is cold, race Mem0 against the timeout. If Mem0 wins, cache and return.
-   *   If timeout wins, return null for this turn but let the Mem0 fetch continue running
+   * - If cache is cold, race the backend against the timeout. If it wins, cache and return.
+   *   If timeout wins, return null for this turn but let the backend fetch continue running
    *   in the background so it populates the cache for the next turn.
    */
   async retrieve(query: string, timeoutMs?: number, conversationId?: string): Promise<string | null> {
@@ -267,7 +267,7 @@ class MemoryModule {
 
   private _kickBackgroundRefresh(backend: import('./types').MemoryBackend, query: string): void {
     if (this._inflightRetrieve) return; // already refreshing
-    if (!query.trim()) return; // skip refresh with empty query — Mem0 rejects blank queries
+    if (!query.trim()) return; // skip refresh with empty query
     this._inflightRetrieve = backend.retrieve(query, 5)
       .then(result => {
         this._inflightRetrieve = null;
