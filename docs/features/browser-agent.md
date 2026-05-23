@@ -24,7 +24,7 @@ Once enabled, a browser session will be available in the background ready to tak
 
 ## Using the browser agent
 
-Open **[/copilot.html](/copilot.html)** and type your task in plain English, just like chatting normally.
+Click **Copilot Session** in the sidebar menu and type your task in plain English, just like chatting normally.
 
 ![Copilot agent page](../assets/screenshots/copilot.png)
 

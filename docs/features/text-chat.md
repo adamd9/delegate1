@@ -22,7 +22,7 @@ Your delegate isn't just a chatbot — it can take action on your behalf from a 
 
 ## How to use it
 
-1. Open the app at [http://localhost:8081](http://localhost:8081).
+1. Open your Delegate app.
 2. Type your message in the text box at the bottom of the screen.
 3. Press **Enter** (or click **Send**).
 4. Your delegate's reply appears in real time — you'll see the words arrive as it writes them, rather than waiting for the full response.

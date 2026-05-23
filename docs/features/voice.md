@@ -1,18 +1,22 @@
 ---
-title: Voice
+title: Voice (browser)
 parent: Features
 nav_order: 2
+nav_exclude: true
 ---
 
 # Voice (browser)
 
-Talk to your delegate out loud — right in your browser. No phone needed, no extra apps to install. Open the voice page, click the microphone button, and have a real spoken conversation with your delegate in real time.
+{: .note }
+> **Beta feature.** Browser voice works well but is a secondary option — most people will use the [phone integration](../phone/) for voice conversations. This page is here for those who want to try it.
+
+Talk to your delegate out loud — right in your browser. No phone needed, no extra apps to install. Click the microphone button and have a real spoken conversation in real time.
 
 ![Voice page](../assets/screenshots/voice.png)
 
 ## How to use it
 
-1. Go to `/voice.html` in your browser.
+1. Click **Twilio Voice** in the sidebar menu.
 2. Click the **microphone button** to start a session.
 3. Start talking. Your delegate will listen and respond with speech.
 4. Click the button again to end the session.

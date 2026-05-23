@@ -24,7 +24,7 @@ Any instruction you'd give a human assistant to shape how they work with you bel
 
 ## How to add or edit an adaptation
 
-1. Go to **`/adaptations.html`** in your browser.
+1. Click **Adaptations** in the sidebar menu.
 2. Add a new entry or edit an existing one.
 3. Save — that's it.
 

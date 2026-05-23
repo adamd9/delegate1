@@ -7,29 +7,31 @@ permalink: /features/
 
 # Features
 
-Delegate 1 is built around a single conversation thread that surfaces through many channels and capabilities. Each page below is a self-contained guide to one feature: what it does, how to enable it, where its code lives, and how to verify it's working.
+Your delegate has a lot of capabilities. This section has a page for each one — what it is, how to use it, and how to set it up.
 
-## Channels
+## Channels — how you talk to your delegate
 
-- **[Text chat](text-chat/)** — the default `/chat` WebSocket and browser console
-- **[Voice](voice/)** — browser voice (PCM16 24 kHz) with barge-in
-- **[Phone (Twilio)](phone/)** — inbound and outbound phone calls
-- **[SMS](sms/)** — Twilio SMS in and out
-- **[Email](email/)** — IMAP receiver + nodemailer sender
+- **[Text chat](text-chat/)** — type a message and get a response; the default way to interact
+- **[Phone](phone/)** — call your delegate on a real phone number, or have it call you
+- **[SMS](sms/)** — text your delegate and it texts back
+- **[Email](email/)** — email your delegate like a colleague; great for longer or async tasks
 
-## Memory & data
+## Memory & knowledge
 
-- **[Memory](memory/)** — adaptive local memory
-- **[Notes](notes/)** — persistent notes the agent can read and write
+- **[Memory](memory/)** — your delegate remembers you across every conversation
+- **[Notes](notes/)** — your delegate's notebook; it can take notes, read them back, and share them with you
 
-## Agents, tools, and integrations
+## Tools & integrations
 
-- **[Agents & policies](agents-and-policies/)** — base + supervisor + per-agent allowlists
-- **[Tools](tools/)** — registry, providers, handlers
-- **[MCP servers](mcp-servers/)** — Model Context Protocol integration
-- **[Browser agent](browser-agent/)** — Copilot CLI + Playwright sandbox
+- **[Tools](tools/)** — the capabilities your delegate can use (web search, send SMS, manage notes, and more)
+- **[MCP servers](mcp-servers/)** — connect external services like calendars and task managers
+- **[Browser agent](browser-agent/)** — your delegate can browse the web and complete tasks that require clicking around
 
-## Observability & customization
+## Transparency & customisation
 
-- **[Thoughtflow](thoughtflow/)** — D2 diagrams of agent runs
-- **[Adaptations](adaptations/)** — live "edits" to agent behavior without redeploy
+- **[Thoughtflow](thoughtflow/)** — a visual map of how your delegate handled any given conversation
+- **[Adaptations](adaptations/)** — tune your delegate's personality and behaviour without touching code
+
+## Labs / beta
+
+- **[Voice (browser)](voice/)** — speak to your delegate directly in a browser tab. Works well, but the [phone integration](phone/) is the recommended voice channel for most people.

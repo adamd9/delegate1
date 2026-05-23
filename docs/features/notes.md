@@ -20,7 +20,7 @@ Your delegate can write notes, read them back, and share them with you. Some exa
 
 ## Browsing your notes
 
-Open **`/notes-list.html`** in your browser to see all notes. From there you can:
+Click **Notes** in the sidebar menu to see all your notes. From there you can:
 
 - Search by keyword
 - Open any note to read the full content
