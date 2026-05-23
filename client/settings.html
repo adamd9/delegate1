@@ -166,12 +166,8 @@
 
     /* ── Configuration ── */
     .section-description { font-size: 12px; color: var(--text-mid); line-height: 1.5; margin-bottom: 14px; }
-    .config-layout {
-      display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(280px, 1fr); gap: 20px; align-items: start;
-    }
+    .config-layout { display: block; }
     .config-main { min-width: 0; }
-    .config-sidebar { min-width: 0; }
-    .config-sidebar-inner { position: sticky; top: 20px; }
     .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
     .config-field {
       display: flex; flex-direction: column; gap: 8px; min-width: 0;
@@ -210,11 +206,6 @@
     .toast.err { border-color: rgba(248,113,113,0.35); }
 
     /* ── Mobile ── */
-    @media (max-width: 900px) {
-      .config-layout { grid-template-columns: 1fr; }
-      .config-sidebar { order: -1; }
-      .config-sidebar-inner { position: static; }
-    }
     @media (max-width: 600px) {
       .sidebar { display: none; }
       .topbar .mobile-tab-select { display: block; }
@@ -227,7 +218,6 @@
     @media (max-width: 600px) { .mobile-tab-select { display: block; } }
   </style>
 <script src="/auth-guard.js"></script>
-<script src="/components/setup-wizard.js"></script>
 </head>
 <body>
   <!-- Top bar -->
@@ -622,82 +612,6 @@ const CONFIG_SECTIONS = [
     ],
   },
   {
-    id: 'twilio-calls',
-    title: 'Twilio - Calls',
-    description: 'Voice call credentials and TwiML application settings.',
-    fields: [
-      { key: 'TWILIO_ACCOUNT_SID', label: 'Account SID', help: 'Primary Twilio account SID for voice features.', type: 'text' },
-      { key: 'TWILIO_AUTH_TOKEN', label: 'Auth Token', help: 'Twilio auth token used for call-related API access.', type: 'password', sensitive: true },
-      { key: 'TWILIO_API_KEY_SID', label: 'API Key SID', help: 'API key SID for Twilio voice integrations.', type: 'text' },
-      { key: 'TWILIO_API_KEY_SECRET', label: 'API Key Secret', help: 'Secret paired with the Twilio API key SID.', type: 'password', sensitive: true },
-      { key: 'TWILIO_TWIML_APP_SID', label: 'TwiML App SID', help: 'TwiML application used for incoming/outgoing call setup.', type: 'text' },
-    ],
-  },
-  {
-    id: 'twilio-sms',
-    title: 'Twilio - SMS',
-    description: 'SMS delivery and default recipient settings.',
-    fields: [
-      { key: 'TWILIO_SMS_ACCOUNT_SID', label: 'SMS Account SID', help: 'Twilio account SID used for SMS sending.', type: 'text' },
-      { key: 'TWILIO_SMS_AUTH_TOKEN', label: 'SMS Auth Token', help: 'Auth token used for SMS-specific requests.', type: 'password', sensitive: true },
-      { key: 'TWILIO_PHONE_NUMBER', label: 'Twilio Phone Number', help: 'Your Twilio number for calls and SMS (e.g. +61400000000).', type: 'text' },
-      { key: 'TWILIO_MESSAGING_SERVICE_SID', label: 'Messaging Service SID', help: 'Messaging service that owns outbound phone numbers.', type: 'text' },
-      { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Default SMS Recipient', help: 'Fallback destination phone number for outbound SMS.', type: 'text' },
-    ],
-  },
-  {
-    id: 'email-sending',
-    title: 'Email - Sending',
-    description: 'SMTP settings for outgoing mail.',
-    fields: [
-      { key: 'EMAIL_SMTP_HOST', label: 'SMTP Host', help: 'Hostname of the outbound SMTP server.', type: 'text' },
-      { key: 'EMAIL_SMTP_PORT', label: 'SMTP Port', help: 'Port used when connecting to the SMTP server.', type: 'number' },
-      { key: 'EMAIL_SMTP_USER', label: 'SMTP Username', help: 'Username for SMTP authentication.', type: 'text' },
-      { key: 'EMAIL_SMTP_PASS', label: 'SMTP Password', help: 'Password or app-specific credential for SMTP auth.', type: 'password', sensitive: true },
-      { key: 'EMAIL_DEFAULT_FROM', label: 'Default From Address', help: 'Sender address used for outbound email.', type: 'text' },
-      { key: 'EMAIL_DEFAULT_TO', label: 'Default To Address', help: 'Fallback recipient when no destination is supplied.', type: 'text' },
-      { key: 'EMAIL_SENDING_RESTRICTED', label: 'Restrict Outbound Sending', help: 'Enable to limit who the system can send email to.', type: 'boolean' },
-    ],
-  },
-  {
-    id: 'email-receiving',
-    title: 'Email - Receiving',
-    description: 'IMAP settings for incoming mail processing.',
-    fields: [
-      { key: 'EMAIL_IMAP_HOST', label: 'IMAP Host', help: 'Hostname of the inbound IMAP server.', type: 'text' },
-      { key: 'EMAIL_IMAP_PORT', label: 'IMAP Port', help: 'Port used when connecting to IMAP.', type: 'number' },
-      { key: 'EMAIL_IMAP_USER', label: 'IMAP Username', help: 'Username for inbound mailbox access.', type: 'text' },
-      { key: 'EMAIL_IMAP_PASSWORD', label: 'IMAP Password', help: 'Password or app-specific credential for IMAP auth.', type: 'password', sensitive: true },
-      { key: 'EMAIL_IMAP_TLS', label: 'Use TLS', help: 'Whether IMAP connections should require TLS.', type: 'boolean' },
-      { key: 'EMAIL_PROCESSED_MAILBOX', label: 'Processed Mailbox', help: 'Mailbox/folder where processed messages are moved.', type: 'text' },
-      { key: 'EMAIL_RECEIVING_FILTER_ENABLED', label: 'Enable Receive Filter', help: 'Filter inbound mail before handing it to the assistant.', type: 'boolean' },
-    ],
-  },
-  {
-    id: 'voice',
-    title: 'Voice',
-    description: 'Speech transcription and audio tuning settings.',
-    fields: [
-      { key: 'DEEPGRAM_API_KEY', label: 'Deepgram API Key', help: 'Credential for Deepgram transcription services.', type: 'password', sensitive: true },
-      { key: 'DELEGATE_TTS_MODEL', label: 'TTS Model', help: 'Text-to-speech model identifier for generated audio.', type: 'text' },
-      { key: 'DELEGATE_CHAT_VOICE_SPEED', label: 'Chat Voice Speed', help: 'Playback speed multiplier for spoken responses.', type: 'number' },
-      { key: 'DELEGATE_MAX_AUDIO_BYTES', label: 'Max Audio Bytes', help: 'Upper bound for generated audio payload size.', type: 'number' },
-    ],
-  },
-  {
-    id: 'browser-copilot',
-    title: 'Browser / Copilot',
-    description: 'Browser agent, VNC, and GitHub integration settings.',
-    fields: [
-      { key: 'BROWSER_ENABLED', label: 'Enable Browser Agent', help: 'Turns browser automation and related tooling on or off.', type: 'boolean' },
-      { key: 'COPILOT_GITHUB_TOKEN', label: 'Copilot GitHub Token', help: 'Token used by the Copilot/browser agent for GitHub access.', type: 'password', sensitive: true },
-      { key: 'COPILOT_REMOTE_REPO', label: 'Remote Repository', help: 'Default GitHub repository used by remote Copilot tasks.', type: 'text' },
-      { key: 'VNC_PASSWORD', label: 'VNC Password', help: 'Password required to connect to the remote browser display.', type: 'password', sensitive: true },
-      { key: 'COPILOT_TIMEOUT_MS', label: 'Copilot Timeout (ms)', help: 'Maximum time allowed for Copilot automation tasks.', type: 'number' },
-      { key: 'GITHUB_PAT', label: 'GitHub Personal Access Token', help: 'PAT used by GitHub-related tools and API calls.', type: 'password', sensitive: true },
-    ],
-  },
-  {
     id: 'advanced',
     title: 'Advanced',
     description: 'Optional tuning — these have sensible defaults and rarely need changing.',
@@ -1029,21 +943,8 @@ function renderConfig(prefetchedItems = null) {
 
   const layout = el('div', { class: 'config-layout' });
   const mainColumn = el('div', { class: 'config-main' });
-  const sidebarColumn = el('div', { class: 'config-sidebar' });
-  const sidebarInner = el('div', { class: 'config-sidebar-inner' });
-  sidebarColumn.appendChild(sidebarInner);
   layout.appendChild(mainColumn);
-  layout.appendChild(sidebarColumn);
   content.appendChild(layout);
-
-  const wizardCard = card('Setup Status', body => {
-    const wizardEl = el('div', { id: 'settings-setup-wizard' });
-    body.appendChild(wizardEl);
-    if (typeof SetupWizard !== 'undefined') {
-      SetupWizard.init(wizardEl, 'full');
-    }
-  });
-  sidebarInner.appendChild(wizardCard);
 
   const configMap = buildConfigMap(prefetchedItems);
   CONFIG_SECTIONS.forEach(section => mainColumn.appendChild(buildConfigSectionCard(section, configMap)));

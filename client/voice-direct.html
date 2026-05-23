@@ -6,18 +6,33 @@
   <title>Direct Voice · HK</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --surface: rgba(255,255,255,0.1);
+      --surface2: rgba(255,255,255,0.12);
+      --surface3: rgba(0,0,0,0.18);
+      --border: rgba(255,255,255,0.16);
+      --accent: #5eead4;
+      --green: #86efac;
+      --green-dim: rgba(134,239,172,0.12);
+      --amber: #fef08a;
+      --red: #fca5a5;
+      --text: #ffffff;
+      --text-mid: rgba(255,255,255,0.72);
+      --text-dim: rgba(255,255,255,0.5);
+      --font-ui: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    }
     body {
       min-height: 100vh;
       background: linear-gradient(135deg, #10b981, #06b6d4);
-      display: flex; align-items: center; justify-content: center;
-      font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
-      font-size: 13px; color: #fff; padding: 16px;
+      display: flex; align-items: flex-start; justify-content: center;
+      font-family: var(--font-ui);
+      font-size: 13px; color: var(--text); padding: 16px; overflow-y: auto;
     }
     .card {
       background: rgba(255,255,255,0.1);
       backdrop-filter: blur(16px);
       border-radius: 24px; padding: 32px;
-      max-width: 480px; width: 100%;
+      max-width: 560px; width: 100%; margin: 16px 0;
       box-shadow: 0 25px 50px rgba(0,0,0,0.3);
     }
     h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
@@ -60,10 +75,49 @@
     .log-entry.success { color: #86efac; }
     .log-entry.error   { color: #fca5a5; }
     .log-empty { font-size: 12px; color: rgba(255,255,255,0.4); font-style: italic; }
+    .voice-settings {
+      margin-top: 16px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(0,0,0,0.12);
+      overflow: hidden;
+    }
+    .voice-settings-toggle {
+      width: 100%; display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 14px 16px; border: 0; background: transparent; color: var(--text);
+      font: inherit; font-weight: 600; cursor: pointer; text-align: left;
+    }
+    .voice-settings-toggle:hover { background: rgba(255,255,255,0.06); }
+    .voice-settings-toggle .chevron { color: var(--text-mid); transition: transform 0.15s ease; }
+    .voice-settings-toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+    .voice-settings-body { display: none; padding: 0 16px 16px; border-top: 1px solid var(--border); }
+    .voice-settings-body.open { display: block; }
+    .voice-settings-note { font-size: 11px; color: var(--text-dim); line-height: 1.5; margin-bottom: 14px; }
+    .config-panel { margin-top: 14px; }
+    .config-field {
+      display: flex; flex-direction: column; gap: 8px; min-width: 0;
+      padding: 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface2);
+    }
+    .config-field + .config-field { margin-top: 12px; }
+    .config-field-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .config-help { font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+    .config-input, .config-select {
+      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+      background: var(--surface3); color: var(--text); font-size: 13px; outline: none;
+    }
+    .config-input:focus, .config-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(94,234,212,0.14); }
+    .btn { padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: background 0.15s; }
+    .btn-primary { background: rgba(94,234,212,0.18); color: var(--accent); }
+    .btn-primary:hover { background: rgba(94,234,212,0.28); }
+    .btn-primary:disabled { background: rgba(255,255,255,0.08); color: var(--text-dim); cursor: not-allowed; }
+    .btn-ghost { background: rgba(255,255,255,0.08); color: var(--text-mid); }
+    .btn-ghost:hover { background: rgba(255,255,255,0.14); color: var(--text); }
+    .btn-sm { padding: 7px 10px; font-size: 12px; }
     .back-link { display: inline-block; margin-top: 16px; font-size: 12px; color: rgba(255,255,255,0.6); text-decoration: none; }
     .back-link:hover { color: #fff; }
   </style>
 <script src="/auth-guard.js"></script>
+<script src="/components/config-panel.js"></script>
 </head>
 <body>
   <div class="card">
@@ -81,6 +135,17 @@
       <div>Upstream: PCM16 mono @ 24kHz (resampled from browser)</div>
       <div>Downstream: PCM16 mono @ 24kHz</div>
     </div>
+
+    <section class="voice-settings">
+      <button class="voice-settings-toggle" id="voice-settings-toggle" type="button" aria-expanded="false" aria-controls="voice-settings-body">
+        <span>⚙ Voice Settings</span>
+        <span class="chevron">▾</span>
+      </button>
+      <div class="voice-settings-body" id="voice-settings-body">
+        <div class="voice-settings-note">Advanced voice options for direct browser audio.</div>
+        <div id="voice-settings-panel"></div>
+      </div>
+    </section>
 
     <div class="log-box" id="log-box">
       <h3>Logs</h3>
@@ -138,6 +203,32 @@
   let holdSources = new Set();
   let isConnected = false;
   let isConnecting = false;
+
+  const voiceSettingsConfig = {
+    title: 'Voice Settings',
+    description: 'Text-to-speech and transcription configuration.',
+    fields: [
+      { key: 'DELEGATE_TTS_MODEL', label: 'TTS Model', type: 'select', default: 'gpt-4o-mini-tts', options: [
+        ['gpt-4o-mini-tts', 'GPT-4o Mini TTS (default)'],
+        ['tts-1', 'TTS-1'],
+        ['tts-1-hd', 'TTS-1 HD'],
+      ]},
+      { key: 'DELEGATE_CHAT_VOICE_SPEED', label: 'Voice Speed', type: 'range', min: 0.5, max: 2.0, step: 0.1, default: '1.3', help: 'Playback speed multiplier (0.5 = slow, 2.0 = fast)' },
+      { key: 'DEEPGRAM_API_KEY', label: 'Deepgram API Key', type: 'password', sensitive: true, help: 'Required for speech-to-text transcription.' },
+      { key: 'DELEGATE_MAX_AUDIO_BYTES', label: 'Max Audio Bytes', type: 'number', default: '4194304', help: 'Upper limit for generated audio payload size.' },
+    ]
+  };
+
+  function initializeVoiceSettings() {
+    const toggle = document.getElementById('voice-settings-toggle');
+    const body = document.getElementById('voice-settings-body');
+    toggle.addEventListener('click', () => {
+      const expanded = toggle.getAttribute('aria-expanded') === 'true';
+      toggle.setAttribute('aria-expanded', String(!expanded));
+      body.classList.toggle('open', !expanded);
+    });
+    window.ConfigPanel?.render('#voice-settings-panel', voiceSettingsConfig);
+  }
 
   // ── Logging ───────────────────────────────────────────────────────────────────
   function addLog(msg, type = 'info') {
@@ -371,6 +462,7 @@
     else connect();
   });
 
+  initializeVoiceSettings();
   addLog('Direct voice client initialized', 'info');
 
   // Cleanup on page unload
