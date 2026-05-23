@@ -1,0 +1,36 @@
+name: Deploy to Azure (hk-api-drop37)
+
+on:
+  workflow_run:
+    workflows: ["Build and publish to GHCR"]
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_D339CDAD1BDB4BCC994BF83E40A65D65 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_1FCCF60872D04077A4D9E5690F31B4FA }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_2DFEC4708A5843D7B6C62022D4531C96 }}
+
+      - name: Point Azure Web App at GHCR image
+        run: |
+          az webapp config container set \
+            --name hk-api-drop37 \
+            --resource-group AppServiceDev \
+            --container-image-name ghcr.io/adamd9/delegate1:latest
+
+      - name: Restart Azure Web App
+        run: az webapp restart --name hk-api-drop37 --resource-group AppServiceDev

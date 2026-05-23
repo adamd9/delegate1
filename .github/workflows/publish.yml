@@ -1,0 +1,39 @@
+name: Build and publish to GHCR
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write build info
+        run: |
+          BUILD_INFO="{\"commitId\":\"$(git rev-parse --short HEAD)\",\"commitMessage\":$(git log -1 --pretty=%s | jq -Rs .),\"branch\":\"${GITHUB_REF_NAME}\",\"buildTime\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+          echo "$BUILD_INFO" > client/build-info.json
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        run: |
+          docker build --platform linux/amd64 \
+            -f Dockerfile.browser \
+            -t ghcr.io/adamd9/delegate1:latest \
+            -t ghcr.io/adamd9/delegate1:${{ github.sha }} \
+            .
+          docker push ghcr.io/adamd9/delegate1:latest
+          docker push ghcr.io/adamd9/delegate1:${{ github.sha }}
