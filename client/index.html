@@ -111,6 +111,10 @@
     .ch-badge.live  { background: var(--green-dim);  color: var(--green); border: 1px solid rgba(52,211,153,0.25); }
     .ch-badge.ready { background: var(--blue-dim);   color: var(--blue);  border: 1px solid rgba(96,165,250,0.25); }
     .ch-badge.off   { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+    .ch-pills { display: flex; gap: 4px; }
+    .ch-pill { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .ch-pill.on  { background: var(--green-dim); color: var(--green); border: 1px solid rgba(52,211,153,0.25); }
+    .ch-pill.off { background: transparent; color: var(--text-dim); border: 1px solid var(--border); opacity: 0.6; }
 
     .lp-nav { padding: 0 18px 12px; display: flex; flex-direction: column; gap: 2px; }
 
@@ -527,26 +531,19 @@
     </div>
 
     <div class="lp-label">channels</div>
-    <div class="ch-list">
-      <div class="ch-row">
+    <div class="ch-list" id="channels-list">
+      <div class="ch-row" id="ch-twilio">
         <div class="ch-left">
           <span class="ch-icon">📞</span>
           <div>
-            <div class="ch-name">Phone</div>
-            <div class="ch-sub">Twilio inbound</div>
+            <div class="ch-name" id="ch-twilio-number">Twilio</div>
+            <div class="ch-sub" id="ch-twilio-sub">loading…</div>
           </div>
         </div>
-        <span class="ch-badge ready">ready</span>
-      </div>
-      <div class="ch-row">
-        <div class="ch-left">
-          <span class="ch-icon">💬</span>
-          <div>
-            <div class="ch-name">SMS</div>
-            <div class="ch-sub">Twilio</div>
-          </div>
+        <div class="ch-pills">
+          <span class="ch-pill off" id="ch-pill-phone">PHONE</span>
+          <span class="ch-pill off" id="ch-pill-sms">SMS</span>
         </div>
-        <span class="ch-badge ready">ready</span>
       </div>
       <div class="ch-row">
         <div class="ch-left">
@@ -1405,6 +1402,46 @@ async function runChecklist() {
     SetupWizard.init('#checklist-section', 'compact');
   }
 }
+
+// ─── Channel status ──────────────────────────────────────────────────────────
+async function loadChannelStatus() {
+  try {
+    const [setupRes, configRes] = await Promise.all([
+      fetch('/api/setup/status'),
+      fetch('/api/config'),
+    ]);
+    if (!setupRes.ok || !configRes.ok) return;
+    const setup = await setupRes.json();
+    const configList = await configRes.json();
+
+    const configMap = {};
+    (configList.items || configList || []).forEach(c => { configMap[c.key] = c.value; });
+
+    const callGroup = setup.groups.find(g => g.id === 'twilio-calls');
+    const smsGroup = setup.groups.find(g => g.id === 'twilio-sms');
+    const phoneReady = callGroup && callGroup.status === 'complete';
+    const smsReady = smsGroup && smsGroup.status === 'complete';
+
+    const number = configMap['TWILIO_SMS_FROM'] || configMap['TWILIO_SMS_DEFAULT_TO'] || '';
+    const nameEl = document.getElementById('ch-twilio-number');
+    const subEl = document.getElementById('ch-twilio-sub');
+    if (number && number !== '••••••') {
+      nameEl.textContent = number;
+      subEl.textContent = 'Twilio';
+    } else {
+      nameEl.textContent = 'Twilio';
+      subEl.textContent = 'not configured';
+    }
+
+    const phonePill = document.getElementById('ch-pill-phone');
+    const smsPill = document.getElementById('ch-pill-sms');
+    phonePill.className = 'ch-pill ' + (phoneReady ? 'on' : 'off');
+    smsPill.className = 'ch-pill ' + (smsReady ? 'on' : 'off');
+  } catch (e) {
+    console.warn('Failed to load channel status', e);
+  }
+}
+loadChannelStatus();
 
 // ─── Event bindings ───────────────────────────────────────────────────────────
 document.getElementById('hist-toggle').addEventListener('click', toggleHistory);
