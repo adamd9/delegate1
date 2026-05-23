@@ -11,7 +11,7 @@ Guides for running, deploying, and maintaining Delegate 1.
 
 ## [Deployment](deployment/)
 
-How to ship Delegate 1 to a server. The project uses GitHub Actions to build and package the app, then dispatches a deploy to a Docker host. Covers the full CI/CD pipeline, the Docker setup (`Dockerfile.browser`, `docker-compose.browser.yml`), environment variable injection, and the health-check that confirms a successful deploy. If you're moving from local dev to a live server, start here.
+How to deploy Delegate 1 to a cloud server using Docker. Covers the standard `docker compose` setup, environment variable injection, reverse proxy configuration, and the persistent data volume. Also documents the GitHub Actions CI/CD pipeline used for automated deploys. **Start here if you're putting your delegate online.**
 
 ## [Runtime data](runtime-data/)
 

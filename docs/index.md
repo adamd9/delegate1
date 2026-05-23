@@ -19,10 +19,12 @@ An AI executive assistant you interact with the same way you'd work with a human
 
 ## Is this for me?
 
-Delegate 1 is a **self-hosted personal AI assistant** — designed for an individual who wants their own AI that they can reach the way they'd reach a human assistant. It's a solo tool: one person, one conversation thread, one set of memories. If you're a developer who wants to run their own AI on their own infrastructure, and you want it woven into the channels you already use (your phone, your email), this is built for you.
+Delegate 1 is a **self-hosted personal AI assistant** you deploy to a cloud server — so it's always on, always reachable, and entirely yours. You interact with it through your existing phone number, email, or a browser chat. No app to install, no subscription to manage.
+
+It's built for people who are comfortable setting up a server and working with a few API keys, but don't want to write code to get their own AI assistant running. If you can spin up a VPS and run `docker compose up`, you can have a personal delegate online in under an hour.
 
 {: .warning }
-> **Single-user by design.** Delegate 1 holds one conversation at a time. There is no per-user isolation or multi-tenant support. It's intentionally built as a personal assistant for one person, not a shared service.
+> **Single-user by design.** Delegate 1 is a personal assistant for one person. There is no multi-user or team support — it holds one conversation thread and one set of memories.
 
 ---
 

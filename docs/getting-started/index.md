@@ -7,66 +7,78 @@ permalink: /getting-started/
 
 # Getting Started
 
+Delegate 1 is designed to run **in the cloud, 24/7** — so your delegate is always reachable whether you call it, text it, or email it. You deploy it once on a small cloud server, point your phone number and email address at it, and it's yours.
+
 {: .note }
-> Delegate 1 is a **personal AI assistant** you run yourself. This guide gets you from zero to a working text-chat session in about 15 minutes. Phone, SMS, and email channels take a few extra steps covered in the [Features](../features/) section.
+> You don't need to be a developer, but you do need to be comfortable with a terminal, a cloud server (any VPS will do), and a few API keys. The setup takes around 30–45 minutes end to end.
+
+---
 
 ## What you'll need
 
 | Requirement | Notes |
 |---|---|
-| **Node.js 18+** | `node --version` to check |
-| **OpenAI API key** | Used for the AI model, voice, and memory. [Get one here.](https://platform.openai.com/api-keys) |
-| **Git** | To clone the repo |
+| **A cloud server** | Any VPS with Docker installed — DigitalOcean, Hetzner, AWS Lightsail, etc. 1 vCPU / 1 GB RAM is enough to start. |
+| **A domain name** (or subdomain) | So your delegate has a real URL — e.g. `delegate.yourdomain.com` |
+| **OpenAI API key** | Powers the AI model, voice, and memory. [Get one here.](https://platform.openai.com/api-keys) |
+| **Git** | To clone the repo to your server |
 
-That's the minimum for text chat. Phone and email need Twilio and a mail account respectively — you can add those later.
+Phone and email are optional extras you can add after the base setup is working.
 
 ---
 
-## Quick start (15 minutes)
+## Deploy with Docker (the standard path)
 
-### 1. Clone and install
+### 1. Clone the repo on your server
+
+SSH into your server, then:
 
 ```bash
 git clone https://github.com/adamd9/delegate1.git
 cd delegate1
-npm install
 ```
 
-### 2. Set your OpenAI key
-
-```bash
-echo "OPENAI_API_KEY=sk-..." > .env
-```
-
-Or copy the example file first:
+### 2. Create your `.env`
 
 ```bash
 cp .env.example .env
-# then edit .env and add your key
+nano .env   # or vim, your choice
 ```
 
-### 3. Start the server
+At minimum, add:
 
 ```bash
-npm run dev
+OPENAI_API_KEY=sk-...
+FRONTEND_URL=https://delegate.yourdomain.com
 ```
 
-You should see:
+Set `ADMIN_PASSWORD` here or you'll be prompted to create one on first login.
+
+### 3. Start the container
+
+```bash
+docker compose -f docker-compose.browser.yml up -d
+```
+
+This builds the image (first run takes a few minutes), starts the server on port 8081, and mounts a persistent volume at `./local-volumes/runtime-data` for all your data.
+
+### 4. Expose it to the internet
+
+Put a reverse proxy (nginx, Caddy, Traefik) in front of port 8081, terminate SSL, and point your domain at the server. Caddy with automatic HTTPS is the easiest option:
 
 ```
-Server running on http://localhost:8081
-[startup] Tools registry initialized
+delegate.yourdomain.com {
+    reverse_proxy localhost:8081
+}
 ```
 
-### 4. Open the app and sign in
+### 5. Sign in and complete setup
 
-Open [http://localhost:8081](http://localhost:8081) in your browser.
+Open `https://delegate.yourdomain.com` in your browser. You'll be walked through a short setup screen to confirm your admin password and paste in any API keys you want to add (Twilio for phone/SMS, email credentials, etc.).
 
-On the very first launch you'll be guided through a short setup screen to set an admin password. After that, log in with that password.
+![Sign-in / setup page](../assets/screenshots/login.png)
 
-### 5. Start chatting
-
-The home screen is a chat console. Type a message and press Enter — your delegate will respond. That's it.
+Once you're in, your delegate is live.
 
 ![Chat console](../assets/screenshots/home.png)
 
@@ -74,19 +86,23 @@ The home screen is a chat console. Type a message and press Enter — your deleg
 
 ## What's next
 
-Once text chat is working, explore the features that matter to you:
+With your delegate running in the cloud, the features that make it most useful are the real-world channels:
 
 - **[Phone & SMS](../features/phone/)** — give your delegate a real phone number via Twilio
 - **[Email](../features/email/)** — connect an email address so you can email it like a colleague
-- **[Memory](../features/memory/)** — your delegate remembers you across conversations automatically
-- **[MCP servers](../features/mcp-servers/)** — connect tools like calendars, task managers, and more
-- **[ThoughtFlow](../features/thoughtflow/)** — see a visual map of how your delegate handled any conversation
+- **[Memory](../features/memory/)** — your delegate remembers you across every conversation automatically
+- **[MCP servers](../features/mcp-servers/)** — connect tools like calendars and task managers
 
 ---
 
-## Detailed guides
+## Running locally (developer mode)
 
-- [Prerequisites](prerequisites/) — full requirements list
-- [Installation](installation/) — repo layout and build steps
-- [Configuration](configuration/) — `.env`, settings UI, and the install flow
-- [First run & UI tour](first-run/) — a walkthrough of every page in the app
+If you're a developer and want to run Delegate 1 on your own machine for testing or customisation, see:
+
+- [Prerequisites](prerequisites/) — what you need installed
+- [Installation](installation/) — clone and build steps
+- [Configuration](configuration/) — `.env` and settings UI
+- [First run & UI tour](first-run/) — walkthrough of the app
+
+{: .warning }
+> Running locally means your delegate is only reachable when your computer is on. Phone and email channels require a public URL (use ngrok or similar for local testing).
