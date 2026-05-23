@@ -1,0 +1,14 @@
+services:
+  delegate1:
+    image: ghcr.io/adamd9/delegate1:latest
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./data/runtime-data:/app/runtime-data
+      - ./data/gh-copilot:/root/.local/share/gh
+    env_file:
+      - .env
+    environment:
+      - BROWSER_ENABLED=true
+      - DOCKER=true
+    restart: unless-stopped

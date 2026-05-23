@@ -10,8 +10,9 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write # Required for OIDC Azure login
+      id-token: write    # Required for OIDC Azure login
       contents: read
+      packages: write    # Required to push to GHCR
 
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +21,13 @@ jobs:
         run: |
           BUILD_INFO="{\"commitId\":\"$(git rev-parse --short HEAD)\",\"commitMessage\":$(git log -1 --pretty=%s | jq -Rs .),\"branch\":\"${GITHUB_REF_NAME}\",\"buildTime\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
           echo "$BUILD_INFO" > client/build-info.json
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -35,13 +43,22 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Build and push Docker image
+      - name: Build Docker image
         run: |
           docker build --platform linux/amd64 \
             -f Dockerfile.browser \
+            -t ghcr.io/adamd9/delegate1:latest \
+            -t ghcr.io/adamd9/delegate1:${{ github.sha }} \
             -t appservicesdevacr.azurecr.io/hk-api:latest \
             .
-          docker push appservicesdevacr.azurecr.io/hk-api:latest
+
+      - name: Push to GHCR
+        run: |
+          docker push ghcr.io/adamd9/delegate1:latest
+          docker push ghcr.io/adamd9/delegate1:${{ github.sha }}
+
+      - name: Push to ACR
+        run: docker push appservicesdevacr.azurecr.io/hk-api:latest
 
       - name: Restart Azure Web App
         run: az webapp restart --name hk-api-drop37 --resource-group AppServiceDev

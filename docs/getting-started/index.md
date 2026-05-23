@@ -10,7 +10,7 @@ permalink: /getting-started/
 Delegate 1 is designed to run **in the cloud, 24/7** — so your delegate is always reachable whether you call it, text it, or email it. You deploy it once on a small cloud server, point your phone number and email address at it, and it's yours.
 
 {: .note }
-> You don't need to be a developer, but you do need to be comfortable with a terminal, a cloud server (any VPS will do), and a few API keys. The setup takes around 30–45 minutes end to end.
+> You don't need to be a developer, but you do need to be comfortable with a terminal and a cloud server. The setup takes around 30–45 minutes end to end.
 
 ---
 
@@ -18,53 +18,67 @@ Delegate 1 is designed to run **in the cloud, 24/7** — so your delegate is alw
 
 | Requirement | Notes |
 |---|---|
-| **A cloud server** | Any VPS with Docker installed — DigitalOcean, Hetzner, AWS Lightsail, etc. 1 vCPU / 1 GB RAM is enough to start. |
+| **A cloud server** | Any Linux VPS with Docker installed — DigitalOcean, Hetzner, AWS Lightsail, etc. 1 vCPU / 1 GB RAM is enough to start. |
 | **A domain name** (or subdomain) | So your delegate has a real URL — e.g. `delegate.yourdomain.com` |
-| **OpenAI API key** | Powers the AI model, voice, and memory. [Get one here.](https://platform.openai.com/api-keys) |
-| **Git** | To clone the repo to your server |
+| **OpenAI API key** | Powers the AI, voice, and memory. [Get one here.](https://platform.openai.com/api-keys) |
 
-Phone and email are optional extras you can add after the base setup is working.
+Phone and email are optional extras — you can add them after the base setup is working.
 
 ---
 
-## Deploy with Docker (the standard path)
+## Deploy (30 minutes)
 
-### 1. Clone the repo on your server
+### 1. Set up your server
 
-SSH into your server, then:
-
-```bash
-git clone https://github.com/adamd9/delegate1.git
-cd delegate1
-```
-
-### 2. Create your `.env`
+Spin up a Linux VPS from any cloud provider. Once you have SSH access, install Docker:
 
 ```bash
-cp .env.example .env
-nano .env   # or vim, your choice
+curl -fsSL https://get.docker.com | sh
 ```
 
-At minimum, add:
+### 2. Create a project folder and `.env`
+
+```bash
+mkdir delegate1 && cd delegate1
+curl -o .env https://raw.githubusercontent.com/adamd9/delegate1/main/.env.example
+nano .env
+```
+
+Add your OpenAI key and your public URL:
 
 ```bash
 OPENAI_API_KEY=sk-...
 FRONTEND_URL=https://delegate.yourdomain.com
+ADMIN_PASSWORD=choose-a-strong-password
 ```
 
-Set `ADMIN_PASSWORD` here or you'll be prompted to create one on first login.
-
-### 3. Start the container
+### 3. Download the compose file and start
 
 ```bash
-docker compose -f docker-compose.browser.yml up -d
+curl -o docker-compose.yml https://raw.githubusercontent.com/adamd9/delegate1/main/docker-compose.yml
+docker compose up -d
 ```
 
-This builds the image (first run takes a few minutes), starts the server on port 8081, and mounts a persistent volume at `./local-volumes/runtime-data` for all your data.
+Docker pulls the pre-built image from GitHub and starts the container. Your data is stored in `./data/runtime-data` — back that folder up to keep your notes and memories.
 
-### 4. Expose it to the internet
+Verify it's running:
 
-Put a reverse proxy (nginx, Caddy, Traefik) in front of port 8081, terminate SSL, and point your domain at the server. Caddy with automatic HTTPS is the easiest option:
+```bash
+docker compose logs -f
+# look for: Server running on http://localhost:8081
+```
+
+### 4. Point your domain at the server
+
+In your DNS provider, add an **A record** pointing your subdomain to your server's IP address. Then set up a reverse proxy to terminate SSL and forward traffic to port 8081.
+
+**Using Caddy (easiest — handles SSL automatically):**
+
+```bash
+apt install -y caddy
+```
+
+Edit `/etc/caddy/Caddyfile`:
 
 ```
 delegate.yourdomain.com {
@@ -72,13 +86,19 @@ delegate.yourdomain.com {
 }
 ```
 
+```bash
+systemctl reload caddy
+```
+
+Caddy automatically obtains and renews an HTTPS certificate. Done.
+
 ### 5. Sign in and complete setup
 
-Open `https://delegate.yourdomain.com` in your browser. You'll be walked through a short setup screen to confirm your admin password and paste in any API keys you want to add (Twilio for phone/SMS, email credentials, etc.).
+Open `https://delegate.yourdomain.com` in your browser. Log in with the `ADMIN_PASSWORD` you set, then use **Settings** to add any additional API keys (Twilio for phone/SMS, email credentials, etc.).
 
-![Sign-in / setup page](../assets/screenshots/login.png)
+![Sign-in page](../assets/screenshots/login.png)
 
-Once you're in, your delegate is live.
+Your delegate is live.
 
 ![Chat console](../assets/screenshots/home.png)
 
@@ -90,19 +110,24 @@ With your delegate running in the cloud, the features that make it most useful a
 
 - **[Phone & SMS](../features/phone/)** — give your delegate a real phone number via Twilio
 - **[Email](../features/email/)** — connect an email address so you can email it like a colleague
-- **[Memory](../features/memory/)** — your delegate remembers you across every conversation automatically
+- **[Memory](../features/memory/)** — your delegate remembers you across conversations automatically
 - **[MCP servers](../features/mcp-servers/)** — connect tools like calendars and task managers
 
 ---
 
-## Running locally (developer mode)
+## Running locally (developers only)
 
-If you're a developer and want to run Delegate 1 on your own machine for testing or customisation, see:
+If you want to run Delegate 1 on your own machine for development or testing:
 
-- [Prerequisites](prerequisites/) — what you need installed
-- [Installation](installation/) — clone and build steps
-- [Configuration](configuration/) — `.env` and settings UI
-- [First run & UI tour](first-run/) — walkthrough of the app
+```bash
+git clone https://github.com/adamd9/delegate1.git
+cd delegate1
+npm install
+cp .env.example .env  # add OPENAI_API_KEY
+npm run dev           # starts on http://localhost:8081
+```
+
+See [Prerequisites](prerequisites/), [Installation](installation/), and [Configuration](configuration/) for the full detail.
 
 {: .warning }
-> Running locally means your delegate is only reachable when your computer is on. Phone and email channels require a public URL (use ngrok or similar for local testing).
+> Running locally means your delegate is only reachable when your computer is on. Phone and email channels require a public URL — use ngrok or similar for local testing.
