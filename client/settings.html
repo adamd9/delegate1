@@ -233,6 +233,9 @@
       <option value="mcp">MCP Servers</option>
       <option value="memory">Memory</option>
       <option value="config">Configuration</option>
+      <option value="twilio">Twilio</option>
+      <option value="email">Email</option>
+      <option value="browser">Browser / Copilot</option>
       <option value="maintenance">Maintenance</option>
       <option value="about">About</option>
     </select>
@@ -270,6 +273,18 @@
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93-2.83-2.83"/><path d="m16.24 16.24-2.83-2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07-2.83 2.83"/><path d="m16.24 7.76-2.83 2.83"/><circle cx="12" cy="12" r="3"/></svg>
         Configuration
       </button>
+      <button class="sidebar-item" data-tab="twilio">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+        Twilio
+      </button>
+      <button class="sidebar-item" data-tab="email">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Email
+      </button>
+      <button class="sidebar-item" data-tab="browser">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        Browser / Copilot
+      </button>
       <button class="sidebar-item" data-tab="maintenance">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
         Maintenance
@@ -290,7 +305,7 @@
 // ──────────────────────────────────────────────
 // Tab routing
 // ──────────────────────────────────────────────
-const TABS = ['logs','voice','catalog','adaptations','mcp','memory','config','maintenance','about'];
+const TABS = ['logs','voice','catalog','adaptations','mcp','memory','config','twilio','email','browser','maintenance','about'];
 let activeTab = null;
 
 function getInitialTab() {
@@ -339,6 +354,9 @@ function renderTab(tab) {
     case 'mcp':         renderMcp(); break;
     case 'memory':      renderMemory(); break;
     case 'config':      renderConfig(); break;
+    case 'twilio':      renderTwilio(); break;
+    case 'email':       renderEmail(); break;
+    case 'browser':     renderBrowser(); break;
     case 'maintenance': renderMaintenance(); break;
     case 'about':       renderAbout(); break;
   }
@@ -437,6 +455,17 @@ function renderVoice() {
     .catch(err => {
       c.querySelector('.card-body').innerHTML = `<div class="error-msg">Failed to load: ${err.message}</div>`;
     });
+
+  // Voice API config section
+  fetch('/api/config')
+    .then(async response => {
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) return;
+      const items = normalizeConfigItems(payload);
+      const configMap = buildConfigMap(items);
+      VOICE_CONFIG_SECTIONS.forEach(section => content.appendChild(buildConfigSectionCard(section, configMap)));
+    })
+    .catch(() => {});
 }
 
 function buildVoiceForm(data, cardEl) {
@@ -612,9 +641,21 @@ const CONFIG_SECTIONS = [
     ],
   },
   {
-    id: 'twilio',
-    title: 'Twilio (Calls & SMS)',
-    description: 'Voice calling and SMS credentials.',
+    id: 'advanced',
+    title: 'Advanced',
+    description: 'Optional — these have sensible defaults and rarely need changing.',
+    fields: [
+      { key: 'PUBLIC_URL', label: 'Public URL Override', help: 'Only for dev behind NAT/proxy (e.g. ngrok). In production the hostname is used automatically.', type: 'text' },
+      { key: 'SESSION_HISTORY_LIMIT', label: 'Session History Limit', help: 'Conversation items in context (default: 50).', type: 'number' },
+    ],
+  },
+];
+
+const TWILIO_SECTIONS = [
+  {
+    id: 'twilio-calls',
+    title: 'Twilio — Calls',
+    description: 'Voice calling credentials.',
     fields: [
       { key: 'TWILIO_PHONE_NUMBER', label: 'Phone Number', type: 'text', help: 'Your Twilio number for calls and SMS (e.g. +61400000000).' },
       { key: 'TWILIO_ACCOUNT_SID', label: 'Account SID', type: 'text' },
@@ -622,27 +663,40 @@ const CONFIG_SECTIONS = [
       { key: 'TWILIO_API_KEY_SID', label: 'API Key SID', type: 'text' },
       { key: 'TWILIO_API_KEY_SECRET', label: 'API Key Secret', type: 'password', sensitive: true },
       { key: 'TWILIO_TWIML_APP_SID', label: 'TwiML App SID', type: 'text' },
-      { key: 'TWILIO_SMS_ACCOUNT_SID', label: 'SMS Account SID', type: 'text', help: 'If different from calls account.' },
+    ],
+  },
+  {
+    id: 'twilio-sms',
+    title: 'Twilio — SMS',
+    description: 'SMS credentials (if different from calls account).',
+    fields: [
+      { key: 'TWILIO_SMS_ACCOUNT_SID', label: 'SMS Account SID', type: 'text', help: 'Leave blank to use the same account as calls.' },
       { key: 'TWILIO_SMS_AUTH_TOKEN', label: 'SMS Auth Token', type: 'password', sensitive: true },
       { key: 'TWILIO_MESSAGING_SERVICE_SID', label: 'Messaging Service SID', type: 'text' },
       { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Default SMS Recipient', type: 'text', help: 'Fallback destination number.' },
     ],
   },
+];
+
+const VOICE_CONFIG_SECTIONS = [
   {
-    id: 'voice',
-    title: 'Voice',
-    description: 'Text-to-speech and transcription.',
+    id: 'voice-config',
+    title: 'Voice API Settings',
+    description: 'Text-to-speech and transcription configuration.',
     fields: [
       { key: 'DELEGATE_TTS_MODEL', label: 'TTS Model', type: 'select', default: 'gpt-4o-mini-tts', options: [['gpt-4o-mini-tts', 'GPT-4o Mini TTS'], ['tts-1', 'TTS-1'], ['tts-1-hd', 'TTS-1 HD']], help: 'Default: gpt-4o-mini-tts' },
-      { key: 'DELEGATE_CHAT_VOICE_SPEED', label: 'Voice Speed', type: 'number', default: '1.3', help: 'Playback speed multiplier (default: 1.3, range 0.5–2.0).' },
+      { key: 'DELEGATE_CHAT_VOICE_SPEED', label: 'Voice Speed', type: 'number', default: '1.3', help: 'Playback speed (default: 1.3, range 0.5–2.0).' },
       { key: 'DEEPGRAM_API_KEY', label: 'Deepgram API Key', type: 'password', sensitive: true, help: 'Required for speech-to-text.' },
-      { key: 'DELEGATE_MAX_AUDIO_BYTES', label: 'Max Audio Bytes', type: 'number', default: '4194304', help: 'Upper limit for audio payload (default: 4194304).' },
+      { key: 'DELEGATE_MAX_AUDIO_BYTES', label: 'Max Audio Bytes', type: 'number', default: '4194304', help: 'Upper limit for audio payload.' },
     ],
   },
+];
+
+const EMAIL_SECTIONS = [
   {
     id: 'email-sending',
-    title: 'Email - Sending',
-    description: 'SMTP settings for outbound email.',
+    title: 'Sending (SMTP)',
+    description: 'Outbound email configuration.',
     fields: [
       { key: 'EMAIL_SMTP_HOST', label: 'SMTP Host', type: 'text' },
       { key: 'EMAIL_SMTP_PORT', label: 'SMTP Port', type: 'number', default: '587', help: 'Default: 587' },
@@ -654,8 +708,8 @@ const CONFIG_SECTIONS = [
   },
   {
     id: 'email-receiving',
-    title: 'Email - Receiving',
-    description: 'IMAP settings for inbound email.',
+    title: 'Receiving (IMAP)',
+    description: 'Inbound email polling configuration.',
     fields: [
       { key: 'EMAIL_IMAP_HOST', label: 'IMAP Host', type: 'text' },
       { key: 'EMAIL_IMAP_PORT', label: 'IMAP Port', type: 'number', default: '993', help: 'Default: 993' },
@@ -665,6 +719,9 @@ const CONFIG_SECTIONS = [
       { key: 'EMAIL_RECEIVING_FILTER_ENABLED', label: 'Enable Receive Filter', type: 'boolean', help: 'Filter inbound mail before processing.' },
     ],
   },
+];
+
+const BROWSER_SECTIONS = [
   {
     id: 'browser-copilot',
     title: 'Browser / Copilot',
@@ -676,15 +733,6 @@ const CONFIG_SECTIONS = [
       { key: 'VNC_PASSWORD', label: 'VNC Password', type: 'password', sensitive: true },
       { key: 'COPILOT_TIMEOUT_MS', label: 'Copilot Timeout (ms)', type: 'number', default: '120000', help: 'Default: 120000' },
       { key: 'GITHUB_PAT', label: 'GitHub PAT', type: 'password', sensitive: true, help: 'Personal access token for GitHub API.' },
-    ],
-  },
-  {
-    id: 'advanced',
-    title: 'Advanced',
-    description: 'Optional — these have sensible defaults and rarely need changing.',
-    fields: [
-      { key: 'PUBLIC_URL', label: 'Public URL Override', help: 'Only for dev behind NAT/proxy (e.g. ngrok). In production the hostname is used automatically.', type: 'text' },
-      { key: 'SESSION_HISTORY_LIMIT', label: 'Session History Limit', help: 'Conversation items in context (default: 50).', type: 'number' },
     ],
   },
 ];
@@ -1023,6 +1071,39 @@ function renderConfig(prefetchedItems = null) {
   CONFIG_SECTIONS.forEach(section => mainColumn.appendChild(buildConfigSectionCard(section, configMap)));
   mainColumn.appendChild(buildChangePasswordCard());
   applyConfigTargetFromLocation();
+}
+
+function renderSectionsTab(sections, title, description) {
+  fetch('/api/config')
+    .then(async response => {
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(readErrorMessage(payload, 'Failed to load'));
+      return normalizeConfigItems(payload);
+    })
+    .then(items => {
+      content.innerHTML = '';
+      const intro = card(title, body => {
+        body.appendChild(el('div', { class: 'section-description' }, description));
+      });
+      content.appendChild(intro);
+      const configMap = buildConfigMap(items);
+      sections.forEach(section => content.appendChild(buildConfigSectionCard(section, configMap)));
+    })
+    .catch(err => {
+      content.innerHTML = `<div class="error-msg">Failed to load: ${err.message}</div>`;
+    });
+}
+
+function renderTwilio() {
+  renderSectionsTab(TWILIO_SECTIONS, 'Twilio', 'Voice calling and SMS credentials.');
+}
+
+function renderEmail() {
+  renderSectionsTab(EMAIL_SECTIONS, 'Email', 'Sending and receiving email configuration.');
+}
+
+function renderBrowser() {
+  renderSectionsTab(BROWSER_SECTIONS, 'Browser / Copilot', 'Browser automation and GitHub integration.');
 }
 
 // ──────────────────────────────────────────────
