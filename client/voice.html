@@ -83,62 +83,10 @@
     .log-entry.success { color: #86efac; }
     .log-entry.error   { color: #fca5a5; }
     .log-empty { font-size: 12px; color: rgba(255,255,255,0.4); font-style: italic; }
-    .twilio-settings {
-      margin: 18px 0;
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      background: rgba(0,0,0,0.16);
-      overflow: hidden;
-      text-align: left;
-    }
-    .twilio-settings-toggle {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 14px 16px;
-      border: 0;
-      background: transparent;
-      color: var(--text);
-      font: inherit;
-      cursor: pointer;
-      text-align: left;
-    }
-    .twilio-settings-toggle:hover { background: rgba(255,255,255,0.06); }
-    .twilio-settings-toggle-text { display: flex; flex-direction: column; gap: 2px; }
-    .twilio-settings-toggle-title { font-size: 14px; font-weight: 700; }
-    .twilio-settings-toggle-subtitle { font-size: 12px; color: var(--text-mid); }
-    .twilio-settings-chevron { color: var(--text-mid); font-size: 18px; transition: transform 0.15s ease; }
-    .twilio-settings.is-open .twilio-settings-chevron { transform: rotate(90deg); }
-    .twilio-settings-body { padding: 16px; border-top: 1px solid var(--border); }
-    .twilio-settings-body[hidden] { display: none; }
-    .config-panel { margin-top: 0; text-align: left; }
-    .config-field {
-      display: flex; flex-direction: column; gap: 8px; min-width: 0;
-      padding: 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface2);
-    }
-    .config-field + .config-field { margin-top: 12px; }
-    .config-field-title { font-size: 13px; font-weight: 600; color: var(--text); }
-    .config-help { font-size: 12px; color: var(--text-dim); line-height: 1.45; }
-    .config-input, .config-select {
-      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
-      background: var(--surface3); color: var(--text); font-size: 13px; outline: none;
-    }
-    .config-input::placeholder { color: var(--text-dim); }
-    .config-input:focus, .config-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(147,197,253,0.18); }
-    .config-panel .btn { width: auto; margin-bottom: 0; padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: background 0.15s; }
-    .btn-primary { background: rgba(59,130,246,0.95); color: #fff; }
-    .btn-primary:hover { background: #2563eb; }
-    .btn-primary:disabled { background: rgba(255,255,255,0.08); color: var(--text-dim); cursor: not-allowed; }
-    .btn-ghost { background: rgba(255,255,255,0.08); color: var(--text-mid); border: 1px solid var(--border); }
-    .btn-ghost:hover { background: rgba(255,255,255,0.14); color: var(--text); }
-    .btn-sm { padding: 7px 10px; font-size: 12px; }
     .back-link { display: inline-block; margin-top: 16px; font-size: 12px; color: rgba(255,255,255,0.6); text-decoration: none; }
     .back-link:hover { color: #fff; }
   </style>
 <script src="/auth-guard.js"></script>
-<script src="/components/config-panel.js"></script>
 </head>
 <body>
   <div class="card">
@@ -156,19 +104,6 @@
       <button class="btn-call red" id="hangup-btn" disabled>Hang Up</button>
     </div>
 
-    <section class="twilio-settings" id="twilio-settings-section">
-      <button class="twilio-settings-toggle" id="twilio-settings-toggle" type="button" aria-expanded="false" aria-controls="twilio-settings-body">
-        <span class="twilio-settings-toggle-text">
-          <span class="twilio-settings-toggle-title">⚙ Twilio Settings</span>
-          <span class="twilio-settings-toggle-subtitle">Manage calling credentials and phone settings.</span>
-        </span>
-        <span class="twilio-settings-chevron" aria-hidden="true">›</span>
-      </button>
-      <div class="twilio-settings-body" id="twilio-settings-body" hidden>
-        <div id="twilio-settings-panel"></div>
-      </div>
-    </section>
-
     <div class="log-box" id="log-box">
       <div class="log-title">Logs</div>
       <div id="log-list"><div class="log-empty">No logs yet…</div></div>
@@ -183,36 +118,6 @@
   let isConnected = false;
   let isConnecting = false;
   let isInCall = false;
-
-  const twilioSettingsConfig = {
-    title: 'Twilio Settings',
-    description: 'Voice calling credentials and phone number.',
-    fields: [
-      { key: 'TWILIO_ACCOUNT_SID', label: 'Account SID', type: 'text', help: 'Primary Twilio account SID.' },
-      { key: 'TWILIO_AUTH_TOKEN', label: 'Auth Token', type: 'password', sensitive: true, help: 'Twilio auth token for API access.' },
-      { key: 'TWILIO_API_KEY_SID', label: 'API Key SID', type: 'text', help: 'API key SID for voice integrations.' },
-      { key: 'TWILIO_API_KEY_SECRET', label: 'API Key Secret', type: 'password', sensitive: true, help: 'Secret paired with the API key.' },
-      { key: 'TWILIO_TWIML_APP_SID', label: 'TwiML App SID', type: 'text', help: 'TwiML application for call setup.' },
-      { key: 'TWILIO_PHONE_NUMBER', label: 'Phone Number', type: 'text', help: 'Your Twilio number for calls and SMS (e.g. +61400000000).' },
-      { key: 'TWILIO_SMS_ACCOUNT_SID', label: 'SMS Account SID', type: 'text', help: 'Account SID for SMS (if different from calls).' },
-      { key: 'TWILIO_SMS_AUTH_TOKEN', label: 'SMS Auth Token', type: 'password', sensitive: true, help: 'Auth token for SMS API.' },
-      { key: 'TWILIO_MESSAGING_SERVICE_SID', label: 'Messaging Service SID', type: 'text', help: 'Messaging service for outbound SMS.' },
-      { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Default SMS Recipient', type: 'text', help: 'Fallback destination number for outbound SMS.' },
-    ]
-  };
-
-  function initializeTwilioSettings() {
-    const section = document.getElementById('twilio-settings-section');
-    const toggle = document.getElementById('twilio-settings-toggle');
-    const body = document.getElementById('twilio-settings-body');
-    toggle.addEventListener('click', () => {
-      const isOpening = body.hidden;
-      body.hidden = !isOpening;
-      section.classList.toggle('is-open', isOpening);
-      toggle.setAttribute('aria-expanded', String(isOpening));
-    });
-    window.ConfigPanel?.render('#twilio-settings-panel', twilioSettingsConfig);
-  }
 
   function addLog(msg, type = 'info') {
     const list = document.getElementById('log-list');
@@ -419,7 +324,6 @@
   document.getElementById('call-btn').addEventListener('click', startCall);
   document.getElementById('hangup-btn').addEventListener('click', hangUp);
 
-  initializeTwilioSettings();
   addLog('Voice client initialized', 'info');
   addLog('Enter backend URL (or leave blank for same origin) and click Initialize', 'info');
 

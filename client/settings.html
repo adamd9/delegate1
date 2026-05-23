@@ -605,19 +605,86 @@ const CONFIG_SECTIONS = [
   {
     id: 'core',
     title: 'Core',
-    description: 'Essential runtime and session settings.',
+    description: 'Essential runtime settings.',
     fields: [
       { key: 'OPENAI_API_KEY', label: 'OpenAI API Key', help: 'Primary model and Responses API credential.', type: 'password', sensitive: true },
-      { key: 'TIMEZONE', label: 'Timezone', help: 'Default timezone used for scheduling and date handling.', type: 'select', options: Intl.supportedValuesOf('timeZone').map(tz => [tz, tz]) },
+      { key: 'TIMEZONE', label: 'Timezone', help: 'Default timezone for scheduling and dates.', type: 'select', options: Intl.supportedValuesOf('timeZone').map(tz => [tz, tz]) },
+    ],
+  },
+  {
+    id: 'twilio',
+    title: 'Twilio (Calls & SMS)',
+    description: 'Voice calling and SMS credentials.',
+    fields: [
+      { key: 'TWILIO_PHONE_NUMBER', label: 'Phone Number', type: 'text', help: 'Your Twilio number for calls and SMS (e.g. +61400000000).' },
+      { key: 'TWILIO_ACCOUNT_SID', label: 'Account SID', type: 'text' },
+      { key: 'TWILIO_AUTH_TOKEN', label: 'Auth Token', type: 'password', sensitive: true },
+      { key: 'TWILIO_API_KEY_SID', label: 'API Key SID', type: 'text' },
+      { key: 'TWILIO_API_KEY_SECRET', label: 'API Key Secret', type: 'password', sensitive: true },
+      { key: 'TWILIO_TWIML_APP_SID', label: 'TwiML App SID', type: 'text' },
+      { key: 'TWILIO_SMS_ACCOUNT_SID', label: 'SMS Account SID', type: 'text', help: 'If different from calls account.' },
+      { key: 'TWILIO_SMS_AUTH_TOKEN', label: 'SMS Auth Token', type: 'password', sensitive: true },
+      { key: 'TWILIO_MESSAGING_SERVICE_SID', label: 'Messaging Service SID', type: 'text' },
+      { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Default SMS Recipient', type: 'text', help: 'Fallback destination number.' },
+    ],
+  },
+  {
+    id: 'voice',
+    title: 'Voice',
+    description: 'Text-to-speech and transcription.',
+    fields: [
+      { key: 'DELEGATE_TTS_MODEL', label: 'TTS Model', type: 'select', default: 'gpt-4o-mini-tts', options: [['gpt-4o-mini-tts', 'GPT-4o Mini TTS'], ['tts-1', 'TTS-1'], ['tts-1-hd', 'TTS-1 HD']], help: 'Default: gpt-4o-mini-tts' },
+      { key: 'DELEGATE_CHAT_VOICE_SPEED', label: 'Voice Speed', type: 'number', default: '1.3', help: 'Playback speed multiplier (default: 1.3, range 0.5–2.0).' },
+      { key: 'DEEPGRAM_API_KEY', label: 'Deepgram API Key', type: 'password', sensitive: true, help: 'Required for speech-to-text.' },
+      { key: 'DELEGATE_MAX_AUDIO_BYTES', label: 'Max Audio Bytes', type: 'number', default: '4194304', help: 'Upper limit for audio payload (default: 4194304).' },
+    ],
+  },
+  {
+    id: 'email-sending',
+    title: 'Email - Sending',
+    description: 'SMTP settings for outbound email.',
+    fields: [
+      { key: 'EMAIL_SMTP_HOST', label: 'SMTP Host', type: 'text' },
+      { key: 'EMAIL_SMTP_PORT', label: 'SMTP Port', type: 'number', default: '587', help: 'Default: 587' },
+      { key: 'EMAIL_SMTP_USER', label: 'SMTP Username', type: 'text' },
+      { key: 'EMAIL_SMTP_PASS', label: 'SMTP Password', type: 'password', sensitive: true },
+      { key: 'EMAIL_DEFAULT_FROM', label: 'Default From Address', type: 'text' },
+      { key: 'EMAIL_SENDING_RESTRICTED', label: 'Restrict Outbound Sending', type: 'boolean', help: 'Limit who the system can send to.' },
+    ],
+  },
+  {
+    id: 'email-receiving',
+    title: 'Email - Receiving',
+    description: 'IMAP settings for inbound email.',
+    fields: [
+      { key: 'EMAIL_IMAP_HOST', label: 'IMAP Host', type: 'text' },
+      { key: 'EMAIL_IMAP_PORT', label: 'IMAP Port', type: 'number', default: '993', help: 'Default: 993' },
+      { key: 'EMAIL_IMAP_USER', label: 'IMAP Username', type: 'text' },
+      { key: 'EMAIL_IMAP_PASSWORD', label: 'IMAP Password', type: 'password', sensitive: true },
+      { key: 'EMAIL_IMAP_TLS', label: 'Use TLS', type: 'boolean', default: 'true', help: 'Default: true' },
+      { key: 'EMAIL_RECEIVING_FILTER_ENABLED', label: 'Enable Receive Filter', type: 'boolean', help: 'Filter inbound mail before processing.' },
+    ],
+  },
+  {
+    id: 'browser-copilot',
+    title: 'Browser / Copilot',
+    description: 'Browser automation and GitHub integration.',
+    fields: [
+      { key: 'BROWSER_ENABLED', label: 'Enable Browser Agent', type: 'boolean', default: 'false', help: 'Default: false' },
+      { key: 'COPILOT_GITHUB_TOKEN', label: 'Copilot GitHub Token', type: 'password', sensitive: true },
+      { key: 'COPILOT_REMOTE_REPO', label: 'Remote Repository', type: 'text' },
+      { key: 'VNC_PASSWORD', label: 'VNC Password', type: 'password', sensitive: true },
+      { key: 'COPILOT_TIMEOUT_MS', label: 'Copilot Timeout (ms)', type: 'number', default: '120000', help: 'Default: 120000' },
+      { key: 'GITHUB_PAT', label: 'GitHub PAT', type: 'password', sensitive: true, help: 'Personal access token for GitHub API.' },
     ],
   },
   {
     id: 'advanced',
     title: 'Advanced',
-    description: 'Optional tuning — these have sensible defaults and rarely need changing.',
+    description: 'Optional — these have sensible defaults and rarely need changing.',
     fields: [
-      { key: 'PUBLIC_URL', label: 'Public URL Override', help: 'Only needed for local development behind NAT/proxy (e.g. ngrok). In production the current hostname is used automatically.', type: 'text' },
-      { key: 'SESSION_HISTORY_LIMIT', label: 'Session History Limit', help: 'Number of previous conversation items included in context (default: 50).', type: 'number' },
+      { key: 'PUBLIC_URL', label: 'Public URL Override', help: 'Only for dev behind NAT/proxy (e.g. ngrok). In production the hostname is used automatically.', type: 'text' },
+      { key: 'SESSION_HISTORY_LIMIT', label: 'Session History Limit', help: 'Conversation items in context (default: 50).', type: 'number' },
     ],
   },
 ];
@@ -635,11 +702,13 @@ function buildConfigMap(items) {
 function createConfigControl(field, item, idSuffix) {
   const wrapper = el('div', {});
   const currentValue = typeof item?.value === 'string' ? item.value : '';
+  const defaultValue = field.default == null ? '' : String(field.default);
   const isMaskedSensitive = !!field.sensitive && currentValue === MASKED_CONFIG_VALUE;
 
   if (field.type === 'boolean') {
     const select = el('select', { class: 'config-select', id: idSuffix, 'data-config-key': field.key });
-    [['', '— not set —'], ['true', 'True'], ['false', 'False']].forEach(([value, label]) => {
+    const unsetLabel = defaultValue ? `— not set (default: ${defaultValue}) —` : '— not set —';
+    [['', unsetLabel], ['true', 'True'], ['false', 'False']].forEach(([value, label]) => {
       const option = el('option', { value }, label);
       if (currentValue === value) option.selected = true;
       select.appendChild(option);
@@ -650,7 +719,9 @@ function createConfigControl(field, item, idSuffix) {
 
   if (field.type === 'select' && field.options) {
     const select = el('select', { class: 'config-select', id: idSuffix, 'data-config-key': field.key });
-    const placeholder = el('option', { value: '' }, '— select —');
+    const defaultOption = field.options.find(([value]) => value === defaultValue);
+    const placeholderLabel = defaultOption ? `— select (default: ${defaultOption[1]}) —` : '— select —';
+    const placeholder = el('option', { value: '' }, placeholderLabel);
     if (!currentValue) placeholder.selected = true;
     select.appendChild(placeholder);
     field.options.forEach(([value, label]) => {
@@ -673,6 +744,7 @@ function createConfigControl(field, item, idSuffix) {
   if (!isMaskedSensitive && currentValue) input.value = currentValue;
   if (isMaskedSensitive) input.placeholder = 'Configured — leave blank to keep existing value';
   else if (field.sensitive) input.placeholder = 'Enter a new value';
+  else if (!currentValue && defaultValue) input.placeholder = `Default: ${defaultValue}`;
 
   if (!field.sensitive) {
     wrapper.appendChild(input);
@@ -680,6 +752,7 @@ function createConfigControl(field, item, idSuffix) {
   }
 
   const row = el('div', { class: 'input-with-action' });
+  if (!isMaskedSensitive && !currentValue && defaultValue) input.placeholder = `Default: ${defaultValue}`;
   const toggle = el('button', { class: 'btn btn-ghost btn-sm', type: 'button' }, 'Show');
   toggle.addEventListener('click', () => {
     const showing = input.type === 'text';

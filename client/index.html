@@ -206,6 +206,22 @@
     /* Feed */
     .feed { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
+    .setup-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 8px;
+      margin: 8px 12px;
+      font-size: 13px;
+    }
+    .setup-banner-icon { font-size: 16px; }
+    .setup-banner-text { color: var(--text-mid, #a1a1aa); flex: 1; }
+    .setup-banner-link { color: var(--amber, #f59e0b); text-decoration: none; font-weight: 500; white-space: nowrap; }
+    .setup-banner-link:hover { text-decoration: underline; }
+
     /* History accordion */
     .hist-block { background: var(--surface3); border-bottom: 1px solid var(--border); flex-shrink: 0; }
 
@@ -549,7 +565,6 @@
       <a class="lp-navitem" id="nav-settings" href="/settings"><span class="ni-icon">⚙</span> Settings</a>
       <a class="lp-navitem" id="nav-twilio-voice" href="/voice" target="_blank" rel="noopener noreferrer"><span class="ni-icon">📞</span> Twilio Voice</a>
       <a class="lp-navitem" href="/voice-direct" target="_blank" rel="noopener noreferrer"><span class="ni-icon">📡</span> Direct Voice</a>
-      <a class="lp-navitem" id="nav-email" href="/email-settings"><span class="ni-icon">📧</span> Email</a>
       <a class="lp-navitem" href="/logs"><span class="ni-icon">📋</span> Logs</a>
       <a class="lp-navitem" href="/thoughtflow/viewer"><span class="ni-icon">🔷</span> Thought flow</a>
       <a class="lp-navitem" href="/copilot.html"><span class="ni-icon">🤖</span> Copilot Session</a>
@@ -589,6 +604,11 @@
     </div>
 
     <div class="feed">
+      <div id="setup-banner" class="setup-banner" style="display:none">
+        <span class="setup-banner-icon">⚠️</span>
+        <span class="setup-banner-text">Setup incomplete — configure required settings to get started.</span>
+        <a href="/settings?tab=config" class="setup-banner-link">Open Settings →</a>
+      </div>
 
       <!-- History accordion -->
       <div id="hist-block" class="hist-block" style="display:none;">
@@ -1397,15 +1417,24 @@ function updateNavWarnings(setup) {
   const groups = new Map((setup?.groups || []).map(group => [group.id, group]));
   const coreGroup = groups.get('core');
   const callGroup = groups.get('twilio-calls');
-  const emailSendingGroup = groups.get('email-sending');
-  const emailReceivingGroup = groups.get('email-receiving');
 
   setNavWarning('nav-settings', !!coreGroup && coreGroup.status !== 'complete');
   setNavWarning('nav-twilio-voice', !!callGroup && callGroup.status !== 'complete' && groupHasConfiguredItems(callGroup));
-  setNavWarning(
-    'nav-email',
-    [emailSendingGroup, emailReceivingGroup].some(group => group && group.status !== 'complete' && groupHasConfiguredItems(group))
-  );
+}
+
+function updateSetupBanner(setup) {
+  const banner = document.getElementById('setup-banner');
+  if (!banner) return;
+  const coreGroup = (setup?.groups || []).find(group => group.id === 'core');
+  if (!coreGroup || coreGroup.status === 'complete') {
+    banner.style.display = 'none';
+    return;
+  }
+  const missing = (coreGroup.items || []).filter(item => !item.configured).map(item => item.label).join(', ');
+  banner.querySelector('.setup-banner-text').textContent = missing
+    ? `Setup incomplete — missing: ${missing}`
+    : 'Setup incomplete — configure required settings to get started.';
+  banner.style.display = 'flex';
 }
 
 // ─── Channel status ──────────────────────────────────────────────────────────
@@ -1420,6 +1449,7 @@ async function loadChannelStatus() {
     const configList = await configRes.json();
 
     updateNavWarnings(setup);
+    updateSetupBanner(setup);
 
     const configMap = {};
     (configList.items || configList || []).forEach(c => { configMap[c.key] = c.value; });
