@@ -6,6 +6,9 @@ nav_order: 11
 
 # Browser agent
 
+{: .warning }
+> **Requires a GitHub Copilot subscription.** The browser agent uses GitHub Copilot as its reasoning layer — you'll need a [GitHub account with Copilot access](https://github.com/features/copilot) (paid plan) and a Personal Access Token to use this feature.
+
 Your delegate can browse the web on your behalf — not just search, but actually open a browser, navigate to sites, fill in forms, log in with your credentials, and complete tasks that normally require a human clicking around.
 
 **Examples of things you can ask:**
