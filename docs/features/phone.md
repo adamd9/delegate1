@@ -4,94 +4,139 @@ parent: Features
 nav_order: 3
 ---
 
-# Phone (Twilio)
+# Phone
 
-Inbound phone calls bridged to the OpenAI Realtime API over a single WebSocket. The same session and tools as text and browser voice.
+Your delegate has a real phone number. Pick it up on your mobile, have a natural conversation, and your delegate will answer questions, search the web, and use its tools — just like a regular phone call.
 
-## Architecture
+This uses [Twilio](https://twilio.com) to give you a real phone number and forward calls to your delegate.
 
-```
-Caller ──▶ Twilio PSTN ──▶ /twiml (TwiML response)
-                          │
-                          └▶ <Stream> ──▶ wss://<PUBLIC_URL>/call ──▶ OpenAI Realtime
-```
+---
 
-| Endpoint | Purpose |
-|---|---|
-| `GET/POST /twiml` | Returns TwiML that bridges the call to `/call` |
-| `WS /call` | G.711 µ-law audio bridge to OpenAI Realtime |
+## What you need before you start
 
-Handler: `src/session/call.ts`. TwiML template: `src/twiml.xml`.
+- A **Twilio account** — a free trial account works fine. Sign up at [twilio.com](https://www.twilio.com/try-twilio).
+- A **phone number** on that Twilio account (Twilio gives you one when you sign up).
+- A way for Twilio to reach your delegate over the internet:
+  - **Running locally?** Use [ngrok](https://ngrok.com) to create a public URL that tunnels to your machine.
+  - **Deployed to a server?** Use that server's public URL.
+
+---
 
 ## Setup
 
-### 1. Expose your local server
+### Step 1 — Get your Twilio credentials
 
-Twilio needs to reach your server over HTTPS. ngrok is the easiest option:
+1. Log in to the [Twilio Console](https://console.twilio.com/).
+2. On the dashboard, find and copy:
+   - **Account SID** — looks like `ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+   - **Auth Token** — click the eye icon to reveal it
+3. Note the **phone number** Twilio assigned to you (under **Phone Numbers → Active numbers**).
+
+### Step 2 — Enter your credentials in Settings
+
+Open your delegate's **Settings** page and fill in:
+
+| Setting | What to paste |
+|---|---|
+| Twilio Account SID | Your Account SID from Step 1 |
+| Twilio Auth Token | Your Auth Token from Step 1 |
+
+Save your settings.
+
+### Step 3 — Set your public URL
+
+Twilio needs to know where to send calls. This is your delegate's internet-accessible address.
+
+**If running locally with ngrok:**
 
 ```bash
-npm install -g ngrok
 ngrok http 8081
 ```
 
-ngrok prints a public URL like `https://abc123.ngrok.io`.
+ngrok will print a URL like `https://abc123.ngrok.io`. Copy it.
 
-### 2. Set `PUBLIC_URL`
+**If deployed to a server:** use your server's public URL (e.g. `https://mydelegate.example.com`).
 
-Put it in the **Settings** UI (or `.env`):
+Paste this URL into the **Public URL** field in Settings and save.
 
-```bash
-PUBLIC_URL=https://abc123.ngrok.io
-```
+### Step 4 — Point your Twilio number at your delegate
 
-This is what the TwiML response uses to tell Twilio where to send the audio stream.
+This is the key step: you're telling Twilio "when someone calls my number, forward it to my delegate."
 
-### 3. Add Twilio credentials
+1. In the [Twilio Console](https://console.twilio.com/), go to **Phone Numbers → Manage → Active numbers**.
+2. Click on your phone number.
+3. Under **Voice & Fax → A call comes in**, set:
+   - **Webhook** (not TwiML Bin)
+   - URL: `https://YOUR-PUBLIC-URL/twiml`
+   - Method: **HTTP POST**
+4. Click **Save configuration**.
 
-In **Settings**, set:
+### Step 5 — Call your number
 
-- `TWILIO_ACCOUNT_SID`
-- `TWILIO_AUTH_TOKEN`
-- `TWILIO_API_KEY_SID` / `TWILIO_API_KEY_SECRET` (for outbound APIs)
-- `TWILIO_TWIML_APP_SID` (for the auto-update script)
+That's it! Call your Twilio number from your mobile. Your delegate will pick up and you can have a conversation.
 
-### 4. Configure the phone number webhook
+---
 
-In the [Twilio Console](https://console.twilio.com/) → **Phone Numbers → Active numbers** → pick your number:
+## Interrupting mid-sentence
 
-- **A call comes in** → Webhook → `https://<PUBLIC_URL>/twiml`
-- **HTTP method**: POST
+You don't have to wait for your delegate to finish speaking. Just start talking and it will stop and listen to you — exactly like interrupting a person on a real call.
 
-### 5. Auto-update TwiML app on ngrok restarts
+---
 
-Each `ngrok http 8081` restart gives you a new URL. Use:
+## After an ngrok restart
+
+If you restart ngrok, you get a **new URL**, which means Twilio no longer knows where to find your delegate. Instead of going back to the Twilio Console every time, run:
 
 ```bash
 npm run script:update-app
 ```
 
-This updates the Voice URL of the TwiML app referenced by `TWILIO_TWIML_APP_SID`. Related helpers in `scripts/twilio/`:
+This automatically updates Twilio with your current public URL. You'll need `TWILIO_TWIML_APP_SID` set in Settings for this to work (it's the ID of a TwiML App you can create in the Twilio Console, or via `npm run script:create-app`).
 
-| Script | Purpose |
-|---|---|
-| `npm run script:list-apps` | List all TwiML apps on your Twilio account |
-| `npm run script:inspect-app` | Show one app's config |
-| `npm run script:create-app` | Create a new TwiML app |
-| `npm run script:update-app` | Update the configured app's Voice URL to `PUBLIC_URL/twiml` |
-| `npm run script:token` | Generate a Twilio access token (for browser Voice SDK testing) |
-
-## Single active call
-
-Only one phone or browser-voice connection can be live at a time. A second connection is rejected.
-
-## Barge-in
-
-Same logic as browser voice — see [Voice](../voice/#barge-in).
+---
 
 ## Troubleshooting
 
-- **No audio after pickup** → `PUBLIC_URL` not set or ngrok URL stale. Re-run `npm run script:update-app`.
-- **Twilio webhook returns 401** → you're hitting an auth-protected path. `/twiml` is public; check `INSTALL_PUBLIC_PATHS` in `src/server/middleware/auth.ts`.
-- **Cuts off mid-sentence** → the barge-in guard fired. Check `[call] response.cancel` log lines.
+**The call connects but there's no audio / it hangs up immediately**
+Your public URL is probably stale (this happens after an ngrok restart). Update it in Settings and run `npm run script:update-app`, then try again.
+
+**The call doesn't connect at all**
+Check that the webhook URL in your Twilio number configuration matches exactly what's in your Settings public URL field — including `https://` and the `/twiml` path at the end.
+
+**The call keeps cutting off while your delegate is speaking**
+This is usually a network issue between Twilio and your server. If you're on ngrok, try a paid ngrok plan or deploy to a server with a stable connection.
+
+**Only one call at a time**
+Your delegate handles one phone (or browser voice) call at a time. A second incoming call while one is active will be rejected.
+
+---
+
+## Technical details
+
+```
+Caller ──▶ Twilio PSTN ──▶ GET/POST /twiml (TwiML response)
+                                    │
+                         <Stream> ──▶ wss://<PUBLIC_URL>/call ──▶ OpenAI Realtime API
+```
+
+| Endpoint | Purpose |
+|---|---|
+| `GET/POST /twiml` | Returns TwiML that opens a media stream back to this server |
+| `WS /call` | Bridges G.711 µ-law audio to OpenAI Realtime |
+
+- Handler: `src/session/call.ts`
+- TwiML template: `src/twiml.xml`
+- Barge-in guard: checks `isResponseActivelyStreaming()` before issuing `response.cancel`; see `[call] response.cancel` log lines if investigating cut-off issues
+- Auth: `/twiml` is on the public path list (`INSTALL_PUBLIC_PATHS`) — no auth token required for Twilio to reach it
+
+Additional Twilio helper scripts:
+
+| Script | Purpose |
+|---|---|
+| `npm run script:list-apps` | List all TwiML apps on your account |
+| `npm run script:inspect-app` | Show one app's configuration |
+| `npm run script:create-app` | Create a new TwiML app |
+| `npm run script:update-app` | Re-point the configured TwiML app to your current public URL |
+| `npm run script:token` | Generate a Twilio access token (for browser Voice SDK testing) |
 
 See also: [SMS](../sms/), [Voice](../voice/), [Reference → WebSocket endpoints](../../reference/websocket-endpoints/).

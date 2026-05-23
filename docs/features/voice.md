@@ -6,41 +6,49 @@ nav_order: 2
 
 # Voice (browser)
 
-Real-time browser voice with barge-in. Audio is PCM16 at 24 kHz, streamed over the `/browser-call` WebSocket.
+Talk to your delegate out loud — right in your browser. No phone needed, no extra apps to install. Open the voice page, click the microphone button, and have a real spoken conversation with your delegate in real time.
 
 ![Voice page](../assets/screenshots/voice.png)
 
-## Endpoints
+## How to use it
 
-| Path | Type | Purpose |
-|---|---|---|
-| `/browser-call` | WebSocket | Bidirectional audio + control messages |
-| `/voice.html` | static | Full voice UI |
-| `/voice-direct.html` | static | Minimal direct test harness |
+1. Go to `/voice.html` in your browser.
+2. Click the **microphone button** to start a session.
+3. Start talking. Your delegate will listen and respond with speech.
+4. Click the button again to end the session.
 
-Handler: `src/session/browserCall.ts`. Pipeline: `src/voice/`.
+That's it. The conversation works just like talking to another person.
 
-## How it works
+## Interrupting mid-sentence (barge-in)
 
-1. The browser captures mic audio, downsamples to 24 kHz PCM16, and streams chunks over the WebSocket.
-2. The backend forwards audio to the OpenAI Realtime API.
-3. Outbound audio (agent speech) streams back as base64-encoded PCM16 frames and is played through Web Audio API.
-4. The backend tracks `responseStartTimestamp` to know when the assistant is actively speaking.
-
-## Barge-in
-
-When the user starts speaking while the assistant is mid-response, the server cancels the in-flight response (`response.cancel`) and truncates the audio buffer. The cancel call is guarded by `isResponseActivelyStreaming()` — without this check, you can race the Realtime API and corrupt state. This logic lives in `src/session/call.ts` and is shared with the Twilio phone path.
+You don't have to wait for your delegate to finish speaking before you talk. If you want to jump in, just start talking — your delegate will stop what it's saying and listen to you immediately. This makes the conversation feel natural rather than taking rigid turns.
 
 ## Voice presets
 
-Voice configuration (model, voice id, speed, instructions) is stored as presets in `runtime-data/voice-presets/`. Defaults come from `DELEGATE_TTS_MODEL` and `DELEGATE_CHAT_VOICE_SPEED` in the config store.
+You can customise the voice your delegate speaks with — things like which voice character is used, speaking speed, and the underlying model. These are managed as **voice presets** in your settings.
 
-## Testing
+## Browser voice vs. phone
 
-```bash
-npm run test:voice   # ts-node src/voice/voicePipeline.test.ts
-```
+| | Browser voice | Phone |
+|---|---|---|
+| **Setup** | None — works in any browser tab | Requires a phone number to be configured |
+| **Cost** | Free | Depends on your phone plan / Twilio usage |
+| **Best for** | Quick conversations at your desk | Talking while away from your computer |
 
-End-to-end voice flows are also exercised by the Playwright suite (`npm run test:e2e`).
+Both options give you the same delegate and the same conversation — it's just a question of which device is more convenient at the time.
 
-See also: [Phone (Twilio)](../phone/) — same Realtime API plumbing, different audio codec (G.711 µ-law).
+## Testing / simple version
+
+`/voice-direct.html` is a stripped-down version of the voice interface that's useful for quickly checking that the microphone and audio connection are working.
+
+![Voice direct page](../assets/screenshots/voice-direct.png)
+
+---
+
+## Technical details
+
+- Audio path: browser mic → PCM16 24 kHz → `/browser-call` WebSocket → OpenAI Realtime API → PCM16 frames back → Web Audio API playback.
+- Barge-in: the server calls `response.cancel` and truncates the audio buffer when new mic audio arrives mid-response. The cancel is guarded by `isResponseActivelyStreaming()` to avoid racing the Realtime API. Implementation: `src/session/browserCall.ts`, shared pipeline in `src/voice/`.
+- Voice presets stored in `runtime-data/voice-presets/`; defaults from `DELEGATE_TTS_MODEL` and `DELEGATE_CHAT_VOICE_SPEED` config values.
+- Voice pipeline tests: `npm run test:voice` (`src/voice/voicePipeline.test.ts`). End-to-end flows covered by `npm run test:e2e`.
+- See also: [Phone (Twilio)](../phone/) — same Realtime API plumbing, different audio codec (G.711 µ-law).

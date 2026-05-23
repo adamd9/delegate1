@@ -6,41 +6,43 @@ nav_order: 6
 
 # Memory
 
-Delegate 1 has a layered memory system that gives the assistant durable context across sessions and channels.
+Your delegate remembers you — not just what you said in this conversation, but things you've shared over time. The more you use it, the better it understands you.
 
-## Layers
+## How it works
 
-1. **Adaptive (local) memory** — facts extracted in-process and stored on disk. Always on.
-2. **Mem0** (optional) — hosted long-term memory backend via `mem0ai`. Enabled when `MEM0_API_KEY` is set.
-3. **Conversation bus** — a real-time pub/sub that lets the memory subsystem listen to assistant turns and extract memorable facts asynchronously.
-4. **Deduplicator** (`src/memory/deduplicator.ts`) — suppresses near-duplicate inserts. Unit-tested via `npm run test:unit`.
+Memory runs quietly in the background. As your conversation unfolds, the delegate is paying attention — picking up facts, preferences, and context without you having to spell them out. By the next conversation, it already knows them.
 
-All memory code lives under `src/memory/`.
+You don't need to say "remember that I..." or "last time I told you...". Relevant things from past conversations surface automatically when they're useful.
 
-## How memories show up
+## Memory gets stronger over time
 
-- A tool call (`recall_memory`, `save_memory`) lets the agent query and write explicitly.
-- The conversation bus extracts candidate facts implicitly after each turn; the deduplicator decides whether to actually persist them.
-- Active memories are injected into the agent's context window on each turn.
+Something you mention once is noted lightly. Something that comes up again and again becomes well-established. This means a random throwaway comment won't override something your delegate has learned to know well about you.
 
-## Config
+When similar memories start to pile up, the system consolidates them — deciding whether to reinforce, merge, or discard — so your memory store stays clean and meaningful rather than filling with noise.
 
-| Key | Purpose |
-|---|---|
-| `MEM0_API_KEY` | Enables Mem0 hosted memory |
-| `MEM0_API_HOST` | Override the Mem0 API host (defaults to cloud) |
+## Two memory backends
 
-The local memory config lives in `runtime-data/memory-config.json` and is editable via the API (`GET/PUT /memory-config`).
+- **Local memory** is always on. It builds up a picture of you on your own device, stored privately.
+- **Mem0** is an optional hosted memory service that adds semantic search over your memories. You can enable it by adding a Mem0 API key in Settings.
 
-## Listing memories
+## Viewing and managing your memories
+
+You can see what your delegate remembers about you at any time:
+
+- **Ask directly** — say something like "what do you remember about me?" and it will tell you.
+- **Use the UI** — go to Settings to browse and delete individual memories.
+- **Ask it to forget** — say "forget that I..." and it will remove that memory.
+
+## Technical details
+
+- All memory code lives under `src/memory/`.
+- **Adaptive (local) memory** extracts facts in-process and stores them on disk (`runtime-data/`). Always on.
+- **Mem0** integration uses the `mem0ai` hosted backend. Enabled when `MEM0_API_KEY` is set in environment config. `MEM0_API_HOST` can override the default cloud endpoint.
+- **Conversation bus** — a real-time pub/sub that lets the memory subsystem listen to assistant turns and extract memorable facts asynchronously after each turn.
+- **Deduplicator** (`src/memory/deduplicator.ts`) — suppresses near-duplicate inserts. Unit-tested via `npm run test:unit`.
+- Local memory config: `runtime-data/memory-config.json`, editable via `GET/PUT /memory-config`.
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/memories` | List stored memories |
-| `DELETE /api/memories/:id` | Remove one |
-
-## Tests
-
-```bash
-npm run test:unit   # exercises the deduplicator
-```
+| `DELETE /api/memories/:id` | Remove a specific memory |

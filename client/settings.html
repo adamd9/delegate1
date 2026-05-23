@@ -618,7 +618,6 @@ const CONFIG_SECTIONS = [
     description: 'Essential runtime and session settings.',
     fields: [
       { key: 'OPENAI_API_KEY', label: 'OpenAI API Key', help: 'Primary model and Responses API credential.', type: 'password', sensitive: true },
-      { key: 'PUBLIC_URL', label: 'Webhook / Callback URL', help: 'The externally-reachable URL that Twilio and other services use to reach this server (e.g. your ngrok or production domain). Not the URL you visit in your browser.', type: 'text' },
       { key: 'TIMEZONE', label: 'Timezone', help: 'Default timezone used for scheduling and date handling.', type: 'select', options: Intl.supportedValuesOf('timeZone').map(tz => [tz, tz]) },
     ],
   },
@@ -712,6 +711,7 @@ const CONFIG_SECTIONS = [
     title: 'Advanced',
     description: 'Optional tuning — these have sensible defaults and rarely need changing.',
     fields: [
+      { key: 'PUBLIC_URL', label: 'Public URL Override', help: 'Only needed for local development behind NAT/proxy (e.g. ngrok). In production the current hostname is used automatically.', type: 'text' },
       { key: 'SESSION_HISTORY_LIMIT', label: 'Session History Limit', help: 'Number of previous conversation items included in context (default: 50).', type: 'number' },
     ],
   },

@@ -6,36 +6,54 @@ nav_order: 5
 
 # Email
 
-Delegate 1 has a polling IMAP receiver and a nodemailer-based sender. The agent can be addressed by email and reply by email.
+Your delegate has its own email address. Send it an email and it emails you back — that's the core idea. It's great for longer requests, tasks where you want to attach context, or anything where you don't need an instant reply and prefer to work asynchronously.
 
-## Architecture
+Your delegate can also send email on its own initiative when you ask it to — for example, "send a summary to my team" or "email me that report."
 
-- **Receiver** (`src/emailReceiver.ts` + `src/emailPoller.ts`) connects via `imap-simple`, polls the inbox on an interval, parses messages with `mailparser`, and dispatches them into the agent.
-- **Sender** (`src/email.ts`) uses `nodemailer` to send outbound mail via SMTP.
-- **State** (`src/emailState.ts`) tracks which UIDs have been processed so polls don't re-handle the same message.
+## Setting up email
 
-## Config
+You'll need an email account dedicated to your delegate (a Gmail alias or a Fastmail address both work well). The account needs to support **IMAP** (for receiving mail) and **SMTP** (for sending mail) — any standard mail provider supports this.
 
-All keys live in the in-app config store (Settings UI):
+### Step-by-step
 
-| Key | Purpose |
-|---|---|
-| `EMAIL_IMAP_HOST`, `EMAIL_IMAP_PORT`, `EMAIL_IMAP_TLS` | IMAP server |
-| `EMAIL_IMAP_USER`, `EMAIL_IMAP_PASSWORD` | IMAP login |
-| `EMAIL_PROCESSED_MAILBOX` | Mailbox name to move processed messages into (e.g. `INBOX.Processed`) |
-| `EMAIL_RECEIVING_FILTER_ENABLED` | When `true`, only emails matching the filter rules are accepted |
-| `EMAIL_SMTP_HOST`, `EMAIL_SMTP_PORT` | SMTP server |
-| `EMAIL_SMTP_USER`, `EMAIL_SMTP_PASS` | SMTP login |
-| `EMAIL_DEFAULT_FROM` | "From" address on outbound mail |
-| `EMAIL_DEFAULT_TO` | Default destination when none is detected |
-| `EMAIL_SENDING_RESTRICTED` | When `true`, restricts outbound to allow-listed recipients |
+1. Open **Settings** in the delegate UI.
+2. Fill in the **incoming mail (IMAP)** fields:
+   - **IMAP host** — your provider's incoming mail server (e.g. `imap.gmail.com`)
+   - **IMAP port** — usually `993` for a secure connection
+   - **Username** — the email address
+   - **Password** — the account password (or an app-specific password if your provider requires one)
+3. Fill in the **outgoing mail (SMTP)** fields:
+   - **SMTP host** — your provider's outgoing mail server (e.g. `smtp.gmail.com`)
+   - **SMTP port** — usually `587` or `465`
+   - **Username** and **Password** — same account credentials as above
+4. Set the **default from address** — the address your delegate sends mail from.
+5. Set the **default to address** — where replies go when no other address is obvious (typically your own email).
+6. Click **Save**.
 
-## Behaviour
+Once saved, your delegate starts checking the inbox automatically and will respond to any new messages it finds.
 
-- The poller runs continuously while the server is up. You'll see `[EmailPoller] Starting email polling...` in the logs.
-- Processed messages are typically moved out of the inbox to avoid reprocessing.
-- Outbound email goes through the `send_email` tool registered with the local provider.
+## Filtering incoming mail
 
-## Testing locally
+By default, your delegate processes every email that arrives in the inbox. If you're worried about spam or unintended messages triggering the delegate, you can enable the **receiving filter** in Settings. When the filter is on, only messages from approved senders are acted on — everything else is ignored.
 
-Use a disposable account or an alias on Gmail/Fastmail. Set the IMAP/SMTP values, send a test email to the account, and watch the logs for poll-fetch-dispatch events.
+## What happens when an email arrives
+
+1. The delegate periodically checks the inbox for new messages.
+2. It reads the message, processes your request (just like a chat message), and sends a reply.
+3. Processed messages are moved out of the inbox so they aren't picked up again.
+
+## Tips
+
+- **Gmail users**: you'll need to enable IMAP in Gmail settings and use an [App Password](https://support.google.com/accounts/answer/185833) rather than your regular password.
+- **Fastmail**: works out of the box with standard IMAP/SMTP credentials.
+- Keep the delegate's email address private — anyone who can email it can interact with your assistant.
+
+---
+
+## Technical details
+
+- **Receiver**: `src/emailReceiver.ts` and `src/emailPoller.ts` connect via the `imap-simple` library, poll the inbox on a configurable interval, and parse messages with `mailparser` before dispatching them into the agent.
+- **Sender**: `src/email.ts` uses `nodemailer` to send outbound mail over SMTP.
+- **State tracking**: `src/emailState.ts` records which IMAP UIDs have already been processed so a message is never handled twice across polling cycles.
+- **Processed mailbox**: the `EMAIL_PROCESSED_MAILBOX` setting controls which folder processed messages are moved into (e.g. `INBOX.Processed`).
+- **Sending restriction**: setting `EMAIL_SENDING_RESTRICTED` to `true` limits outbound mail to an allow-listed set of recipients.

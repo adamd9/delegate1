@@ -36,7 +36,6 @@ const SETUP_GROUPS: SetupGroupDefinition[] = [
     required: true,
     items: [
       { key: 'OPENAI_API_KEY', label: 'OpenAI API Key' },
-      { key: 'PUBLIC_URL', label: 'Webhook / Callback URL' },
       { key: 'TIMEZONE', label: 'Timezone' },
     ],
   },
@@ -130,6 +129,7 @@ const SETUP_GROUPS: SetupGroupDefinition[] = [
     description: 'Optional tuning with sensible defaults',
     required: false,
     items: [
+      { key: 'PUBLIC_URL', label: 'Public URL Override' },
       { key: 'SESSION_HISTORY_LIMIT', label: 'Session History Limit' },
     ],
   },
