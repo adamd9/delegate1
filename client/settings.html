@@ -1818,9 +1818,8 @@ function loadNavWarnings() {
 
       const emailSend = groups.get('email-sending');
       const emailRecv = groups.get('email-receiving');
-      const emailStarted = !!(emailSend?.items?.some(i => i.configured) || emailRecv?.items?.some(i => i.configured));
-      const emailComplete = (!emailSend || emailSend.status === 'complete') && (!emailRecv || emailRecv.status === 'complete');
-      setNavWarn('email', emailStarted && !emailComplete);
+      const emailComplete = emailSend?.status === 'complete' && emailRecv?.status === 'complete';
+      setNavWarn('email', !emailComplete);
 
       const voice = groups.get('voice');
       setNavWarn('voice', !!voice?.items?.some(i => i.configured) && voice.status !== 'complete');
