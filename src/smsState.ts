@@ -14,8 +14,8 @@ function readConfigValue(...keys: string[]): string {
   return '';
 }
 
-const DEFAULT_SMS_TO = readConfigValue('TWILIO_SMS_DEFAULT_TO', 'SMS_DEFAULT_TO');
-const DEFAULT_SMS_FROM = readConfigValue('TWILIO_PHONE_NUMBER', 'TWILIO_SMS_FROM', 'TWILIO_SMS_DEFAULT_FROM', 'SMS_FROM');
+const DEFAULT_SMS_TO = readConfigValue('TWILIO_SMS_DEFAULT_TO');
+const DEFAULT_SMS_FROM = readConfigValue('TWILIO_PHONE_NUMBER');
 
 let smsUserNumber = DEFAULT_SMS_TO;     // Destination (user) number
 let smsTwilioNumber = DEFAULT_SMS_FROM; // Our Twilio sender number

@@ -22,7 +22,7 @@ export const sendSmsTool: FunctionHandler = {
     const { smsUserNumber, smsTwilioNumber } = getNumbers();
     console.debug('[sendSmsTool] Numbers after ensure', { smsUserNumber, smsTwilioNumber });
     if (!smsUserNumber || !smsTwilioNumber) {
-      console.warn('[sendSmsTool] Missing phone numbers for SMS. Ensure env defaults are set (TWILIO_SMS_DEFAULT_TO, TWILIO_SMS_FROM) or numbers captured via webhook', { smsUserNumber, smsTwilioNumber });
+      console.warn('[sendSmsTool] Missing phone numbers for SMS. Ensure TWILIO_PHONE_NUMBER and TWILIO_SMS_DEFAULT_TO are configured, or numbers captured via webhook', { smsUserNumber, smsTwilioNumber });
       return { status: 'failed', reason: 'missing numbers' };
     }
     try {
