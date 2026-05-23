@@ -1422,7 +1422,7 @@ async function loadChannelStatus() {
     const phoneReady = callGroup && callGroup.status === 'complete';
     const smsReady = smsGroup && smsGroup.status === 'complete';
 
-    const number = configMap['TWILIO_SMS_FROM'] || configMap['TWILIO_SMS_DEFAULT_TO'] || '';
+    const number = configMap['TWILIO_PHONE_NUMBER'] || configMap['TWILIO_SMS_FROM'] || '';
     const nameEl = document.getElementById('ch-twilio-number');
     const subEl = document.getElementById('ch-twilio-sub');
     if (number && number !== '••••••') {

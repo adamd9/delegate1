@@ -61,8 +61,8 @@ const SETUP_GROUPS: SetupGroupDefinition[] = [
     items: [
       { key: 'TWILIO_SMS_ACCOUNT_SID', label: 'Twilio SMS Account SID' },
       { key: 'TWILIO_SMS_AUTH_TOKEN', label: 'Twilio SMS Auth Token' },
+      { key: 'TWILIO_PHONE_NUMBER', label: 'Twilio Phone Number' },
       { key: 'TWILIO_MESSAGING_SERVICE_SID', label: 'Twilio Messaging Service SID' },
-      { key: 'TWILIO_SMS_FROM', label: 'SMS From Number' },
       { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Twilio SMS Default To' },
     ],
   },

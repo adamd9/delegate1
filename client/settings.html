@@ -641,8 +641,8 @@ const CONFIG_SECTIONS = [
     fields: [
       { key: 'TWILIO_SMS_ACCOUNT_SID', label: 'SMS Account SID', help: 'Twilio account SID used for SMS sending.', type: 'text' },
       { key: 'TWILIO_SMS_AUTH_TOKEN', label: 'SMS Auth Token', help: 'Auth token used for SMS-specific requests.', type: 'password', sensitive: true },
+      { key: 'TWILIO_PHONE_NUMBER', label: 'Twilio Phone Number', help: 'Your Twilio number for calls and SMS (e.g. +61400000000).', type: 'text' },
       { key: 'TWILIO_MESSAGING_SERVICE_SID', label: 'Messaging Service SID', help: 'Messaging service that owns outbound phone numbers.', type: 'text' },
-      { key: 'TWILIO_SMS_FROM', label: 'SMS From Number', help: 'Your Twilio phone number used as the sender for SMS (e.g. +61400000000).', type: 'text' },
       { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Default SMS Recipient', help: 'Fallback destination phone number for outbound SMS.', type: 'text' },
     ],
   },
