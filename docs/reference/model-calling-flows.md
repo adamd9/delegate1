@@ -1,3 +1,9 @@
+---
+title: Model calling flows
+parent: Reference
+nav_order: 4
+---
+
 # Model Calling Flows: Voice Call vs Text Chat
 
 This document explains how the websocket-server calls OpenAI models for the two session paths and why the models differ.
