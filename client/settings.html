@@ -45,6 +45,7 @@
     .sidebar-item:hover { background: var(--surface2); color: var(--text); }
     .sidebar-item.active { background: var(--surface2); color: var(--accent); }
     .sidebar-icon { width: 14px; height: 14px; flex-shrink: 0; }
+    .nav-warn { margin-left: auto; font-size: 12px; }
 
     /* ── Content ── */
     .content { flex: 1; overflow-y: auto; padding: 20px 24px; }
@@ -694,28 +695,28 @@ const VOICE_CONFIG_SECTIONS = [
 
 const EMAIL_SECTIONS = [
   {
-    id: 'email-sending',
-    title: 'Sending (SMTP)',
-    description: 'Outbound email configuration.',
+    id: 'email-connection',
+    title: 'Email Connection',
+    description: 'Server credentials for sending and receiving. Most providers (Gmail, Outlook) use the same username/password for both.',
     fields: [
-      { key: 'EMAIL_SMTP_HOST', label: 'SMTP Host', type: 'text' },
+      { key: 'EMAIL_SMTP_HOST', label: 'SMTP Host', type: 'text', help: 'e.g. smtp.gmail.com' },
       { key: 'EMAIL_SMTP_PORT', label: 'SMTP Port', type: 'number', default: '587', help: 'Default: 587' },
-      { key: 'EMAIL_SMTP_USER', label: 'SMTP Username', type: 'text' },
-      { key: 'EMAIL_SMTP_PASS', label: 'SMTP Password', type: 'password', sensitive: true },
-      { key: 'EMAIL_DEFAULT_FROM', label: 'Default From Address', type: 'text' },
-      { key: 'EMAIL_SENDING_RESTRICTED', label: 'Restrict Outbound Sending', type: 'boolean', help: 'Limit who the system can send to.' },
+      { key: 'EMAIL_SMTP_USER', label: 'Username', type: 'text', help: 'Used for SMTP (and IMAP if not overridden below).' },
+      { key: 'EMAIL_SMTP_PASS', label: 'Password', type: 'password', sensitive: true, help: 'Used for SMTP (and IMAP if not overridden below).' },
+      { key: 'EMAIL_IMAP_HOST', label: 'IMAP Host', type: 'text', help: 'e.g. imap.gmail.com. Leave blank if not receiving.' },
+      { key: 'EMAIL_IMAP_PORT', label: 'IMAP Port', type: 'number', default: '993', help: 'Default: 993' },
+      { key: 'EMAIL_IMAP_USER', label: 'IMAP Username (override)', type: 'text', help: 'Only if different from SMTP username.' },
+      { key: 'EMAIL_IMAP_PASSWORD', label: 'IMAP Password (override)', type: 'password', sensitive: true, help: 'Only if different from SMTP password.' },
+      { key: 'EMAIL_IMAP_TLS', label: 'IMAP Use TLS', type: 'boolean', default: 'true', help: 'Default: true' },
     ],
   },
   {
-    id: 'email-receiving',
-    title: 'Receiving (IMAP)',
-    description: 'Inbound email polling configuration.',
+    id: 'email-options',
+    title: 'Email Options',
+    description: 'Sending and receiving behaviour.',
     fields: [
-      { key: 'EMAIL_IMAP_HOST', label: 'IMAP Host', type: 'text' },
-      { key: 'EMAIL_IMAP_PORT', label: 'IMAP Port', type: 'number', default: '993', help: 'Default: 993' },
-      { key: 'EMAIL_IMAP_USER', label: 'IMAP Username', type: 'text' },
-      { key: 'EMAIL_IMAP_PASSWORD', label: 'IMAP Password', type: 'password', sensitive: true },
-      { key: 'EMAIL_IMAP_TLS', label: 'Use TLS', type: 'boolean', default: 'true', help: 'Default: true' },
+      { key: 'EMAIL_DEFAULT_FROM', label: 'Default From Address', type: 'text', help: 'Sender address for outbound mail.' },
+      { key: 'EMAIL_SENDING_RESTRICTED', label: 'Restrict Outbound Sending', type: 'boolean', help: 'Limit who the system can send to.' },
       { key: 'EMAIL_RECEIVING_FILTER_ENABLED', label: 'Enable Receive Filter', type: 'boolean', help: 'Filter inbound mail before processing.' },
     ],
   },
@@ -1782,9 +1783,59 @@ function renderAbout() {
 }
 
 // ──────────────────────────────────────────────
+// Nav warning indicators
+// ──────────────────────────────────────────────
+function setNavWarn(tab, show) {
+  const btn = document.querySelector(`.sidebar-item[data-tab="${tab}"]`);
+  if (!btn) return;
+  const existing = btn.querySelector('.nav-warn');
+  if (show && !existing) {
+    const span = document.createElement('span');
+    span.className = 'nav-warn';
+    span.textContent = '⚠️';
+    btn.appendChild(span);
+  } else if (!show && existing) {
+    existing.remove();
+  }
+}
+
+function loadNavWarnings() {
+  fetch('/api/setup/status')
+    .then(r => r.ok ? r.json() : null)
+    .then(setup => {
+      if (!setup) return;
+      const groups = new Map((setup.groups || []).map(g => [g.id, g]));
+
+      const core = groups.get('core');
+      setNavWarn('config', !!core && core.status !== 'complete');
+
+      const calls = groups.get('twilio-calls');
+      const sms = groups.get('twilio-sms');
+      // Show warning if calls are configured but SMS is not (partially set up)
+      const twilioStarted = !!(calls?.items?.some(i => i.configured) || sms?.items?.some(i => i.configured));
+      const twilioComplete = (!calls || calls.status === 'complete') && (!sms || sms.status === 'complete');
+      setNavWarn('twilio', twilioStarted && !twilioComplete);
+
+      const emailSend = groups.get('email-sending');
+      const emailRecv = groups.get('email-receiving');
+      const emailStarted = !!(emailSend?.items?.some(i => i.configured) || emailRecv?.items?.some(i => i.configured));
+      const emailComplete = (!emailSend || emailSend.status === 'complete') && (!emailRecv || emailRecv.status === 'complete');
+      setNavWarn('email', emailStarted && !emailComplete);
+
+      const voice = groups.get('voice');
+      setNavWarn('voice', !!voice?.items?.some(i => i.configured) && voice.status !== 'complete');
+
+      const browser = groups.get('browser-copilot');
+      setNavWarn('browser', !!browser?.items?.some(i => i.configured) && browser.status !== 'complete');
+    })
+    .catch(() => {});
+}
+
+// ──────────────────────────────────────────────
 // Boot
 // ──────────────────────────────────────────────
 setTab(getInitialTab());
+loadNavWarnings();
 </script>
 <script src="/vendor/theme-manager.js"></script>
 </body>
