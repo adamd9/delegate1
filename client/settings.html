@@ -756,14 +756,14 @@ const BROWSER_SECTIONS = [
   {
     id: 'browser-copilot',
     title: 'Browser / Copilot',
-    description: 'Browser automation and GitHub integration.',
+    description: 'Run the GitHub Copilot CLI inside a browser-controlled workspace. Requires two separate GitHub credentials: a Personal Access Token (for the GitHub REST API — issues, PRs, repos) and a Copilot OAuth token (for authenticating the Copilot CLI subscription).',
     fields: [
-      { key: 'BROWSER_ENABLED', label: 'Enable Browser Agent', type: 'boolean', default: 'false', help: 'Default: false' },
-      { key: 'COPILOT_GITHUB_TOKEN', label: 'Copilot GitHub Token', type: 'password', sensitive: true },
-      { key: 'COPILOT_REMOTE_REPO', label: 'Remote Repository', type: 'text' },
-      { key: 'VNC_PASSWORD', label: 'VNC Password', type: 'password', sensitive: true },
-      { key: 'COPILOT_TIMEOUT_MS', label: 'Copilot Timeout (ms)', type: 'number', default: '120000', help: 'Default: 120000' },
-      { key: 'GITHUB_PAT', label: 'GitHub PAT', type: 'password', sensitive: true, help: 'Personal access token for GitHub API.' },
+      { key: 'BROWSER_ENABLED', label: 'Enable Browser Agent', type: 'boolean', default: 'false', help: 'Master switch for the browser-based Copilot agent.' },
+      { key: 'GITHUB_PAT', label: 'GitHub Personal Access Token (PAT)', type: 'password', sensitive: true, help: 'Classic or fine-grained PAT for the GitHub REST API. Used by the github tool to read/write issues, PRs, and repo contents, and to push commits to your remote repo. Needs repo + (optionally) workflow scopes. Create one at https://github.com/settings/tokens.' },
+      { key: 'COPILOT_GITHUB_TOKEN', label: 'Copilot CLI OAuth Token', type: 'password', sensitive: true, help: 'OAuth token authorising the GitHub Copilot CLI subscription. This is NOT a PAT — it is the device-flow token the `copilot` CLI uses to talk to the Copilot service. Obtain by running `copilot auth login` locally and copying the resulting token, or by completing the GitHub device-flow on the linked account.' },
+      { key: 'COPILOT_REMOTE_REPO', label: 'Remote Repository', type: 'text', help: 'GitHub repo (owner/name) used as the working scratchpad for Copilot CLI sessions. If empty, one is auto-created.' },
+      { key: 'VNC_PASSWORD', label: 'VNC Password', type: 'password', sensitive: true, help: 'Password for the noVNC viewer that exposes the headed browser.' },
+      { key: 'COPILOT_TIMEOUT_MS', label: 'Copilot Timeout (ms)', type: 'number', default: '120000', help: 'Max time to wait for a Copilot CLI command to complete.' },
     ],
   },
 ];
