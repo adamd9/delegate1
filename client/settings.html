@@ -786,10 +786,10 @@ function createConfigControl(field, item, idSuffix) {
 
   if (field.type === 'boolean') {
     const select = el('select', { class: 'config-select', id: idSuffix, 'data-config-key': field.key });
-    const unsetLabel = defaultValue ? `— not set (default: ${defaultValue}) —` : '— not set —';
-    [['', unsetLabel], ['true', 'True'], ['false', 'False']].forEach(([value, label]) => {
+    const effectiveValue = currentValue || defaultValue || 'false';
+    [['true', 'True'], ['false', 'False']].forEach(([value, label]) => {
       const option = el('option', { value }, label);
-      if (currentValue === value) option.selected = true;
+      if (effectiveValue === value) option.selected = true;
       select.appendChild(option);
     });
     wrapper.appendChild(select);
