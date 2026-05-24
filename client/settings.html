@@ -45,6 +45,7 @@
     .sidebar-item:hover { background: var(--surface2); color: var(--text); }
     .sidebar-item.active { background: var(--surface2); color: var(--accent); }
     .sidebar-icon { width: 14px; height: 14px; flex-shrink: 0; }
+    .sidebar-group-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); padding: 12px 10px 4px; font-weight: 600; }
     .nav-warn { margin-left: auto; font-size: 12px; }
 
     /* ── Content ── */
@@ -254,14 +255,24 @@
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
         Logs
       </button>
+      <div class="sidebar-group-label">Channels</div>
       <button class="sidebar-item" data-tab="voice">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
         Phone & Voice
+      </button>
+      <button class="sidebar-item" data-tab="email">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Email
       </button>
       <button class="sidebar-item" data-tab="walkie-talkie">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
         Walkie-Talkie
       </button>
+      <button class="sidebar-item" data-tab="browser">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        Browser / Copilot
+      </button>
+      <div class="sidebar-group-label">Agent</div>
       <button class="sidebar-item" data-tab="catalog">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
         Tools
@@ -278,17 +289,10 @@
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
         Memory
       </button>
+      <div class="sidebar-group-label">System</div>
       <button class="sidebar-item" data-tab="config">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93-2.83-2.83"/><path d="m16.24 16.24-2.83-2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07-2.83 2.83"/><path d="m16.24 7.76-2.83 2.83"/><circle cx="12" cy="12" r="3"/></svg>
         Configuration
-      </button>
-      <button class="sidebar-item" data-tab="email">
-        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-        Email
-      </button>
-      <button class="sidebar-item" data-tab="browser">
-        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        Browser / Copilot
       </button>
       <button class="sidebar-item" data-tab="maintenance">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
@@ -723,27 +727,27 @@ const EMAIL_SECTIONS = [
   {
     id: 'email-connection',
     title: 'Email Connection',
-    description: 'Server credentials for sending and receiving. Most providers (Gmail, Outlook) use the same username/password for both.',
+    description: 'Server credentials for sending and receiving. The same username and password are used for both SMTP and IMAP.',
+    required: true,
     fields: [
+      { key: 'EMAIL_SMTP_USER', label: 'Username', type: 'text', help: 'Your email address or account username.' },
+      { key: 'EMAIL_SMTP_PASS', label: 'Password', type: 'password', sensitive: true, help: 'App password or account password.' },
+      { key: 'EMAIL_DEFAULT_FROM', label: 'From Address', type: 'text', help: 'The address shown when the agent sends email.' },
       { key: 'EMAIL_SMTP_HOST', label: 'SMTP Host', type: 'text', help: 'e.g. smtp.gmail.com' },
       { key: 'EMAIL_SMTP_PORT', label: 'SMTP Port', type: 'number', default: '587', help: 'Default: 587' },
-      { key: 'EMAIL_SMTP_USER', label: 'Username', type: 'text', help: 'Used for SMTP (and IMAP if not overridden below).' },
-      { key: 'EMAIL_SMTP_PASS', label: 'Password', type: 'password', sensitive: true, help: 'Used for SMTP (and IMAP if not overridden below).' },
-      { key: 'EMAIL_IMAP_HOST', label: 'IMAP Host', type: 'text', help: 'e.g. imap.gmail.com. Leave blank if not receiving.' },
+      { key: 'EMAIL_IMAP_HOST', label: 'IMAP Host', type: 'text', help: 'e.g. imap.gmail.com. Required for receiving.' },
       { key: 'EMAIL_IMAP_PORT', label: 'IMAP Port', type: 'number', default: '993', help: 'Default: 993' },
-      { key: 'EMAIL_IMAP_USER', label: 'IMAP Username (override)', type: 'text', help: 'Only if different from SMTP username.' },
-      { key: 'EMAIL_IMAP_PASSWORD', label: 'IMAP Password (override)', type: 'password', sensitive: true, help: 'Only if different from SMTP password.' },
       { key: 'EMAIL_IMAP_TLS', label: 'IMAP Use TLS', type: 'boolean', default: 'true', help: 'Default: true' },
     ],
   },
   {
     id: 'email-options',
-    title: 'Email Safety & Options',
-    description: 'Control who the agent can email and how inbound mail is handled.',
+    title: 'Email Safety & Filtering',
+    description: 'Control who the agent can email and which inbound mail it processes.',
     fields: [
-      { key: 'EMAIL_DEFAULT_FROM', label: 'Default From Address', type: 'text', help: 'Sender address for outbound mail.' },
-      { key: 'EMAIL_SENDING_RESTRICTED', label: 'Restrict Outbound Recipients', type: 'boolean', help: '⚠️ Safety guard — when enabled, the agent can ONLY send emails to allowed recipients. Prevents accidental sends to unintended contacts.' },
-      { key: 'EMAIL_RECEIVING_FILTER_ENABLED', label: 'Enable Receive Filter', type: 'boolean', help: 'Filter inbound mail before processing.' },
+      { key: 'EMAIL_DEFAULT_TO', label: 'Allowed Recipient', type: 'text', help: '⚠️ Safety guard — when outbound restriction is on, the agent can ONLY send to this address. Also used as the inbound filter address.' },
+      { key: 'EMAIL_SENDING_RESTRICTED', label: 'Restrict Outbound', type: 'boolean', default: 'true', help: 'When enabled, all outbound email is forced to the Allowed Recipient above.' },
+      { key: 'EMAIL_RECEIVING_FILTER_ENABLED', label: 'Filter Inbound', type: 'boolean', default: 'true', help: 'When enabled, only processes emails addressed to the Allowed Recipient above.' },
     ],
   },
 ];
@@ -1919,10 +1923,8 @@ function loadNavWarnings() {
       const calls = groups.get('twilio-calls');
       setNavWarn('voice', !!calls && calls.status !== 'complete');
 
-      const emailSend = groups.get('email-sending');
-      const emailRecv = groups.get('email-receiving');
-      const emailComplete = emailSend?.status === 'complete' && emailRecv?.status === 'complete';
-      setNavWarn('email', !emailComplete);
+      const emailGroup = groups.get('email');
+      setNavWarn('email', !!emailGroup && emailGroup.status !== 'complete');
 
       const browser = groups.get('browser-copilot');
       setNavWarn('browser', !!browser?.items?.some(i => i.configured) && browser.status !== 'complete');

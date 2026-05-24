@@ -6,8 +6,8 @@ dotenv.config();
 
 const config = {
   imap: {
-    user: configService.get('EMAIL_IMAP_USER') || '',
-    password: configService.get('EMAIL_IMAP_PASSWORD') || '',
+    user: configService.get('EMAIL_IMAP_USER') || configService.get('EMAIL_SMTP_USER') || '',
+    password: configService.get('EMAIL_IMAP_PASSWORD') || configService.get('EMAIL_SMTP_PASS') || '',
     host: configService.get('EMAIL_IMAP_HOST') || '',
     port: parseInt(configService.get('EMAIL_IMAP_PORT') || '993', 10),
     tls: (configService.get('EMAIL_IMAP_TLS') || 'true') === 'true',
