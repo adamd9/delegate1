@@ -196,15 +196,20 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
   
   return {
     type: "realtime" as const,
-    modalities: ["text", "audio"] as const,
-    turn_detection: turnDetection,
-    voice: voiceConfig.voice,
-    speed: voiceConfig.speed,
-    input_audio_transcription: { model: "whisper-1" },
-    input_audio_format: audioFormat,
-    output_audio_format: audioFormat,
-    tools: functionSchemas,
+    output_modalities: ["text", "audio"] as const,
     instructions: agentInstructions,
+    tools: functionSchemas,
+    audio: {
+      input: {
+        format: audioFormat,
+        transcription: { model: "gpt-4o-mini-transcribe" },
+        turn_detection: turnDetection,
+      },
+      output: {
+        format: audioFormat,
+        voice: voiceConfig.voice,
+      },
+    },
   };
 }
 
@@ -682,6 +687,7 @@ export function processRealtimeModelEvent(
       }
       break;
     }
+    case "response.output_audio_transcript.delta":
     case "response.audio_transcript.delta": {
       // Streaming assistant voice transcript text; accumulate by item_id for final logging
       const id = event.item_id;
@@ -771,6 +777,7 @@ export function processRealtimeModelEvent(
       }
       break;
     }
+    case "response.output_audio.delta":
     case "response.audio.delta":
       // Drop audio deltas for a cancelled/truncated response (race window after response.cancel)
       if (event.item_id && event.item_id === (session as any)._cancelledItemId) {
@@ -825,6 +832,7 @@ export function processRealtimeModelEvent(
         }
       }
       break;
+    case "response.output_audio.done":
     case "response.audio.done":
       // Audio generation for this response is complete. Clear the response-active
       // tracking so that speech_started after this point doesn't try response.cancel.
