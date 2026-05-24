@@ -41,25 +41,17 @@ const SETUP_GROUPS: SetupGroupDefinition[] = [
   },
   {
     id: 'twilio-calls',
-    name: 'Twilio - Calls',
-    description: 'Voice calling and Twilio client credentials',
+    name: 'Phone & Voice',
+    description: 'Twilio credentials and phone numbers for calls and SMS',
     required: false,
     items: [
+      { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Your Phone Number' },
+      { key: 'TWILIO_PHONE_NUMBER', label: 'Twilio Phone Number' },
       { key: 'TWILIO_ACCOUNT_SID', label: 'Twilio Account SID' },
       { key: 'TWILIO_AUTH_TOKEN', label: 'Twilio Auth Token' },
       { key: 'TWILIO_API_KEY_SID', label: 'Twilio API Key SID' },
       { key: 'TWILIO_API_KEY_SECRET', label: 'Twilio API Key Secret' },
       { key: 'TWILIO_TWIML_APP_SID', label: 'Twilio TwiML App SID' },
-    ],
-  },
-  {
-    id: 'twilio-sms',
-    name: 'Twilio - SMS',
-    description: 'SMS delivery configuration',
-    required: false,
-    items: [
-      { key: 'TWILIO_PHONE_NUMBER', label: 'Twilio Phone Number' },
-      { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Default SMS Recipient' },
     ],
   },
   {

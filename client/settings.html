@@ -677,24 +677,17 @@ const CONFIG_SECTIONS = [
 const TWILIO_SECTIONS = [
   {
     id: 'twilio-required',
-    title: 'Required — Twilio Credentials',
-    description: 'These are needed for phone calls and SMS to work.',
+    title: 'Required — Phone & Twilio',
+    description: 'Credentials and phone numbers needed for calls and SMS to work.',
     required: true,
     fields: [
+      { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Your Phone Number', type: 'text', help: '⚠️ Safety guard — the agent will ONLY send calls and SMS to this number. Prevents accidental contact to unintended recipients.' },
+      { key: 'TWILIO_PHONE_NUMBER', label: 'Twilio Number (Caller ID)', type: 'text', help: 'The Twilio number displayed when the agent calls or texts you.' },
       { key: 'TWILIO_ACCOUNT_SID', label: 'Account SID', type: 'text' },
       { key: 'TWILIO_AUTH_TOKEN', label: 'Auth Token', type: 'password', sensitive: true },
       { key: 'TWILIO_API_KEY_SID', label: 'API Key SID', type: 'text' },
       { key: 'TWILIO_API_KEY_SECRET', label: 'API Key Secret', type: 'password', sensitive: true },
       { key: 'TWILIO_TWIML_APP_SID', label: 'TwiML App SID', type: 'text' },
-    ],
-  },
-  {
-    id: 'phone-identity',
-    title: 'Safety & Identity',
-    description: 'Controls who the agent can contact and how it identifies itself.',
-    fields: [
-      { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Your Phone Number', type: 'text', help: '⚠️ Safety guard — the agent will ONLY send calls and SMS to this number. Prevents accidental contact to unintended recipients.' },
-      { key: 'TWILIO_PHONE_NUMBER', label: 'Twilio Number (Caller ID)', type: 'text', help: 'The Twilio number displayed when the agent calls or texts you.' },
     ],
   },
 ];
@@ -851,7 +844,6 @@ function buildConfigField(field, item, sectionId) {
   const head = el('div', { class: 'config-field-head' });
   const titleWrap = el('div', { style: { minWidth: '0' } });
   titleWrap.appendChild(el('label', { class: 'config-field-title', for: fieldId }, field.label));
-  titleWrap.appendChild(el('div', { class: 'config-env' }, field.key));
   head.appendChild(titleWrap);
   const hasValue = control.masked || (item && item.value);
   if (hasValue) head.appendChild(el('span', { class: 'config-status' }, '✓ Configured'));
