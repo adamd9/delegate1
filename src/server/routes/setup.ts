@@ -60,9 +60,10 @@ const SETUP_GROUPS: SetupGroupDefinition[] = [
     description: 'Email sending and receiving configuration',
     required: false,
     items: [
+      { key: 'EMAIL_DEFAULT_TO', label: 'Your Email Address' },
+      { key: 'EMAIL_DEFAULT_FROM', label: 'Agent Email Address' },
       { key: 'EMAIL_SMTP_USER', label: 'Username' },
       { key: 'EMAIL_SMTP_PASS', label: 'Password' },
-      { key: 'EMAIL_DEFAULT_FROM', label: 'From Address' },
       { key: 'EMAIL_SMTP_HOST', label: 'SMTP Host' },
       { key: 'EMAIL_IMAP_HOST', label: 'IMAP Host' },
     ],

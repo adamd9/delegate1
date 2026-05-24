@@ -727,11 +727,12 @@ const EMAIL_SECTIONS = [
   {
     id: 'email-connection',
     title: 'Email Account',
-    description: 'Your email identity and server connection. The same credentials are used for both sending (SMTP) and receiving (IMAP).',
+    description: 'The two email addresses that define this channel, plus server credentials for sending and receiving.',
     required: true,
     fields: [
-      { key: 'EMAIL_DEFAULT_FROM', label: 'Email Address', type: 'text', help: 'The address the agent sends from and identifies as.' },
-      { key: 'EMAIL_SMTP_USER', label: 'Login Username', type: 'text', help: 'Usually the same as your email address.' },
+      { key: 'EMAIL_DEFAULT_TO', label: 'Your Email Address', type: 'text', help: 'Your personal email — where the agent sends messages to you. Also acts as a safety guard: when restrictions are enabled, the agent can ONLY email this address.' },
+      { key: 'EMAIL_DEFAULT_FROM', label: 'Agent Email Address', type: 'text', help: 'The agent\'s own email — the "from" address on all outbound mail and the inbox it monitors for inbound messages.' },
+      { key: 'EMAIL_SMTP_USER', label: 'Login Username', type: 'text', help: 'Usually the same as the agent email address above.' },
       { key: 'EMAIL_SMTP_PASS', label: 'Login Password', type: 'password', sensitive: true, help: 'App password (recommended) or account password.' },
       { key: 'EMAIL_SMTP_HOST', label: 'SMTP Server', type: 'text', help: 'Outbound mail server, e.g. smtp.gmail.com' },
       { key: 'EMAIL_SMTP_PORT', label: 'SMTP Port', type: 'number', default: '587', help: 'Default: 587 (TLS). Use 465 for SSL.' },
@@ -743,11 +744,10 @@ const EMAIL_SECTIONS = [
   {
     id: 'email-options',
     title: 'Email Safety & Filtering',
-    description: 'Restrict who the agent can contact and which inbound mail it processes. Both guards use the Allowed Recipient address below.',
+    description: 'Additional restrictions on who the agent can contact and which inbound mail it processes.',
     fields: [
-      { key: 'EMAIL_SENDING_RESTRICTED', label: 'Restrict Outbound', type: 'boolean', default: 'true', help: 'When enabled, all outbound email is forced to the Allowed Recipient.' },
-      { key: 'EMAIL_RECEIVING_FILTER_ENABLED', label: 'Filter Inbound', type: 'boolean', default: 'true', help: 'When enabled, only processes emails addressed to the Allowed Recipient.' },
-      { key: 'EMAIL_DEFAULT_TO', label: 'Allowed Recipient', type: 'text', help: '⚠️ The address used by both guards above. The agent can only send to and receive from this address when restrictions are enabled.' },
+      { key: 'EMAIL_SENDING_RESTRICTED', label: 'Restrict Outbound', type: 'boolean', default: 'true', help: 'When enabled, all outbound email is forced to Your Email Address above — prevents the agent emailing anyone else.' },
+      { key: 'EMAIL_RECEIVING_FILTER_ENABLED', label: 'Filter Inbound', type: 'boolean', default: 'true', help: 'When enabled, only processes emails addressed to the Agent Email Address — ignores everything else in the inbox.' },
     ],
   },
 ];
