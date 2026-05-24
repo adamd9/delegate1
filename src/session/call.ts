@@ -196,6 +196,7 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
   
   return {
     type: "realtime" as const,
+    voice: voiceConfig.voice,
     output_modalities: ["text", "audio"] as const,
     instructions: agentInstructions,
     tools: functionSchemas,
@@ -409,6 +410,7 @@ export function establishRealtimeModelConnection() {
       sessionConfig.instructions = contextPrefix + sessionConfig.instructions;
     }
 
+    console.info('[realtime] sending session.update with voice:', sessionConfig.audio?.output?.voice);
     jsonSend(session.modelConn, {
       type: "session.update",
       session: sessionConfig,
@@ -560,6 +562,12 @@ export function processRealtimeModelEvent(
 
   try {
     switch (event.type) {
+    case "session.created":
+    case "session.updated": {
+      const voice = event.session?.voice || event.session?.audio?.output?.voice;
+      console.info(`[realtime] ${event.type}: voice=${voice}, model=${event.session?.model || 'unknown'}`);
+      break;
+    }
     case "error": {
       if (event?.error?.code === 'response_cancel_not_active') {
         break;
