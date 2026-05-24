@@ -879,8 +879,9 @@ function buildConfigSectionCard(section, configMap) {
         msg.className = 'save-msg ok';
         msg.textContent = 'Saved!';
         showToast(`${section.title} saved.`);
+        // Refresh current tab to reflect updated values
         const updatedItems = normalizeConfigItems(payload);
-        if (updatedItems.length > 0) renderConfig(updatedItems);
+        if (updatedItems.length > 0 && activeTab) renderTab(activeTab);
       } catch (err) {
         msg.className = 'save-msg err';
         msg.textContent = 'Error: ' + err.message;
