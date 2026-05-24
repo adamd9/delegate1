@@ -172,23 +172,25 @@
     document.body.appendChild(host);
   }
 
-  function init() {
-    let preferred = DEFAULT_THEME;
-    try {
-      preferred = localStorage.getItem(STORAGE_KEY) || DEFAULT_THEME;
-    } catch {
-      preferred = DEFAULT_THEME;
-    }
-    applyTheme(preferred);
-    // Only inject control if element with id 'theme-control-target' exists (e.g., on settings page)
+  // Apply the theme synchronously (documentElement always exists, even during head
+  // parsing) so CSS variables are set before first paint and we avoid a flash.
+  let preferred = DEFAULT_THEME;
+  try {
+    preferred = localStorage.getItem(STORAGE_KEY) || DEFAULT_THEME;
+  } catch {
+    preferred = DEFAULT_THEME;
+  }
+  applyTheme(preferred);
+
+  function maybeInjectControl() {
     if (document.getElementById('theme-control-target')) {
       injectControl();
     }
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', maybeInjectControl);
   } else {
-    init();
+    maybeInjectControl();
   }
 })();
