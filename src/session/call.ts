@@ -196,7 +196,7 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
   
   return {
     type: "realtime" as const,
-    output_modalities: ["text", "audio"] as const,
+    output_modalities: ["audio"] as const,
     instructions: agentInstructions,
     tools: functionSchemas,
     audio: {
