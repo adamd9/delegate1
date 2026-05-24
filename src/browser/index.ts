@@ -215,7 +215,16 @@ function setupWorkDirFromRemote(remoteUrl: string, token: string): void {
   }
 }
 
-function scaffoldWorkDir(): void {
+interface ScaffoldResult {
+  /** Resolved owner/name of the workspace repo (whether pre-existing or auto-created). */
+  resolvedRepo?: string;
+  /** True if we created (or discovered an existing) repo when no value was set. */
+  autoCreated?: boolean;
+}
+
+function scaffoldWorkDir(): ScaffoldResult {
+  const result: ScaffoldResult = {};
+
   // Copilot CLI discovers agents from $COPILOT_HOME/agents/ (user-global path)
   const agentDestDir = path.join(COPILOT_HOME_DIR, 'agents');
   const destFile = path.join(agentDestDir, 'delegate-browser.agent.md');
@@ -229,7 +238,7 @@ function scaffoldWorkDir(): void {
   const srcFile = candidates.find((p) => fs.existsSync(p));
   if (!srcFile) {
     console.warn('[browser] agent definition not found — skipping workdir scaffold');
-    return;
+    return result;
   }
 
   fs.mkdirSync(agentDestDir, { recursive: true });
@@ -240,11 +249,19 @@ function scaffoldWorkDir(): void {
   // Strategy: if COPILOT_REMOTE_REPO is set, use it. Otherwise auto-create one.
   // Always ensure local workdir is a clean clone of the remote.
   const token = configService.get('COPILOT_GITHUB_TOKEN');
-  let remoteRepo = configService.get('COPILOT_REMOTE_REPO');
+  const configuredRepo = configService.get('COPILOT_REMOTE_REPO');
+  let remoteRepo = configuredRepo;
 
   if (token && !remoteRepo) {
     // Auto-create a default repo if none specified
     remoteRepo = autoCreateRemoteRepo(token);
+    if (remoteRepo) result.autoCreated = true;
+  }
+
+  if (remoteRepo) {
+    // Normalise to owner/name form for storing back into config
+    const match = remoteRepo.match(/github\.com[\/:]([^\/]+\/[^\/]+?)(?:\.git)?$/);
+    result.resolvedRepo = match ? match[1] : remoteRepo;
   }
 
   if (remoteRepo && token) {
@@ -335,6 +352,8 @@ exit 0
     // Non-fatal — copilot can still run; it just won't have the packaged skill reference
     console.warn('[browser] playwright-cli install --skills failed (non-fatal):', err.message || err);
   }
+
+  return result;
 }
 
 function setupCopilotHome(): void {
@@ -509,24 +528,39 @@ function _launchHeadedBrowser(): void {
 // Public API
 // ---------------------------------------------------------------------------
 
-export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string }> {
+export interface StartBrowserResult {
+  ok: boolean;
+  error?: string;
+  /** Resolved workspace repo (owner/name) — useful for writing back after auto-create. */
+  resolvedRepo?: string;
+  autoCreated?: boolean;
+  /** True if the infra was skipped because BROWSER_ENABLED is false. */
+  disabled?: boolean;
+}
+
+export async function startBrowserInfra(): Promise<StartBrowserResult> {
   if (configService.get('BROWSER_ENABLED') !== 'true') {
-    return { ok: true };
+    return { ok: true, disabled: true };
   }
 
   const docker = isDocker();
+  let scaffoldResult: ScaffoldResult = {};
 
   try {
     ensureDirectories();
     console.log(`[browser] directories ready — profile: ${BROWSER_PROFILE_DIR}, work: ${COPILOT_WORK_DIR}`);
 
     setupCopilotHome();
-    scaffoldWorkDir();
+    scaffoldResult = scaffoldWorkDir();
 
     if (!docker) {
       console.log('[browser] local dev mode — skipping display processes');
       running = true;
-      return { ok: true };
+      return {
+        ok: true,
+        resolvedRepo: scaffoldResult.resolvedRepo,
+        autoCreated: scaffoldResult.autoCreated,
+      };
     }
 
     // --- Docker mode: start Xvfb, fluxbox, x11vnc ---
@@ -600,12 +634,25 @@ export async function startBrowserInfra(): Promise<{ ok: boolean; error?: string
     }, 10_000);
 
     running = true;
-    return { ok: true };
+    return {
+      ok: true,
+      resolvedRepo: scaffoldResult.resolvedRepo,
+      autoCreated: scaffoldResult.autoCreated,
+    };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[browser] failed to start infrastructure: ${message}`);
     return { ok: false, error: message };
   }
+}
+
+/**
+ * Stop and re-start the browser infrastructure to pick up new config values.
+ * Safe to call at runtime; will tear down active Xvfb/Chromium/x11vnc processes.
+ */
+export async function reinitBrowserInfra(): Promise<StartBrowserResult> {
+  stopBrowserInfra();
+  return startBrowserInfra();
 }
 
 export function stopBrowserInfra(): void {

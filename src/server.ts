@@ -5,7 +5,7 @@ import session from 'express-session';
 import { randomBytes } from 'crypto';
 import { join } from "path";
 import cors from "cors";
-import { startEmailPolling } from './emailPoller';
+import { startEmailPolling, reinitEmailPolling } from './emailPoller';
 import { attachWebSockets } from './ws/attach';
 import { registerTwilioRoutes } from './server/routes/twilio';
 import { registerThoughtflowRoutes } from './server/routes/thoughtflow';
@@ -37,9 +37,10 @@ import { finalizeOpenSessionsOnStartup } from './server/startup/finalize';
 import { initToolsAndRegistry } from './server/startup/init';
 import { writeLatestStartupResults } from './server/startup/note';
 import { reloadAdaptations } from './adaptations';
-import { startBrowserInfra, stopBrowserInfra } from './browser';
+import { startBrowserInfra, stopBrowserInfra, reinitBrowserInfra } from './browser';
 import { registerMcpServerRoutes } from './mcp/server';
 import { configService } from './config';
+import { registerReinit } from './reinit/registry';
 import { getDb } from './db/sqlite';
 import { installGuard, requireAuth } from './server/middleware/auth';
 import { registerAuthRoutes } from './server/routes/auth';
@@ -150,6 +151,51 @@ async function writeLatestStartupResultsIfReady() {
 
 // Start polling for incoming emails
 startEmailPolling(chatClients, logsClients);
+
+// ─── Reinit registrations ─────────────────────────────────────────────
+// Each subsystem that bootstraps at startup registers a "reinit me" hook
+// for the config keys it cares about. When those keys change in the
+// settings UI, the config PUT route invokes the appropriate hook.
+
+registerReinit(
+  'Copilot + Browser Control',
+  ['BROWSER_ENABLED', 'COPILOT_GITHUB_TOKEN', 'COPILOT_REMOTE_REPO', 'VNC_PASSWORD'],
+  async () => {
+    const result = await reinitBrowserInfra();
+    if (!result.ok) {
+      return { service: 'Copilot + Browser Control', status: 'error', message: result.error || 'Failed to start browser infrastructure' };
+    }
+    if (result.disabled) {
+      return { service: 'Copilot + Browser Control', status: 'ok', message: 'Browser agent disabled — infrastructure stopped' };
+    }
+    const updatedKeys: Record<string, string> = {};
+    if (result.resolvedRepo && result.autoCreated) {
+      updatedKeys.COPILOT_REMOTE_REPO = result.resolvedRepo;
+    }
+    const repoNote = result.resolvedRepo
+      ? ` Workspace repo: ${result.resolvedRepo}${result.autoCreated ? ' (auto-created)' : ''}.`
+      : '';
+    return {
+      service: 'Copilot + Browser Control',
+      status: 'ok',
+      message: `Browser infrastructure restarted.${repoNote}`,
+      updatedKeys: Object.keys(updatedKeys).length ? updatedKeys : undefined,
+    };
+  }
+);
+
+registerReinit(
+  'Email',
+  ['EMAIL_IMAP_HOST', 'EMAIL_IMAP_PORT', 'EMAIL_IMAP_USER', 'EMAIL_IMAP_PASS', 'EMAIL_IMAP_TLS', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASS'],
+  async () => {
+    const result = reinitEmailPolling();
+    return {
+      service: 'Email',
+      status: result.ok ? 'ok' : 'error',
+      message: result.message,
+    };
+  }
+);
 
 app.use(express.urlencoded({ extended: false }));
 // Enable JSON body parsing for API endpoints
