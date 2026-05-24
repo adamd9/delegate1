@@ -798,14 +798,15 @@ function createConfigControl(field, item, idSuffix) {
 
   if (field.type === 'select' && field.options) {
     const select = el('select', { class: 'config-select', id: idSuffix, 'data-config-key': field.key });
-    const defaultOption = field.options.find(([value]) => value === defaultValue);
-    const placeholderLabel = defaultOption ? `— select (default: ${defaultOption[1]}) —` : '— select —';
-    const placeholder = el('option', { value: '' }, placeholderLabel);
-    if (!currentValue) placeholder.selected = true;
-    select.appendChild(placeholder);
+    const effectiveValue = currentValue || defaultValue || '';
+    if (!defaultValue) {
+      const placeholder = el('option', { value: '' }, '— select —');
+      if (!effectiveValue) placeholder.selected = true;
+      select.appendChild(placeholder);
+    }
     field.options.forEach(([value, label]) => {
       const option = el('option', { value }, label);
-      if (currentValue === value) option.selected = true;
+      if (effectiveValue === value) option.selected = true;
       select.appendChild(option);
     });
     wrapper.appendChild(select);
