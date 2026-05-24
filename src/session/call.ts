@@ -201,12 +201,10 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
     tools: functionSchemas,
     audio: {
       input: {
-        format: audioFormat,
         transcription: { model: "gpt-4o-mini-transcribe" },
         turn_detection: turnDetection,
       },
       output: {
-        format: audioFormat,
         voice: voiceConfig.voice,
       },
     },
