@@ -228,13 +228,12 @@
     <span class="topbar-subtitle">Settings</span>
     <select class="mobile-tab-select" id="mobile-tab">
       <option value="logs">Logs</option>
-      <option value="voice">Voice</option>
+      <option value="voice">Phone & Voice</option>
       <option value="catalog">Tools</option>
       <option value="adaptations">Adaptations</option>
       <option value="mcp">MCP Servers</option>
       <option value="memory">Memory</option>
       <option value="config">Configuration</option>
-      <option value="twilio">Twilio</option>
       <option value="email">Email</option>
       <option value="browser">Browser / Copilot</option>
       <option value="maintenance">Maintenance</option>
@@ -251,8 +250,8 @@
         Logs
       </button>
       <button class="sidebar-item" data-tab="voice">
-        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
-        Voice
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+        Phone & Voice
       </button>
       <button class="sidebar-item" data-tab="catalog">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
@@ -273,10 +272,6 @@
       <button class="sidebar-item" data-tab="config">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93-2.83-2.83"/><path d="m16.24 16.24-2.83-2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07-2.83 2.83"/><path d="m16.24 7.76-2.83 2.83"/><circle cx="12" cy="12" r="3"/></svg>
         Configuration
-      </button>
-      <button class="sidebar-item" data-tab="twilio">
-        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
-        Twilio
       </button>
       <button class="sidebar-item" data-tab="email">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -306,7 +301,7 @@
 // ──────────────────────────────────────────────
 // Tab routing
 // ──────────────────────────────────────────────
-const TABS = ['logs','voice','catalog','adaptations','mcp','memory','config','twilio','email','browser','maintenance','about'];
+const TABS = ['logs','voice','catalog','adaptations','mcp','memory','config','email','browser','maintenance','about'];
 let activeTab = null;
 
 function getInitialTab() {
@@ -355,7 +350,6 @@ function renderTab(tab) {
     case 'mcp':         renderMcp(); break;
     case 'memory':      renderMemory(); break;
     case 'config':      renderConfig(); break;
-    case 'twilio':      renderTwilio(); break;
     case 'email':       renderEmail(); break;
     case 'browser':     renderBrowser(); break;
     case 'maintenance': renderMaintenance(); break;
@@ -440,33 +434,38 @@ function renderLogs() {
 let voiceDefaults = null;
 
 function renderVoice() {
-  const c = card('Voice Defaults', body => {
-    body.innerHTML = '<div class="loading">Loading…</div>';
-  });
-  content.appendChild(c);
-
-  fetch('/voice-defaults')
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(data => {
-      voiceDefaults = data;
-      const body = c.querySelector('.card-body');
-      body.innerHTML = '';
-      body.appendChild(buildVoiceForm(data, c));
-    })
-    .catch(err => {
-      c.querySelector('.card-body').innerHTML = `<div class="error-msg">Failed to load: ${err.message}</div>`;
-    });
-
-  // Voice API config section
+  // Fetch config for phone/Twilio + voice API settings
   fetch('/api/config')
     .then(async response => {
       const payload = await response.json().catch(() => null);
-      if (!response.ok) return;
+      if (!response.ok) throw new Error('Failed to load config');
       const items = normalizeConfigItems(payload);
       const configMap = buildConfigMap(items);
+
+      // Phone guard + Twilio sections first
+      TWILIO_SECTIONS.forEach(section => content.appendChild(buildConfigSectionCard(section, configMap)));
+
+      // Voice API settings
       VOICE_CONFIG_SECTIONS.forEach(section => content.appendChild(buildConfigSectionCard(section, configMap)));
+
+      // Voice presets (VAD tuning) last
+      const c = card('Voice Presets', body => {
+        body.innerHTML = '<div class="loading">Loading…</div>';
+      });
+      content.appendChild(c);
+      return fetch('/voice-defaults').then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(data => {
+        voiceDefaults = data;
+        const body = c.querySelector('.card-body');
+        body.innerHTML = '';
+        body.appendChild(buildVoiceForm(data, c));
+      });
     })
-    .catch(() => {});
+    .catch(err => {
+      content.innerHTML += `<div class="error-msg">Failed to load: ${err.message}</div>`;
+    });
 }
 
 function buildVoiceForm(data, cardEl) {
@@ -654,11 +653,19 @@ const CONFIG_SECTIONS = [
 
 const TWILIO_SECTIONS = [
   {
+    id: 'phone-guard',
+    title: 'Your Phone Number',
+    description: '⚠️ Safety guard — the agent will ONLY send calls and SMS to this number. This prevents accidental contact to unintended recipients.',
+    fields: [
+      { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Your Phone Number', type: 'text', help: 'The number this agent is locked to for outbound calls/SMS (e.g. +61400000000).' },
+    ],
+  },
+  {
     id: 'twilio-calls',
-    title: 'Twilio — Calls',
+    title: 'Twilio Credentials — Calls',
     description: 'Voice calling credentials.',
     fields: [
-      { key: 'TWILIO_PHONE_NUMBER', label: 'Phone Number', type: 'text', help: 'Your Twilio number for calls and SMS (e.g. +61400000000).' },
+      { key: 'TWILIO_PHONE_NUMBER', label: 'Twilio Number (From)', type: 'text', help: 'Your Twilio number used as the caller/sender ID.' },
       { key: 'TWILIO_ACCOUNT_SID', label: 'Account SID', type: 'text' },
       { key: 'TWILIO_AUTH_TOKEN', label: 'Auth Token', type: 'password', sensitive: true },
       { key: 'TWILIO_API_KEY_SID', label: 'API Key SID', type: 'text' },
@@ -668,13 +675,12 @@ const TWILIO_SECTIONS = [
   },
   {
     id: 'twilio-sms',
-    title: 'Twilio — SMS',
-    description: 'SMS credentials (if different from calls account).',
+    title: 'Twilio Credentials — SMS',
+    description: 'Only needed if your SMS uses a different Twilio account/subaccount.',
     fields: [
       { key: 'TWILIO_SMS_ACCOUNT_SID', label: 'SMS Account SID', type: 'text', help: 'Leave blank to use the same account as calls.' },
       { key: 'TWILIO_SMS_AUTH_TOKEN', label: 'SMS Auth Token', type: 'password', sensitive: true },
       { key: 'TWILIO_MESSAGING_SERVICE_SID', label: 'Messaging Service SID', type: 'text' },
-      { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Default SMS Recipient', type: 'text', help: 'Fallback destination number.' },
     ],
   },
 ];
@@ -712,11 +718,11 @@ const EMAIL_SECTIONS = [
   },
   {
     id: 'email-options',
-    title: 'Email Options',
-    description: 'Sending and receiving behaviour.',
+    title: 'Email Safety & Options',
+    description: 'Control who the agent can email and how inbound mail is handled.',
     fields: [
       { key: 'EMAIL_DEFAULT_FROM', label: 'Default From Address', type: 'text', help: 'Sender address for outbound mail.' },
-      { key: 'EMAIL_SENDING_RESTRICTED', label: 'Restrict Outbound Sending', type: 'boolean', help: 'Limit who the system can send to.' },
+      { key: 'EMAIL_SENDING_RESTRICTED', label: 'Restrict Outbound Recipients', type: 'boolean', help: '⚠️ Safety guard — when enabled, the agent can ONLY send emails to allowed recipients. Prevents accidental sends to unintended contacts.' },
       { key: 'EMAIL_RECEIVING_FILTER_ENABLED', label: 'Enable Receive Filter', type: 'boolean', help: 'Filter inbound mail before processing.' },
     ],
   },
@@ -1093,10 +1099,6 @@ function renderSectionsTab(sections, title, description) {
     .catch(err => {
       content.innerHTML = `<div class="error-msg">Failed to load: ${err.message}</div>`;
     });
-}
-
-function renderTwilio() {
-  renderSectionsTab(TWILIO_SECTIONS, 'Twilio', 'Voice calling and SMS credentials.');
 }
 
 function renderEmail() {
@@ -1809,20 +1811,18 @@ function loadNavWarnings() {
       const core = groups.get('core');
       setNavWarn('config', !!core && core.status !== 'complete');
 
+      // Phone & Voice tab — warn if any phone/voice config is started but incomplete
       const calls = groups.get('twilio-calls');
       const sms = groups.get('twilio-sms');
-      // Show warning if calls are configured but SMS is not (partially set up)
-      const twilioStarted = !!(calls?.items?.some(i => i.configured) || sms?.items?.some(i => i.configured));
-      const twilioComplete = (!calls || calls.status === 'complete') && (!sms || sms.status === 'complete');
-      setNavWarn('twilio', twilioStarted && !twilioComplete);
+      const voice = groups.get('voice');
+      const phoneVoiceStarted = !!(calls?.items?.some(i => i.configured) || sms?.items?.some(i => i.configured) || voice?.items?.some(i => i.configured));
+      const phoneVoiceComplete = (!calls || calls.status === 'complete') && (!sms || sms.status === 'complete') && (!voice || voice.status === 'complete');
+      setNavWarn('voice', phoneVoiceStarted && !phoneVoiceComplete);
 
       const emailSend = groups.get('email-sending');
       const emailRecv = groups.get('email-receiving');
       const emailComplete = emailSend?.status === 'complete' && emailRecv?.status === 'complete';
       setNavWarn('email', !emailComplete);
-
-      const voice = groups.get('voice');
-      setNavWarn('voice', !!voice?.items?.some(i => i.configured) && voice.status !== 'complete');
 
       const browser = groups.get('browser-copilot');
       setNavWarn('browser', !!browser?.items?.some(i => i.configured) && browser.status !== 'complete');
