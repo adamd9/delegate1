@@ -195,6 +195,7 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
   const voiceConfig = getChatVoiceConfig();
   
   return {
+    type: "realtime" as const,
     modalities: ["text", "audio"] as const,
     turn_detection: turnDetection,
     voice: voiceConfig.voice,
