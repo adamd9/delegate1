@@ -1811,13 +1811,12 @@ function loadNavWarnings() {
       const core = groups.get('core');
       setNavWarn('config', !!core && core.status !== 'complete');
 
-      // Phone & Voice tab — warn if any phone/voice config is started but incomplete
+      // Phone & Voice tab — mandatory, always warn if incomplete
       const calls = groups.get('twilio-calls');
       const sms = groups.get('twilio-sms');
       const voice = groups.get('voice');
-      const phoneVoiceStarted = !!(calls?.items?.some(i => i.configured) || sms?.items?.some(i => i.configured) || voice?.items?.some(i => i.configured));
-      const phoneVoiceComplete = (!calls || calls.status === 'complete') && (!sms || sms.status === 'complete') && (!voice || voice.status === 'complete');
-      setNavWarn('voice', phoneVoiceStarted && !phoneVoiceComplete);
+      const phoneVoiceComplete = calls?.status === 'complete' && (!sms || sms.status === 'complete') && (!voice || voice.status === 'complete');
+      setNavWarn('voice', !phoneVoiceComplete);
 
       const emailSend = groups.get('email-sending');
       const emailRecv = groups.get('email-receiving');
