@@ -1455,9 +1455,8 @@ async function loadChannelStatus() {
     (configList.items || configList || []).forEach(c => { configMap[c.key] = c.value; });
 
     const callGroup = setup.groups.find(g => g.id === 'twilio-calls');
-    const smsGroup = setup.groups.find(g => g.id === 'twilio-sms');
     const phoneReady = callGroup && callGroup.status === 'complete';
-    const smsReady = smsGroup && smsGroup.status === 'complete';
+    const smsReady = phoneReady;
 
     const number = configMap['TWILIO_PHONE_NUMBER'] || '';
     const nameEl = document.getElementById('ch-twilio-number');
