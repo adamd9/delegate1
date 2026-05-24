@@ -9,7 +9,7 @@ export const listAdaptationsFunction: FunctionHandler = {
     parameters: {
       type: 'object',
       properties: {
-        agent: { type: 'string', enum: ['base', 'supervisor'] },
+        agent: { type: 'string', enum: ['base'] },
         channel: { type: 'string', enum: ['text', 'voice', 'sms', 'email'] },
         tags: { type: 'array', items: { type: 'string' } },
         enabled: { type: 'boolean' },
@@ -18,7 +18,7 @@ export const listAdaptationsFunction: FunctionHandler = {
       additionalProperties: false,
     },
   },
-  handler: async (args: { agent?: 'base' | 'supervisor'; channel?: 'text' | 'voice' | 'sms' | 'email'; tags?: string[]; enabled?: boolean; }) => {
+  handler: async (args: { agent?: 'base'; channel?: 'text' | 'voice' | 'sms' | 'email'; tags?: string[]; enabled?: boolean; }) => {
     const items = await listAdaptations(args);
     return { items: items.map(i => ({ id: i.id, title: i.title, description: i.description, enabled: i.enabled !== false, scope: i.scope, tags: i.tags })) };
   },

@@ -61,7 +61,7 @@ The browser opens a persistent WebSocket connection (a low-latency two-way pipe)
 { "type": "chat.response", "content": "Hello!", "conversation_id": "..." }
 ```
 
-Responses are streamed token-by-token via the OpenAI Responses API. Tool calls and supervisor escalations emit additional event types. The chat channel shares the same session, memory, and tool registry as all other channels (voice, phone).
+Responses are streamed token-by-token via the OpenAI Responses API. Tool calls emit additional event types. The chat channel shares the same session, memory, and tool registry as all other channels (voice, phone).
 
 - Server handler: `src/session/chat.ts`
 - Frontend: `client/index.html` (plain HTML/JS)

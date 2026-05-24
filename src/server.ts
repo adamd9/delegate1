@@ -140,6 +140,16 @@ async function writeLatestStartupResultsIfReady() {
     const browserResult = await startBrowserInfra();
     if (!browserResult.ok) {
       console.error(`[server] browser infrastructure failed: ${browserResult.error}`);
+    } else if (browserResult.resolvedRepo) {
+      // Persist the resolved workspace repo back into config so the settings UI
+      // shows what scaffoldWorkDir actually picked (auto-created on first run
+      // OR discovered from a previous boot). Without this the field stays
+      // blank in the UI even though the system is happily using the repo.
+      const current = (configService.getRaw('COPILOT_REMOTE_REPO') || '').trim();
+      if (current !== browserResult.resolvedRepo) {
+        configService.set('COPILOT_REMOTE_REPO', browserResult.resolvedRepo, false);
+        console.log(`[startup] Persisted COPILOT_REMOTE_REPO = ${browserResult.resolvedRepo}${browserResult.autoCreated ? ' (auto-created)' : ' (discovered)'}`);
+      }
     }
 
     toolsReady = true;
@@ -169,8 +179,15 @@ registerReinit(
       return { service: 'Copilot + Browser Control', status: 'ok', message: 'Browser agent disabled — infrastructure stopped' };
     }
     const updatedKeys: Record<string, string> = {};
-    if (result.resolvedRepo && result.autoCreated) {
-      updatedKeys.COPILOT_REMOTE_REPO = result.resolvedRepo;
+    if (result.resolvedRepo) {
+      // Always write back the resolved repo so the settings UI reflects what
+      // scaffoldWorkDir actually picked — covers both the auto-create path and
+      // the "discovered an existing remote" path (e.g. after a fresh deploy
+      // where the GitHub repo persists but the config row was never set).
+      const current = (configService.getRaw('COPILOT_REMOTE_REPO') || '').trim();
+      if (current !== result.resolvedRepo) {
+        updatedKeys.COPILOT_REMOTE_REPO = result.resolvedRepo;
+      }
     }
     const repoNote = result.resolvedRepo
       ? ` Workspace repo: ${result.resolvedRepo}${result.autoCreated ? ' (auto-created)' : ''}.`

@@ -42,7 +42,7 @@ If the build succeeds, you're ready to configure.
 delegate1/
 ├── src/                # backend TS sources
 │   ├── server.ts       # entry point
-│   ├── agentConfigs/   # base + supervisor agents
+│   ├── agentConfigs/   # base agent
 │   ├── tools/          # tool registry + handlers
 │   ├── memory/         # adaptive memory
 │   ├── voice/          # voice pipeline

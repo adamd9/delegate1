@@ -24,12 +24,4 @@ export async function initToolsRegistry() {
     // Also include any tools tagged for the base agent
     allowTags: ['base-default'],
   }, persistedPolicies);
-
-  const supervisorToolNames = (getAgent('supervisor').tools || []).map(t => t.schema?.name).filter(Boolean) as string[];
-  registerAgent('supervisor', {
-    // Supervisor selection also mirrors its agent config
-    allowNames: supervisorToolNames,
-    // Also include tools explicitly tagged as supervisor-allowed (e.g., web_search)
-    allowTags: ['supervisor-allowed'],
-  }, persistedPolicies);
 }

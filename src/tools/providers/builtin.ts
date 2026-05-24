@@ -1,17 +1,6 @@
-import { registerTools } from "../registry";
-
+// Builtin tool provider. Currently empty: the OpenAI Responses builtin web_search
+// is invoked indirectly via the local web_search function tool (so it also works
+// for the Realtime API used by voice). Kept as an extension point.
 export function registerBuiltinTools() {
-  const providerId = 'builtin';
-  // Currently only web_search builtin
-  registerTools(providerId, [
-    {
-      name: 'web_search',
-      description: 'Search the web for up-to-date information.',
-      parameters: {},
-      origin: 'builtin',
-      tags: ['builtin', 'supervisor-allowed'],
-      // Builtins are executed by the model provider; handler is a no-op
-      handler: async () => ''
-    }
-  ]);
+  // no-op
 }

@@ -27,7 +27,7 @@ Each test resets the session via `POST /session/reset` before running.
 
 ```bash
 npx @playwright/test@1.55.0 test tests/e2e/chat.spec.ts
-npx @playwright/test@1.55.0 test -g "supervisor escalation"
+npx @playwright/test@1.55.0 test -g "web_search"
 ```
 
 ## Unit tests

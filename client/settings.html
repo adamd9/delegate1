@@ -1271,7 +1271,6 @@ function sortedAgents() {
   return Object.keys(agentsInfo).sort((a,b) => {
     if (a===b) return 0;
     if (a==='base') return -1; if (b==='base') return 1;
-    if (a==='supervisor') return -1; if (b==='supervisor') return 1;
     return a.localeCompare(b);
   });
 }

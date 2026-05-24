@@ -675,14 +675,14 @@ export async function handleTextChatMessage(
             content: finalResponse,
             timestamp: Date.now(),
             channel: "text" as const,
-            supervisor: true,
+            supervisor: false,
           };
           session.conversationHistory.push(assistantMessage);
           try {
             addConversationEvent({
               conversation_id: conversationId,
               kind: 'message_assistant',
-              payload: { text: finalResponse, channel: 'text', supervisor: true },
+              payload: { text: finalResponse, channel: 'text', supervisor: false },
               created_at_ms: assistantMessage.timestamp,
             });
           } catch {}
@@ -704,7 +704,7 @@ export async function handleTextChatMessage(
                 type: "chat.response",
                 content: finalResponse,
                 timestamp: Date.now(),
-                supervisor: true,
+                supervisor: false,
                 session_id: sessionId,
                 conversation_id: conversationId,
               });
@@ -714,7 +714,7 @@ export async function handleTextChatMessage(
           }
           session.currentRequest = undefined;
           appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_final, timestamp: Date.now() });
-          return { conversationId, sessionId, requestId, assistantText: finalResponse, supervisor: true };
+          return { conversationId, sessionId, requestId, assistantText: finalResponse, supervisor: false };
         }
       } catch (err: any) {
         console.error("❌ Error executing function call:", err);
@@ -727,7 +727,7 @@ export async function handleTextChatMessage(
           content: errorText,
           timestamp: Date.now(),
           channel: "text" as const,
-          supervisor: true,
+          supervisor: false,
         };
         session.conversationHistory.push(assistantMessage);
         try {
@@ -735,12 +735,12 @@ export async function handleTextChatMessage(
           addConversationEvent({
             conversation_id: conversationId,
             kind: 'message_assistant',
-            payload: { text: errorText, channel: 'text', supervisor: true },
+            payload: { text: errorText, channel: 'text', supervisor: false },
             created_at_ms: assistantMessage.timestamp,
           });
         } catch {}
         for (const ws of chatClients) {
-          if (isOpen(ws)) jsonSend(ws, { type: "chat.response", content: errorText, timestamp: Date.now(), supervisor: true, session_id: sessionId, conversation_id: conversationId });
+          if (isOpen(ws)) jsonSend(ws, { type: "chat.response", content: errorText, timestamp: Date.now(), supervisor: false, session_id: sessionId, conversation_id: conversationId });
         }
         for (const ws of chatClients) {
           if (isOpen(ws)) jsonSend(ws, { type: "chat.done", request_id: requestId, timestamp: Date.now() });
@@ -749,7 +749,7 @@ export async function handleTextChatMessage(
         // No logs emit; chat.response above includes meta
         appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: `step_error_${Date.now()}`, label: ThoughtFlowStepType.ToolError, payload: { error: err?.message || String(err) }, timestamp: Date.now() });
         // Do not auto-mark conversation completed on tool error; leave it open unless explicitly finalized
-        return { conversationId, sessionId, requestId, assistantText: errorText, supervisor: true };
+        return { conversationId, sessionId, requestId, assistantText: errorText, supervisor: false };
       }
     }
     // Fallback to assistant text output

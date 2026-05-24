@@ -47,7 +47,7 @@ function emitDelta(logsClients: Set<WebSocket>, name: string, data?: any, call_i
       type: "response.function_call_arguments.delta",
       name,
       arguments: JSON.stringify(data || {}),
-      call_id: call_id || `supervisor_${Date.now()}`,
+      call_id: call_id || `tool_${Date.now()}`,
     });
   }
   // Persist a created breadcrumb into the transcript ledger (only if we have an active conversation)
@@ -126,7 +126,7 @@ export async function executeFunctionCall(call: FunctionCallItem, ctx: Orchestra
     } catch {}
   }
   // Provide a tool_call step id to downstream handlers so they can declare proper
-  // dependencies (e.g., supervisor assistant_call depends_on tool_call). If we
+  // dependencies. If we
   // didn't create a step here (because chat.ts already did), derive it from call_id.
   const effectiveToolStepId = tfStepId || (call.call_id ? `step_tool_${call.call_id}` : undefined);
   if (effectiveToolStepId) {

@@ -23,8 +23,8 @@ Protocol details for the three WebSocket connections: `/chat` (text), `/call` (T
 
 ## [Model calling flows](model-calling-flows/)
 
-Sequence diagrams showing the exact chain of API calls for each type of turn: a simple text message, a supervisor escalation, a voice barge-in, and a phone call. Useful when you need to understand latency, token usage, or where something in the pipeline is failing.
+Sequence diagrams showing the exact chain of API calls for each type of turn: a simple text message, a `web_search` tool call, a voice barge-in, and a phone call. Useful when you need to understand latency, token usage, or where something in the pipeline is failing.
 
 ## [Architecture](architecture/)
 
-The single-session singleton design, the two-tier agent model (base agent + supervisor), the tool registry, and the WebSocket routing. The right page to read before making significant changes to the codebase.
+The single-session singleton design, the single base agent, the tool registry, and the WebSocket routing. The right page to read before making significant changes to the codebase.

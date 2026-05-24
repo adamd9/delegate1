@@ -2,7 +2,7 @@ import { registerTools, ToolOrigin } from "../registry";
 import { sendSmsTool } from "../handlers/sms";
 import { callUserTool } from "../handlers/call";
 import { sendEmailTool } from "../handlers/email";
-import { getNextResponseFromSupervisorFunction } from "../handlers/supervisor-escalation";
+import { webSearchFunction } from "../handlers/web-search";
 import { createNoteFunction, listNotesFunction, updateNoteFunction, deleteNoteFunction, getNoteFunction } from "../handlers/notes";
 import { setVoiceNoiseModeTool } from "../handlers/voice-noise-mode";
 import { listAdaptationsFunction, getAdaptationFunction, updateAdaptationFunction, reloadAdaptationsFunction } from "../handlers/adaptations";
@@ -34,14 +34,14 @@ function wrap(name: string, description: string, parameters: any, origin: ToolOr
 export function registerLocalTools() {
   const providerId = 'local';
   const tools = [
-    // Base agent escalation entrypoint to supervisor
+    // Web search tool (wraps OpenAI Responses builtin web_search so it works on voice too)
     wrap(
-      getNextResponseFromSupervisorFunction.schema.name,
-      getNextResponseFromSupervisorFunction.schema.description,
-      getNextResponseFromSupervisorFunction.schema.parameters,
+      webSearchFunction.schema.name,
+      webSearchFunction.schema.description,
+      webSearchFunction.schema.parameters,
       'local',
       ['local', 'base-default'],
-      (args) => getNextResponseFromSupervisorFunction.handler(args)
+      (args) => webSearchFunction.handler(args)
     ),
     wrap(
       sendSmsTool.schema.name,

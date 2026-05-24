@@ -1010,8 +1010,10 @@ export function processRealtimeModelEvent(
 
 async function handleFunctionCall(item: { name: string; arguments: string; call_id?: string }, logsClients: Set<WebSocket>) {
   console.log("Handling function call:", item);
-  const isSupervisorEscalation = item.name === 'getNextResponseFromSupervisor';
-  if (isSupervisorEscalation) {
+  // Some tools (e.g. web_search) wrap a longer-running remote call. Play hold music
+  // so the caller hears a gentle "still here" pulse while we wait for the result.
+  const isWebSearchCall = item.name === 'web_search';
+  if (isWebSearchCall) {
     session.waitingForTool = true;
     startHoldMusicLoop();
   }
@@ -1037,7 +1039,7 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
     finalizeRun('error');
     return JSON.stringify({ error: `Error running function ${item.name}: ${err?.message || 'unknown'}` });
   } finally {
-    if (isSupervisorEscalation) {
+    if (isWebSearchCall) {
       session.waitingForTool = false;
       stopHoldMusicLoop();
     }

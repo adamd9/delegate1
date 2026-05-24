@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 export type AdaptationScope = {
-  agents?: Array<'base' | 'supervisor'>;
+  agents?: Array<'base'>;
   channels?: Array<'text' | 'voice' | 'sms' | 'email'>;
   global?: boolean;
 };
@@ -63,26 +63,6 @@ const ADAPTATION_SKELETON: AdaptationItem[] = [
     content: '',
     scope: { agents: ['base'], channels: ['text'], global: true },
     tags: ['core', 'confirm'],
-    enabled: false,
-  },
-  // Supervisor initial request adaptation
-  {
-    id: 'adn.prompt.supervisor.initial',
-    title: 'Supervisor initial prompt adaptation',
-    description: 'Prepended to the supervisor initial Responses request instructions; emits prompt.adaptations (supervisor initial).',
-    content: '',
-    scope: { agents: ['supervisor'], global: true },
-    tags: ['supervisor'],
-    enabled: false,
-  },
-  // Supervisor follow-up request adaptation (after tool outputs)
-  {
-    id: 'adn.prompt.supervisor.followup',
-    title: 'Supervisor follow-up prompt adaptation',
-    description: 'Added as instructions to supervisor follow-up Responses request after tool outputs; emits prompt.adaptations (supervisor follow-up).',
-    content: '',
-    scope: { agents: ['supervisor'], global: true },
-    tags: ['supervisor'],
     enabled: false,
   },
 ];
@@ -146,7 +126,7 @@ function resolveItems(edits: Record<string, AdaptationEdit>): AdaptationItem[] {
   });
 }
 
-function matchesScope(item: AdaptationItem, agent: 'base' | 'supervisor', channel: 'text' | 'voice' | 'sms' | 'email'): boolean {
+function matchesScope(item: AdaptationItem, agent: 'base', channel: 'text' | 'voice' | 'sms' | 'email'): boolean {
   const { scope } = item;
   if (scope.global) return true;
   if (scope.agents && scope.agents.length > 0 && !scope.agents.includes(agent)) return false;
@@ -155,7 +135,7 @@ function matchesScope(item: AdaptationItem, agent: 'base' | 'supervisor', channe
 }
 
 export async function getAdaptationsText(
-  params: { agent: 'base' | 'supervisor'; channel: 'text' | 'voice' | 'sms' | 'email' }
+  params: { agent: 'base'; channel: 'text' | 'voice' | 'sms' | 'email' }
 ): Promise<{ text: string; includedIds: string[]; version: number }> {
   if (!cachedEdits) cachedEdits = await readEdits();
   const items = resolveItems(cachedEdits)
@@ -167,7 +147,7 @@ export async function getAdaptationsText(
 }
 
 export async function listAdaptations(filter?: {
-  agent?: 'base' | 'supervisor';
+  agent?: 'base';
   channel?: 'text' | 'voice' | 'sms' | 'email';
   tags?: string[];
   enabled?: boolean;

@@ -31,7 +31,7 @@ MCP (Model Context Protocol) servers plug in additional tools — for example, a
 
 ## Permissions (agent policies)
 
-Not every tool is available to every agent. Your delegate has a fast-response **base agent** for everyday tasks, and a more powerful **supervisor agent** for complex ones. Policies control what each agent is allowed to use — the base agent might have access to messaging and notes, while the supervisor can also use web search and more advanced tools.
+Not every tool needs to be enabled. Policies control what the base agent is allowed to use — you can scope down messaging, memory, calendar, etc. on a per-tool basis.
 
 You can review and adjust these permissions in `runtime-data/agent-policies.json` or via the settings UI. See [Agents & Policies](../agents-and-policies/) for details.
 
@@ -45,8 +45,7 @@ Every tool — whether built-in, local, or from an MCP server — flows through 
 
 | Provider | Source | Examples |
 |---|---|---|
-| `builtin` | Model-native tools | `web_search` |
-| `local` | TypeScript handlers in `src/tools/handlers/` | `send_sms`, `send_email`, `save_note`, `save_memory` |
+| `local` | TypeScript handlers in `src/tools/handlers/` | `web_search`, `send_sms`, `send_email`, `save_note`, `save_memory` |
 | `mcp` | Remote MCP servers | Whatever the connected servers expose |
 
 `src/tools/init.ts` runs at startup, loads all providers, and applies policies.

@@ -26,10 +26,10 @@ async function resetSessionIfPossible() {
   }
 }
 
-test('supervisor escalation uses web_search and emits breadcrumbs, then finalizes', async ({}, testInfo) => {
+test('web_search tool fires and answer reflects search result', async ({}, testInfo) => {
   test.slow();
   if (!(await serverReachable())) {
-    testInfo.skip(`websocket-server not reachable at ${BASE_URL}. Start it first (e.g., npm run backend:dev) and ensure OPENAI_API_KEY is set.`);
+    testInfo.skip(`websocket-server not reachable at ${BASE_URL}. Start it first (e.g., npm run dev) and ensure OPENAI_API_KEY is set.`);
     return;
   }
 
@@ -45,7 +45,7 @@ test('supervisor escalation uses web_search and emits breadcrumbs, then finalize
   } = { deltas: [], dones: [] };
 
   const waitForResponse = new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Timed out waiting for supervisor response')), 75_000);
+    const timeout = setTimeout(() => reject(new Error('Timed out waiting for web_search response')), 75_000);
 
     ws.on('message', (data: WebSocket.RawData) => {
       try {
@@ -78,37 +78,30 @@ test('supervisor escalation uses web_search and emits breadcrumbs, then finalize
     ws.on('error', reject);
   });
 
-  // Directive prompt to force escalation to supervisor and require web_search usage
+  // Directive prompt that all but requires the model to use the web_search tool.
   const prompt = [
-    'Do not answer directly. Escalate to the supervisor by calling getNextResponseFromSupervisor with reasoning_type "research"',
-    'and have the supervisor use the web_search tool to look up a reliable fact. As a target, have the supervisor search "capital of Australia".',
-    'After the supervisor completes, reply with exactly one sentence summarizing the result (should include "Canberra").'
+    'Use the web_search tool to look up the capital of Australia.',
+    'Reply with exactly one sentence summarising the result (it should mention "Canberra").'
   ].join(' ');
 
-  // Small delay so a human observer can follow along in another client
-  await new Promise((r) => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 500));
   ws.send(JSON.stringify({ type: 'chat.message', content: prompt }));
 
   await waitForResponse;
 
-  // Assertions: ensure escalation call occurred
   const deltaNames = state.deltas.map((d) => d.name);
   const doneNames = state.dones.map((d) => d.name);
 
-  expect(deltaNames).toContain('getNextResponseFromSupervisor');
-  expect(doneNames).toContain('getNextResponseFromSupervisor');
+  expect(deltaNames).toContain('web_search');
+  expect(doneNames).toContain('web_search');
 
-  // We do not require explicit web_search breadcrumbs because it may be handled as a builtin.
-  // Instead, assert the escalated answer mentions Canberra (capital of Australia).
   expect(typeof state.assistant_text).toBe('string');
   expect((state.assistant_text || '').toLowerCase()).toContain('canberra');
 
-  // Finalize conversation and verify via REST
   const conversation_id = state.conversation_id as string | undefined;
   expect(conversation_id).toBeTruthy();
   if (conversation_id) {
-    // Small delay before finalize to allow reading the response live
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 500));
     ws.send(JSON.stringify({ type: 'conversation.end', conversation_id }));
     await new Promise((r) => setTimeout(r, 800));
     const res = await fetch(`${BASE_URL}/api/conversations?limit=5`);

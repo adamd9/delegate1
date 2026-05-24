@@ -29,7 +29,7 @@ Routed in `src/ws/attach.ts` by URL path. Only one voice/call connection can be 
 { "type": "chat.response", "content": "...", "conversation_id": "..." }
 ```
 
-Tool calls and supervisor escalations emit additional event types (`tool.call`, `tool.result`, etc.) — see `src/session/chat.ts` for the full list.
+Tool calls emit additional event types (`tool.call`, `tool.result`, etc.) — see `src/session/chat.ts` for the full list.
 
 ## `/browser-call`
 

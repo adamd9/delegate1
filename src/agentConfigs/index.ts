@@ -5,7 +5,7 @@ import { delegate1Agent, agents, defaultAgent } from './agents';
 export { delegate1Agent, agents, defaultAgent };
 
 // Helper functions for accessing agent configurations
-export function getAgent(agentName: 'base' | 'supervisor'): AgentConfig {
+export function getAgent(agentName: 'base'): AgentConfig {
   return agents[agentName];
 }
 

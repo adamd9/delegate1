@@ -20,25 +20,24 @@ The entire app is a single Node process (`src/server.ts`):
 
 There is no per-user or per-request isolation. Multiple chat clients can observe the singleton; only one voice/phone connection can hold it at a time.
 
-## Two-tier agents
+## Single base agent
 
 ```
-user turn ──▶ base agent ──▶ simple answer
-                          └▶ getNextResponseFromSupervisor ──▶ supervisor loop
-                                                            (web_search, mcp, local …)
-                                                            └▶ final answer
+user turn ──▶ base agent ──▶ answer
+                       │
+                       ├▶ web_search (wraps Responses builtin web_search)
+                       ├▶ local tools (notes, sms, email, github, memory, …)
+                       └▶ mcp tools
 ```
 
-- **Base agent** (`src/agentConfigs/baseAgentConfig.ts`) — fast path, small tool allowlist.
-- **Supervisor agent** (`src/agentConfigs/supervisorAgentConfig.ts`) — Responses API loop, up to 5 iterations.
+- **Base agent** (`src/agentConfigs/baseAgentConfig.ts`) — handles every turn. Calls tools as needed (including `web_search` for fresh information).
 - **Registry** (`src/agentConfigs/index.ts`).
 
 ## Tool registry
 
 `src/tools/registry.ts` is the canonical bus for callable capabilities. Three providers feed it:
 
-- `builtin` — model-native (e.g. `web_search`)
-- `local` — handlers in `src/tools/handlers/`
+- `local` — handlers in `src/tools/handlers/` (e.g. `web_search` wraps the OpenAI Responses builtin web search so voice and text can both use it)
 - `mcp` — discovered from MCP servers in `runtime-data/mcp-servers.json`
 
 Per-agent access is enforced by policies in `runtime-data/agent-policies.json` (tag + name allowlists).

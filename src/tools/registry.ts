@@ -187,11 +187,8 @@ export function getSchemasForAgent(agentId: string) {
 
   const finalIds = Array.from(allowSet);
   const final = finalIds.map(id => toolsById.get(id)!).filter(Boolean);
-  // Return Responses API tools list (mix of builtins and functions)
+  // Return Responses API tools list (function tools)
   return final.map((t) => {
-    if (t.origin === 'builtin' && t.name === 'web_search') {
-      return { type: 'web_search' as const };
-    }
     return {
       type: 'function' as const,
       name: t.sanitizedName,

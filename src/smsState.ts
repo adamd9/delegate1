@@ -1,7 +1,7 @@
 // Centralized, minimal SMS state (single-user assumption)
 import { configService } from './config';
 
-const DEFAULT_WINDOW_MS = 30_000;
+const DEFAULT_WINDOW_MS = 180_000;
 
 let replyWindowMs = DEFAULT_WINDOW_MS;
 let smsReplyUntil = 0;

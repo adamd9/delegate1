@@ -1,19 +1,17 @@
 import { baseAgent } from './baseAgent';
-import { supervisorAgent, getNextResponseFromSupervisorFunction } from './supervisorAgent';
+import { webSearchFunction } from '../tools/handlers/web-search';
 
-// Add supervisor function to base agent's tools
+// Base agent gains the web_search tool (wraps OpenAI Responses builtin web_search).
 export const delegate1Agent = {
   ...baseAgent,
   tools: [
     ...baseAgent.tools,
-    getNextResponseFromSupervisorFunction
-  ]
+    webSearchFunction,
+  ],
 };
 
-// Export both agents for the system
 export const agents = {
   base: delegate1Agent,
-  supervisor: supervisorAgent
 };
 
 // Default agent is the base agent
