@@ -13,8 +13,9 @@ const DEFAULT_VOICE_SPEED = Number(configService.get("DELEGATE_CHAT_VOICE_SPEED"
 
 export function getChatVoiceConfig(): ChatVoiceConfig {
   const base = getAgent("base");
+  const voice = configService.get("REALTIME_VOICE") || base.voice || "ballad";
   return {
-    voice: base.voice || "ballad",
+    voice,
     speed: Number.isFinite(DEFAULT_VOICE_SPEED) ? DEFAULT_VOICE_SPEED : 1.3,
     ttsModel: DEFAULT_TTS_MODEL,
     ttsFormat: "mp3",

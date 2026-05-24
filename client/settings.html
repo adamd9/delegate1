@@ -696,12 +696,11 @@ const TWILIO_SECTIONS = [
 const VOICE_CONFIG_SECTIONS = [
   {
     id: 'voice-config',
-    title: 'Voice Tuning',
-    description: 'How the agent sounds. All fields have sensible defaults.',
+    title: 'Voice Settings',
+    description: 'Controls the realtime voice model used for phone calls and browser voice.',
     fields: [
-      { key: 'DELEGATE_TTS_MODEL', label: 'TTS Model', type: 'select', default: 'gpt-4o-mini-tts', options: [['gpt-4o-mini-tts', 'GPT-4o Mini TTS'], ['tts-1', 'TTS-1'], ['tts-1-hd', 'TTS-1 HD']], help: 'Default: GPT-4o Mini TTS' },
-      { key: 'DELEGATE_CHAT_VOICE_SPEED', label: 'Voice Speed', type: 'number', default: '1.3', help: 'Playback speed (default: 1.3, range 0.5–2.0).' },
-      { key: 'DELEGATE_MAX_AUDIO_BYTES', label: 'Max Audio Size', type: 'number', default: '4194304', help: 'Upper limit for audio payload (default: 4MB).' },
+      { key: 'REALTIME_MODEL', label: 'Realtime Model', type: 'select', default: 'gpt-4o-realtime-preview-2024-12-17', options: [['gpt-4o-realtime-preview-2024-12-17', 'GPT-4o Realtime'], ['gpt-realtime-2', 'GPT Realtime 2']], help: 'The OpenAI model powering live voice conversations.' },
+      { key: 'REALTIME_VOICE', label: 'Voice', type: 'select', default: 'ballad', options: [['alloy', 'Alloy'], ['ash', 'Ash'], ['ballad', 'Ballad'], ['coral', 'Coral'], ['echo', 'Echo'], ['sage', 'Sage'], ['shimmer', 'Shimmer'], ['verse', 'Verse']], help: 'The voice used for phone calls and browser voice chat.' },
     ],
   },
 ];
@@ -710,9 +709,12 @@ const WALKIE_TALKIE_SECTIONS = [
   {
     id: 'walkie-talkie',
     title: 'Walkie-Talkie Settings',
-    description: 'Push-to-talk uses Deepgram for speech-to-text transcription. This is separate from phone calls which use OpenAI\'s built-in speech recognition.',
+    description: 'Push-to-talk uses Deepgram for speech-to-text and OpenAI TTS for responses. This is separate from phone calls which use the Realtime API.',
     fields: [
       { key: 'DEEPGRAM_API_KEY', label: 'Speech-to-Text API Key (Deepgram)', type: 'password', sensitive: true, help: 'Get a key from deepgram.com. Required for the walkie-talkie feature to work.' },
+      { key: 'DELEGATE_TTS_MODEL', label: 'TTS Model', type: 'select', default: 'gpt-4o-mini-tts', options: [['gpt-4o-mini-tts', 'GPT-4o Mini TTS'], ['tts-1', 'TTS-1'], ['tts-1-hd', 'TTS-1 HD']], help: 'Text-to-speech model for walkie-talkie responses.' },
+      { key: 'DELEGATE_CHAT_VOICE_SPEED', label: 'Voice Speed', type: 'number', default: '1.3', help: 'Playback speed (default: 1.3, range 0.5–2.0).' },
+      { key: 'DELEGATE_MAX_AUDIO_BYTES', label: 'Max Audio Size', type: 'number', default: '4194304', help: 'Upper limit for audio payload (default: 4MB).' },
     ],
   },
 ];

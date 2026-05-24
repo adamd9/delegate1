@@ -14,6 +14,7 @@ import { classifyOpenAIError } from "../services/openaiErrors";
 import { memoryModule } from '../memory';
 import type { ContextTurn } from '../memory';
 import { getMemoryConfig } from '../memory/memoryConfig';
+import { configService } from '../config';
 
 
 // Accumulator for assistant voice transcript text by item id (server logs only)
@@ -381,7 +382,7 @@ export function establishRealtimeModelConnection() {
     });
   } catch {}
 
-  const voiceModel = getAgent('base').voiceModel || getAgent('base').model || "gpt-4o-realtime-preview-2024-12-17";
+  const voiceModel = configService.get('REALTIME_MODEL') || getAgent('base').voiceModel || getAgent('base').model || "gpt-4o-realtime-preview-2024-12-17";
   session.modelConn = new WebSocket(
     `wss://api.openai.com/v1/realtime?model=${voiceModel}`,
     {
