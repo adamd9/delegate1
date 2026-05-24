@@ -193,6 +193,9 @@
     .input-with-action { display: flex; align-items: center; gap: 8px; }
     .input-with-action > *:first-child { flex: 1; min-width: 0; }
     .section-actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+    .section-required { border-left: 3px solid var(--amber); background: rgba(251,191,36,0.04); }
+    .page-save { margin-top: 20px; display: flex; align-items: center; gap: 12px; }
+    .page-save .save-msg { font-size: 13px; }
     .toast-stack {
       position: fixed; top: 16px; right: 16px; z-index: 50; display: flex; flex-direction: column; gap: 10px;
       pointer-events: none;
@@ -434,7 +437,6 @@ function renderLogs() {
 let voiceDefaults = null;
 
 function renderVoice() {
-  // Fetch config for phone/Twilio + voice API settings
   fetch('/api/config')
     .then(async response => {
       const payload = await response.json().catch(() => null);
@@ -442,13 +444,63 @@ function renderVoice() {
       const items = normalizeConfigItems(payload);
       const configMap = buildConfigMap(items);
 
-      // Phone guard + Twilio sections first
-      TWILIO_SECTIONS.forEach(section => content.appendChild(buildConfigSectionCard(section, configMap)));
+      const allSections = [...TWILIO_SECTIONS, ...VOICE_CONFIG_SECTIONS];
 
-      // Voice API settings
-      VOICE_CONFIG_SECTIONS.forEach(section => content.appendChild(buildConfigSectionCard(section, configMap)));
+      // Render sections without individual save buttons
+      allSections.forEach(section => content.appendChild(buildConfigSectionCard(section, configMap, { showSave: false })));
 
-      // Voice presets (VAD tuning) last
+      // Single page-level save button
+      const pageSave = el('div', { class: 'page-save' });
+      const saveBtn = el('button', { class: 'btn btn-primary' }, 'Save All Settings');
+      const msg = el('span', { class: 'save-msg' });
+      saveBtn.addEventListener('click', async () => {
+        saveBtn.disabled = true;
+        msg.className = 'save-msg';
+        msg.textContent = 'Saving…';
+        try {
+          const allFields = allSections.flatMap(s => s.fields);
+          const saveItems = allFields
+            .map(field => {
+              const input = content.querySelector(`[data-config-key="${field.key}"]`);
+              if (!input) return null;
+              const value = String(input.value ?? '');
+              if (value === '') return null;
+              return { key: field.key, value, ...(field.sensitive ? { sensitive: true } : {}) };
+            })
+            .filter(Boolean);
+
+          if (saveItems.length === 0) {
+            msg.className = 'save-msg err';
+            msg.textContent = 'Nothing to save';
+            return;
+          }
+
+          const resp = await fetch('/api/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: saveItems }),
+          });
+          const respPayload = await resp.json().catch(() => null);
+          if (!resp.ok) throw new Error(readErrorMessage(respPayload, 'Failed to save'));
+
+          msg.className = 'save-msg ok';
+          msg.textContent = 'Saved!';
+          showToast('Phone & Voice settings saved.');
+          setTimeout(() => renderTab(activeTab), 800);
+        } catch (err) {
+          msg.className = 'save-msg err';
+          msg.textContent = 'Error: ' + err.message;
+          showToast('Save failed: ' + err.message, 'err');
+        } finally {
+          saveBtn.disabled = false;
+          setTimeout(() => { if (msg.textContent === 'Saved!') msg.textContent = ''; }, 2500);
+        }
+      });
+      pageSave.appendChild(saveBtn);
+      pageSave.appendChild(msg);
+      content.appendChild(pageSave);
+
+      // Voice presets (uses its own API, keeps separate save)
       const c = card('Voice Presets', body => {
         body.innerHTML = '<div class="loading">Loading…</div>';
       });
@@ -653,19 +705,11 @@ const CONFIG_SECTIONS = [
 
 const TWILIO_SECTIONS = [
   {
-    id: 'phone-guard',
-    title: 'Your Phone Number',
-    description: '⚠️ Safety guard — the agent will ONLY send calls and SMS to this number. This prevents accidental contact to unintended recipients.',
+    id: 'twilio-required',
+    title: 'Required — Twilio Credentials',
+    description: 'These are needed for phone calls to work.',
+    required: true,
     fields: [
-      { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Your Phone Number', type: 'text', help: 'The number this agent is locked to for outbound calls/SMS (e.g. +61400000000).' },
-    ],
-  },
-  {
-    id: 'twilio-calls',
-    title: 'Twilio Credentials — Calls',
-    description: 'Voice calling credentials.',
-    fields: [
-      { key: 'TWILIO_PHONE_NUMBER', label: 'Twilio Number (From)', type: 'text', help: 'Your Twilio number used as the caller/sender ID.' },
       { key: 'TWILIO_ACCOUNT_SID', label: 'Account SID', type: 'text' },
       { key: 'TWILIO_AUTH_TOKEN', label: 'Auth Token', type: 'password', sensitive: true },
       { key: 'TWILIO_API_KEY_SID', label: 'API Key SID', type: 'text' },
@@ -674,13 +718,12 @@ const TWILIO_SECTIONS = [
     ],
   },
   {
-    id: 'twilio-sms',
-    title: 'Twilio Credentials — SMS',
-    description: 'Only needed if your SMS uses a different Twilio account/subaccount.',
+    id: 'phone-identity',
+    title: 'Safety & Identity',
+    description: 'Controls who the agent can contact and how it identifies itself.',
     fields: [
-      { key: 'TWILIO_SMS_ACCOUNT_SID', label: 'SMS Account SID', type: 'text', help: 'Leave blank to use the same account as calls.' },
-      { key: 'TWILIO_SMS_AUTH_TOKEN', label: 'SMS Auth Token', type: 'password', sensitive: true },
-      { key: 'TWILIO_MESSAGING_SERVICE_SID', label: 'Messaging Service SID', type: 'text' },
+      { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Your Phone Number', type: 'text', help: '⚠️ Safety guard — the agent will ONLY send calls and SMS to this number. Prevents accidental contact to unintended recipients.' },
+      { key: 'TWILIO_PHONE_NUMBER', label: 'Twilio Number (Caller ID)', type: 'text', help: 'The Twilio number displayed when the agent calls or texts you.' },
     ],
   },
 ];
@@ -688,13 +731,23 @@ const TWILIO_SECTIONS = [
 const VOICE_CONFIG_SECTIONS = [
   {
     id: 'voice-config',
-    title: 'Voice API Settings',
-    description: 'Text-to-speech and transcription configuration.',
+    title: 'Voice Settings',
+    description: 'How the agent sounds and processes speech. All fields have sensible defaults.',
     fields: [
-      { key: 'DELEGATE_TTS_MODEL', label: 'TTS Model', type: 'select', default: 'gpt-4o-mini-tts', options: [['gpt-4o-mini-tts', 'GPT-4o Mini TTS'], ['tts-1', 'TTS-1'], ['tts-1-hd', 'TTS-1 HD']], help: 'Default: gpt-4o-mini-tts' },
+      { key: 'DELEGATE_TTS_MODEL', label: 'TTS Model', type: 'select', default: 'gpt-4o-mini-tts', options: [['gpt-4o-mini-tts', 'GPT-4o Mini TTS'], ['tts-1', 'TTS-1'], ['tts-1-hd', 'TTS-1 HD']], help: 'Default: GPT-4o Mini TTS' },
       { key: 'DELEGATE_CHAT_VOICE_SPEED', label: 'Voice Speed', type: 'number', default: '1.3', help: 'Playback speed (default: 1.3, range 0.5–2.0).' },
-      { key: 'DEEPGRAM_API_KEY', label: 'Deepgram API Key', type: 'password', sensitive: true, help: 'Required for speech-to-text.' },
-      { key: 'DELEGATE_MAX_AUDIO_BYTES', label: 'Max Audio Bytes', type: 'number', default: '4194304', help: 'Upper limit for audio payload.' },
+      { key: 'DEEPGRAM_API_KEY', label: 'Speech-to-Text API Key (Deepgram)', type: 'password', sensitive: true, help: 'Required for walkie-talkie / push-to-talk. Not needed for phone calls.' },
+      { key: 'DELEGATE_MAX_AUDIO_BYTES', label: 'Max Audio Size', type: 'number', default: '4194304', help: 'Upper limit for audio payload (default: 4MB).' },
+    ],
+  },
+  {
+    id: 'twilio-sms-optional',
+    title: 'SMS — Separate Account (Optional)',
+    description: 'Only needed if your SMS uses a different Twilio account or subaccount from calls.',
+    fields: [
+      { key: 'TWILIO_SMS_ACCOUNT_SID', label: 'SMS Account SID', type: 'text', help: 'Leave blank to use the same account as calls.' },
+      { key: 'TWILIO_SMS_AUTH_TOKEN', label: 'SMS Auth Token', type: 'password', sensitive: true },
+      { key: 'TWILIO_MESSAGING_SERVICE_SID', label: 'Messaging Service SID', type: 'text', help: 'Alternative to a phone number for sending SMS.' },
     ],
   },
 ];
@@ -829,74 +882,78 @@ function buildConfigField(field, item, sectionId) {
   titleWrap.appendChild(el('label', { class: 'config-field-title', for: fieldId }, field.label));
   titleWrap.appendChild(el('div', { class: 'config-env' }, field.key));
   head.appendChild(titleWrap);
-  if (control.masked) head.appendChild(el('span', { class: 'config-status' }, 'Configured'));
+  const hasValue = control.masked || (item && item.value);
+  if (hasValue) head.appendChild(el('span', { class: 'config-status' }, '✓ Configured'));
   wrap.appendChild(head);
   wrap.appendChild(control.wrapper);
   wrap.appendChild(el('div', { class: 'config-help' }, field.help));
   return wrap;
 }
 
-function buildConfigSectionCard(section, configMap) {
+function buildConfigSectionCard(section, configMap, { showSave = true } = {}) {
   const sectionCard = card(section.title, body => {
     body.appendChild(el('div', { class: 'section-description' }, section.description));
     const grid = el('div', { class: 'config-grid' });
     section.fields.forEach(field => grid.appendChild(buildConfigField(field, configMap.get(field.key), section.id)));
     body.appendChild(grid);
 
-    const actions = el('div', { class: 'section-actions' });
-    const saveBtn = el('button', { class: 'btn btn-primary', type: 'button' }, 'Save');
-    const msg = el('span', { class: 'save-msg' });
-    saveBtn.addEventListener('click', async () => {
-      saveBtn.disabled = true;
-      msg.className = 'save-msg';
-      msg.textContent = 'Saving…';
-      try {
-        const items = section.fields
-          .map(field => {
-            const input = body.querySelector(`[data-config-key="${field.key}"]`);
-            if (!input) return null;
-            const value = String(input.value ?? '');
-            if (value === '') return null;
-            return { key: field.key, value, ...(field.sensitive ? { sensitive: true } : {}) };
-          })
-          .filter(Boolean);
+    if (showSave) {
+      const actions = el('div', { class: 'section-actions' });
+      const saveBtn = el('button', { class: 'btn btn-primary', type: 'button' }, 'Save');
+      const msg = el('span', { class: 'save-msg' });
+      saveBtn.addEventListener('click', async () => {
+        saveBtn.disabled = true;
+        msg.className = 'save-msg';
+        msg.textContent = 'Saving…';
+        try {
+          const items = section.fields
+            .map(field => {
+              const input = body.querySelector(`[data-config-key="${field.key}"]`);
+              if (!input) return null;
+              const value = String(input.value ?? '');
+              if (value === '') return null;
+              return { key: field.key, value, ...(field.sensitive ? { sensitive: true } : {}) };
+            })
+            .filter(Boolean);
 
-        if (items.length === 0) {
+          if (items.length === 0) {
+            msg.className = 'save-msg err';
+            msg.textContent = 'Nothing to save';
+            showToast(`No values to save for ${section.title}.`, 'err');
+            return;
+          }
+
+          const response = await fetch('/api/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items }),
+          });
+          const payload = await response.json().catch(() => null);
+          if (!response.ok) throw new Error(readErrorMessage(payload, 'Failed to save configuration'));
+
+          msg.className = 'save-msg ok';
+          msg.textContent = 'Saved!';
+          showToast(`${section.title} saved.`);
+          // Refresh current tab to reflect updated values
+          const updatedItems = normalizeConfigItems(payload);
+          if (updatedItems.length > 0 && activeTab) renderTab(activeTab);
+        } catch (err) {
           msg.className = 'save-msg err';
-          msg.textContent = 'Nothing to save';
-          showToast(`No values to save for ${section.title}.`, 'err');
-          return;
+          msg.textContent = 'Error: ' + err.message;
+          showToast(`Failed to save ${section.title}: ${err.message}`, 'err');
+        } finally {
+          saveBtn.disabled = false;
+          setTimeout(() => { if (msg.textContent === 'Saved!') msg.textContent = ''; }, 2200);
         }
-
-        const response = await fetch('/api/config', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items }),
-        });
-        const payload = await response.json().catch(() => null);
-        if (!response.ok) throw new Error(readErrorMessage(payload, 'Failed to save configuration'));
-
-        msg.className = 'save-msg ok';
-        msg.textContent = 'Saved!';
-        showToast(`${section.title} saved.`);
-        // Refresh current tab to reflect updated values
-        const updatedItems = normalizeConfigItems(payload);
-        if (updatedItems.length > 0 && activeTab) renderTab(activeTab);
-      } catch (err) {
-        msg.className = 'save-msg err';
-        msg.textContent = 'Error: ' + err.message;
-        showToast(`Failed to save ${section.title}: ${err.message}`, 'err');
-      } finally {
-        saveBtn.disabled = false;
-        setTimeout(() => { if (msg.textContent === 'Saved!') msg.textContent = ''; }, 2200);
-      }
-    });
-    actions.appendChild(saveBtn);
-    actions.appendChild(msg);
-    body.appendChild(actions);
+      });
+      actions.appendChild(saveBtn);
+      actions.appendChild(msg);
+      body.appendChild(actions);
+    }
   });
   sectionCard.id = `config-section-${section.id}`;
   sectionCard.dataset.sectionId = section.id;
+  if (section.required) sectionCard.classList.add('section-required');
   return sectionCard;
 }
 
@@ -1095,7 +1152,58 @@ function renderSectionsTab(sections, title, description) {
       });
       content.appendChild(intro);
       const configMap = buildConfigMap(items);
-      sections.forEach(section => content.appendChild(buildConfigSectionCard(section, configMap)));
+      sections.forEach(section => content.appendChild(buildConfigSectionCard(section, configMap, { showSave: false })));
+
+      // Single page-level save
+      const pageSave = el('div', { class: 'page-save' });
+      const saveBtn = el('button', { class: 'btn btn-primary' }, 'Save All Settings');
+      const msg = el('span', { class: 'save-msg' });
+      saveBtn.addEventListener('click', async () => {
+        saveBtn.disabled = true;
+        msg.className = 'save-msg';
+        msg.textContent = 'Saving…';
+        try {
+          const allFields = sections.flatMap(s => s.fields);
+          const saveItems = allFields
+            .map(field => {
+              const input = content.querySelector(`[data-config-key="${field.key}"]`);
+              if (!input) return null;
+              const value = String(input.value ?? '');
+              if (value === '') return null;
+              return { key: field.key, value, ...(field.sensitive ? { sensitive: true } : {}) };
+            })
+            .filter(Boolean);
+
+          if (saveItems.length === 0) {
+            msg.className = 'save-msg err';
+            msg.textContent = 'Nothing to save';
+            return;
+          }
+
+          const resp = await fetch('/api/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: saveItems }),
+          });
+          const respPayload = await resp.json().catch(() => null);
+          if (!resp.ok) throw new Error(readErrorMessage(respPayload, 'Failed to save'));
+
+          msg.className = 'save-msg ok';
+          msg.textContent = 'Saved!';
+          showToast(`${title} settings saved.`);
+          setTimeout(() => renderTab(activeTab), 800);
+        } catch (err) {
+          msg.className = 'save-msg err';
+          msg.textContent = 'Error: ' + err.message;
+          showToast('Save failed: ' + err.message, 'err');
+        } finally {
+          saveBtn.disabled = false;
+          setTimeout(() => { if (msg.textContent === 'Saved!') msg.textContent = ''; }, 2500);
+        }
+      });
+      pageSave.appendChild(saveBtn);
+      pageSave.appendChild(msg);
+      content.appendChild(pageSave);
     })
     .catch(err => {
       content.innerHTML = `<div class="error-msg">Failed to load: ${err.message}</div>`;
@@ -1812,12 +1920,9 @@ function loadNavWarnings() {
       const core = groups.get('core');
       setNavWarn('config', !!core && core.status !== 'complete');
 
-      // Phone & Voice tab — mandatory, always warn if incomplete
+      // Phone & Voice tab — warn only if the 5 required Twilio creds are incomplete
       const calls = groups.get('twilio-calls');
-      const sms = groups.get('twilio-sms');
-      const voice = groups.get('voice');
-      const phoneVoiceComplete = calls?.status === 'complete' && (!sms || sms.status === 'complete') && (!voice || voice.status === 'complete');
-      setNavWarn('voice', !phoneVoiceComplete);
+      setNavWarn('voice', !!calls && calls.status !== 'complete');
 
       const emailSend = groups.get('email-sending');
       const emailRecv = groups.get('email-receiving');
