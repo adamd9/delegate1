@@ -27,13 +27,13 @@ export const webSearchFunction: FunctionHandler = {
     name: 'web_search',
     type: 'function',
     description:
-      'Search the web for up-to-date information. Use whenever the user needs current facts, news, prices, schedules, references, or anything beyond the model\'s training data. The tool performs the search and returns a concise answer derived from the results.',
+      'Search the web for factual information. Use this for ANY factual claim — names, dates, definitions, statistics, events, prices, schedules, specifications, locations, biographies, references, current affairs, historical facts — regardless of how well-known or old the fact is. The model\'s own knowledge must NOT be used as a source of facts; reserve the model for reasoning, synthesis, and conversation. If a response would assert something verifiable, call this tool first.',
     parameters: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: 'A focused natural-language search query. Be specific; include the entities, time scope, and any constraints relevant to the user\'s question.'
+          description: 'A focused natural-language search query targeting the specific fact(s) you need to verify or retrieve.'
         }
       },
       required: ['query'],

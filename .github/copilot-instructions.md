@@ -23,15 +23,14 @@ Unit tests use plain Node `assert` — there is no test framework (no Jest/Vites
 
 The entire app shares ONE mutable `session` object (`src/sessionSingleton.ts`, `src/session/state.ts`). All channels (text chat, voice, phone, SMS, email) read and write to this singleton. There is no per-request or per-user isolation. Only one voice/call connection can be active at a time; multiple text chat WebSocket clients are allowed.
 
-### Two-Tier Agent Model
+### Single Base Agent
 
-A **base agent** handles simple queries directly and **escalates** complex tasks to a **supervisor agent** via the `getNextResponseFromSupervisor` tool call.
+A single **base agent** handles every turn directly, calling tools as needed (local handlers, MCP tools, or `web_search` for fresh information).
 
 - Base agent config: `src/agentConfigs/baseAgentConfig.ts`
-- Supervisor agent config: `src/agentConfigs/supervisorAgentConfig.ts`
 - Agent registry: `src/agentConfigs/index.ts`
 
-The supervisor runs in a loop (up to 5 iterations) using the Responses API, calling tools like `web_search`, then returns its answer to the base agent which relays it to the user.
+The `web_search` tool (`src/tools/handlers/web-search.ts`) wraps a single OpenAI Responses API call with the builtin web_search tool enabled. The wrapping exists because the Realtime API used by voice only accepts function tools, not OpenAI builtin tool types — so we expose web search uniformly as a function across text and voice. The voice channel plays a hold-music pulse while the wrapped call is in flight (see `startHoldMusicLoop` in `src/session/call.ts`).
 
 ### Tool Registry
 
