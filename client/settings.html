@@ -232,6 +232,7 @@
     <select class="mobile-tab-select" id="mobile-tab">
       <option value="logs">Logs</option>
       <option value="voice">Phone & Voice</option>
+      <option value="walkie-talkie">Walkie-Talkie</option>
       <option value="catalog">Tools</option>
       <option value="adaptations">Adaptations</option>
       <option value="mcp">MCP Servers</option>
@@ -255,6 +256,10 @@
       <button class="sidebar-item" data-tab="voice">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
         Phone & Voice
+      </button>
+      <button class="sidebar-item" data-tab="walkie-talkie">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+        Walkie-Talkie
       </button>
       <button class="sidebar-item" data-tab="catalog">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
@@ -304,7 +309,7 @@
 // ──────────────────────────────────────────────
 // Tab routing
 // ──────────────────────────────────────────────
-const TABS = ['logs','voice','catalog','adaptations','mcp','memory','config','email','browser','maintenance','about'];
+const TABS = ['logs','voice','walkie-talkie','catalog','adaptations','mcp','memory','config','email','browser','maintenance','about'];
 let activeTab = null;
 
 function getInitialTab() {
@@ -348,6 +353,7 @@ function renderTab(tab) {
   switch (tab) {
     case 'logs':        renderLogs(); break;
     case 'voice':       renderVoice(); break;
+    case 'walkie-talkie': renderWalkieTalkie(); break;
     case 'catalog':     renderCatalog(); break;
     case 'adaptations': renderAdaptations(); break;
     case 'mcp':         renderMcp(); break;
@@ -437,157 +443,122 @@ function renderLogs() {
 let voiceDefaults = null;
 
 function renderVoice() {
-  fetch('/api/config')
-    .then(async response => {
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error('Failed to load config');
-      const items = normalizeConfigItems(payload);
-      const configMap = buildConfigMap(items);
+  Promise.all([
+    fetch('/api/config').then(r => r.ok ? r.json() : Promise.reject('config')),
+    fetch('/voice-defaults').then(r => r.ok ? r.json() : Promise.reject('voice-defaults')),
+  ]).then(([configPayload, presetsData]) => {
+    const items = normalizeConfigItems(configPayload);
+    const configMap = buildConfigMap(items);
+    voiceDefaults = presetsData;
 
-      const allSections = [...TWILIO_SECTIONS, ...VOICE_CONFIG_SECTIONS];
+    const allSections = [...TWILIO_SECTIONS, ...VOICE_CONFIG_SECTIONS];
 
-      // Render sections without individual save buttons
-      allSections.forEach(section => content.appendChild(buildConfigSectionCard(section, configMap, { showSave: false })));
+    // Render config sections (no per-section save)
+    allSections.forEach(section => content.appendChild(buildConfigSectionCard(section, configMap, { showSave: false })));
 
-      // Single page-level save button
-      const pageSave = el('div', { class: 'page-save' });
-      const saveBtn = el('button', { class: 'btn btn-primary' }, 'Save All Settings');
-      const msg = el('span', { class: 'save-msg' });
-      saveBtn.addEventListener('click', async () => {
-        saveBtn.disabled = true;
-        msg.className = 'save-msg';
-        msg.textContent = 'Saving…';
-        try {
-          const allFields = allSections.flatMap(s => s.fields);
-          const saveItems = allFields
-            .map(field => {
-              const input = content.querySelector(`[data-config-key="${field.key}"]`);
-              if (!input) return null;
-              const value = String(input.value ?? '');
-              if (value === '') return null;
-              return { key: field.key, value, ...(field.sensitive ? { sensitive: true } : {}) };
-            })
-            .filter(Boolean);
+    // Voice presets card (no save buttons inside)
+    const presetsCard = card('Voice Presets', () => {});
+    const presetsBody = presetsCard.querySelector('.card-body');
+    presetsBody.innerHTML = '';
+    presetsBody.appendChild(buildVoicePresetsOnly(presetsData, presetsCard));
+    content.appendChild(presetsCard);
 
-          if (saveItems.length === 0) {
-            msg.className = 'save-msg err';
-            msg.textContent = 'Nothing to save';
-            return;
-          }
+    // Single page save + reset
+    const pageSave = el('div', { class: 'page-save' });
+    const saveBtn = el('button', { class: 'btn btn-primary' }, 'Save All Settings');
+    const resetBtn = el('button', { class: 'btn btn-ghost' }, 'Reset Voice Presets');
+    const msg = el('span', { class: 'save-msg' });
 
-          const resp = await fetch('/api/config', {
+    saveBtn.addEventListener('click', async () => {
+      saveBtn.disabled = true;
+      msg.className = 'save-msg';
+      msg.textContent = 'Saving…';
+      try {
+        // Save config fields
+        const allFields = allSections.flatMap(s => s.fields);
+        const saveItems = allFields
+          .map(field => {
+            const input = content.querySelector(`[data-config-key="${field.key}"]`);
+            if (!input) return null;
+            const value = String(input.value ?? '');
+            if (value === '') return null;
+            return { key: field.key, value, ...(field.sensitive ? { sensitive: true } : {}) };
+          })
+          .filter(Boolean);
+
+        const promises = [];
+        if (saveItems.length > 0) {
+          promises.push(fetch('/api/config', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ items: saveItems }),
-          });
-          const respPayload = await resp.json().catch(() => null);
-          if (!resp.ok) throw new Error(readErrorMessage(respPayload, 'Failed to save'));
-
-          msg.className = 'save-msg ok';
-          msg.textContent = 'Saved!';
-          showToast('Phone & Voice settings saved.');
-          setTimeout(() => renderTab(activeTab), 800);
-        } catch (err) {
-          msg.className = 'save-msg err';
-          msg.textContent = 'Error: ' + err.message;
-          showToast('Save failed: ' + err.message, 'err');
-        } finally {
-          saveBtn.disabled = false;
-          setTimeout(() => { if (msg.textContent === 'Saved!') msg.textContent = ''; }, 2500);
+          }).then(r => { if (!r.ok) throw new Error('Config save failed'); return r.json(); }));
         }
-      });
-      pageSave.appendChild(saveBtn);
-      pageSave.appendChild(msg);
-      content.appendChild(pageSave);
 
-      // Voice presets (uses its own API, keeps separate save)
-      const c = card('Voice Presets', body => {
-        body.innerHTML = '<div class="loading">Loading…</div>';
-      });
-      content.appendChild(c);
-      return fetch('/voice-defaults').then(r => {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      }).then(data => {
-        voiceDefaults = data;
-        const body = c.querySelector('.card-body');
-        body.innerHTML = '';
-        body.appendChild(buildVoiceForm(data, c));
-      });
-    })
-    .catch(err => {
-      content.innerHTML += `<div class="error-msg">Failed to load: ${err.message}</div>`;
+        // Save voice presets
+        if (voiceDefaults) {
+          promises.push(fetch('/voice-defaults', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(voiceDefaults),
+          }).then(r => { if (!r.ok) throw new Error('Voice presets save failed'); return r.json(); }));
+        }
+
+        if (promises.length === 0) {
+          msg.className = 'save-msg err';
+          msg.textContent = 'Nothing to save';
+          return;
+        }
+
+        await Promise.all(promises);
+        msg.className = 'save-msg ok';
+        msg.textContent = 'Saved!';
+        showToast('Phone & Voice settings saved.');
+        setTimeout(() => renderTab(activeTab), 800);
+      } catch (err) {
+        msg.className = 'save-msg err';
+        msg.textContent = 'Error: ' + err.message;
+        showToast('Save failed: ' + err.message, 'err');
+      } finally {
+        saveBtn.disabled = false;
+        setTimeout(() => { if (msg.textContent === 'Saved!') msg.textContent = ''; }, 2500);
+      }
     });
+
+    resetBtn.addEventListener('click', async () => {
+      if (!window.confirm('Reset voice presets to defaults?')) return;
+      resetBtn.disabled = true;
+      try {
+        const res = await fetch('/voice-defaults/reset', { method: 'POST' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const result = await res.json();
+        voiceDefaults = result.defaults;
+        showToast('Voice presets reset.');
+        renderTab(activeTab);
+      } catch (err) {
+        showToast('Reset failed: ' + err.message, 'err');
+      } finally {
+        resetBtn.disabled = false;
+      }
+    });
+
+    pageSave.appendChild(saveBtn);
+    pageSave.appendChild(resetBtn);
+    pageSave.appendChild(msg);
+    content.appendChild(pageSave);
+  }).catch(err => {
+    content.innerHTML = `<div class="error-msg">Failed to load: ${err}</div>`;
+  });
 }
 
-function buildVoiceForm(data, cardEl) {
+// Build voice presets grid WITHOUT save/reset buttons
+function buildVoicePresetsOnly(data, cardEl) {
   const frag = document.createDocumentFragment();
-
   const grid = el('div', {class:'presets-grid'});
   grid.appendChild(buildPresetEditor('normal', 'Normal', 'Quiet/normal conditions', data.normal, 'green', cardEl));
   grid.appendChild(buildPresetEditor('noisy', 'Noisy', 'Loud background noise', data.noisy, 'amber', cardEl));
   frag.appendChild(grid);
-
-  const saveRow = el('div', {class:'save-row', style:{marginTop:'16px'}});
-  const saveBtn = el('button', {class:'btn btn-primary'}, 'Save Changes');
-  const resetBtn = el('button', {class:'btn btn-ghost'}, 'Reset to Defaults');
-  const msg = el('span', {class:'save-msg'});
-  saveRow.appendChild(saveBtn);
-  saveRow.appendChild(resetBtn);
-  saveRow.appendChild(msg);
-  frag.appendChild(saveRow);
-
-  saveBtn.addEventListener('click', async () => {
-    saveBtn.disabled = true;
-    msg.className = 'save-msg';
-    msg.textContent = 'Saving…';
-    try {
-      const res = await fetch('/voice-defaults', {
-        method: 'PUT',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(voiceDefaults),
-      });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const result = await res.json();
-      voiceDefaults = result.defaults;
-      refreshVoiceForm(cardEl, voiceDefaults);
-      msg.className = 'save-msg ok'; msg.textContent = 'Saved!';
-      setTimeout(() => { msg.textContent = ''; }, 2000);
-    } catch (err) {
-      msg.className = 'save-msg err'; msg.textContent = 'Error: ' + err.message;
-      setTimeout(() => { msg.textContent = ''; }, 3000);
-    } finally {
-      saveBtn.disabled = false;
-    }
-  });
-
-  resetBtn.addEventListener('click', async () => {
-    if (!window.confirm('Reset voice defaults to hardcoded values?')) return;
-    resetBtn.disabled = true;
-    msg.className = 'save-msg'; msg.textContent = 'Resetting…';
-    try {
-      const res = await fetch('/voice-defaults/reset', { method: 'POST' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const result = await res.json();
-      voiceDefaults = result.defaults;
-      refreshVoiceForm(cardEl, voiceDefaults);
-      msg.className = 'save-msg ok'; msg.textContent = 'Reset complete';
-      setTimeout(() => { msg.textContent = ''; }, 2000);
-    } catch (err) {
-      msg.className = 'save-msg err'; msg.textContent = 'Error: ' + err.message;
-      setTimeout(() => { msg.textContent = ''; }, 3000);
-    } finally {
-      resetBtn.disabled = false;
-    }
-  });
-
   return frag;
-}
-
-function refreshVoiceForm(cardEl, data) {
-  const body = cardEl.querySelector('.card-body');
-  body.innerHTML = '';
-  body.appendChild(buildVoiceForm(data, cardEl));
 }
 
 function buildPresetEditor(key, title, description, preset, accentCls, cardEl) {
@@ -707,7 +678,7 @@ const TWILIO_SECTIONS = [
   {
     id: 'twilio-required',
     title: 'Required — Twilio Credentials',
-    description: 'These are needed for phone calls to work.',
+    description: 'These are needed for phone calls and SMS to work.',
     required: true,
     fields: [
       { key: 'TWILIO_ACCOUNT_SID', label: 'Account SID', type: 'text' },
@@ -731,23 +702,23 @@ const TWILIO_SECTIONS = [
 const VOICE_CONFIG_SECTIONS = [
   {
     id: 'voice-config',
-    title: 'Voice Settings',
-    description: 'How the agent sounds and processes speech. All fields have sensible defaults.',
+    title: 'Voice Tuning',
+    description: 'How the agent sounds. All fields have sensible defaults.',
     fields: [
       { key: 'DELEGATE_TTS_MODEL', label: 'TTS Model', type: 'select', default: 'gpt-4o-mini-tts', options: [['gpt-4o-mini-tts', 'GPT-4o Mini TTS'], ['tts-1', 'TTS-1'], ['tts-1-hd', 'TTS-1 HD']], help: 'Default: GPT-4o Mini TTS' },
       { key: 'DELEGATE_CHAT_VOICE_SPEED', label: 'Voice Speed', type: 'number', default: '1.3', help: 'Playback speed (default: 1.3, range 0.5–2.0).' },
-      { key: 'DEEPGRAM_API_KEY', label: 'Speech-to-Text API Key (Deepgram)', type: 'password', sensitive: true, help: 'Required for walkie-talkie / push-to-talk. Not needed for phone calls.' },
       { key: 'DELEGATE_MAX_AUDIO_BYTES', label: 'Max Audio Size', type: 'number', default: '4194304', help: 'Upper limit for audio payload (default: 4MB).' },
     ],
   },
+];
+
+const WALKIE_TALKIE_SECTIONS = [
   {
-    id: 'twilio-sms-optional',
-    title: 'SMS — Separate Account (Optional)',
-    description: 'Only needed if your SMS uses a different Twilio account or subaccount from calls.',
+    id: 'walkie-talkie',
+    title: 'Walkie-Talkie Settings',
+    description: 'Push-to-talk uses Deepgram for speech-to-text transcription. This is separate from phone calls which use OpenAI\'s built-in speech recognition.',
     fields: [
-      { key: 'TWILIO_SMS_ACCOUNT_SID', label: 'SMS Account SID', type: 'text', help: 'Leave blank to use the same account as calls.' },
-      { key: 'TWILIO_SMS_AUTH_TOKEN', label: 'SMS Auth Token', type: 'password', sensitive: true },
-      { key: 'TWILIO_MESSAGING_SERVICE_SID', label: 'Messaging Service SID', type: 'text', help: 'Alternative to a phone number for sending SMS.' },
+      { key: 'DEEPGRAM_API_KEY', label: 'Speech-to-Text API Key (Deepgram)', type: 'password', sensitive: true, help: 'Get a key from deepgram.com. Required for the walkie-talkie feature to work.' },
     ],
   },
 ];
@@ -1212,6 +1183,10 @@ function renderSectionsTab(sections, title, description) {
 
 function renderEmail() {
   renderSectionsTab(EMAIL_SECTIONS, 'Email', 'Sending and receiving email configuration.');
+}
+
+function renderWalkieTalkie() {
+  renderSectionsTab(WALKIE_TALKIE_SECTIONS, 'Walkie-Talkie', 'Push-to-talk voice messaging. Uses Deepgram for speech-to-text (separate from phone calls).');
 }
 
 function renderBrowser() {

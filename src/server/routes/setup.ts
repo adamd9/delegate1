@@ -55,14 +55,11 @@ const SETUP_GROUPS: SetupGroupDefinition[] = [
   {
     id: 'twilio-sms',
     name: 'Twilio - SMS',
-    description: 'SMS delivery credentials and defaults',
+    description: 'SMS delivery configuration',
     required: false,
     items: [
-      { key: 'TWILIO_SMS_ACCOUNT_SID', label: 'Twilio SMS Account SID' },
-      { key: 'TWILIO_SMS_AUTH_TOKEN', label: 'Twilio SMS Auth Token' },
       { key: 'TWILIO_PHONE_NUMBER', label: 'Twilio Phone Number' },
-      { key: 'TWILIO_MESSAGING_SERVICE_SID', label: 'Twilio Messaging Service SID' },
-      { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Twilio SMS Default To' },
+      { key: 'TWILIO_SMS_DEFAULT_TO', label: 'Default SMS Recipient' },
     ],
   },
   {
