@@ -4,9 +4,9 @@ import { configService } from '../../config';
 const GITHUB_API = 'https://api.github.com';
 
 function getHeaders(): { headers: Record<string, string>; error?: undefined } | { error: string } {
-  const pat = configService.get('GITHUB_PAT') || configService.get('COPILOT_GITHUB_TOKEN');
+  const pat = configService.get('GITHUB_PAT');
   if (!pat) {
-    return { error: 'No GitHub token configured. Set GITHUB_PAT (or COPILOT_GITHUB_TOKEN) to a GitHub Personal Access Token.' };
+    return { error: 'No GitHub token configured. Set GITHUB_PAT to a GitHub Personal Access Token (Settings → Tools → GitHub).' };
   }
   return {
     headers: {

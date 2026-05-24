@@ -235,13 +235,14 @@
       <option value="logs">Logs</option>
       <option value="voice">Phone & Voice</option>
       <option value="walkie-talkie">Walkie-Talkie</option>
-      <option value="catalog">Tools</option>
+      <option value="catalog">Catalogue</option>
       <option value="adaptations">Adaptations</option>
       <option value="mcp">MCP Servers</option>
       <option value="memory">Memory</option>
+      <option value="browser">Copilot</option>
+      <option value="github">GitHub</option>
       <option value="config">Configuration</option>
       <option value="email">Email</option>
-      <option value="browser">Browser / Copilot</option>
       <option value="maintenance">Maintenance</option>
       <option value="about">About</option>
     </select>
@@ -269,13 +270,9 @@
         Walkie-Talkie
       </button>
       <div class="sidebar-group-label">Agent</div>
-      <button class="sidebar-item" data-tab="browser">
-        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        Browser / Copilot
-      </button>
       <button class="sidebar-item" data-tab="catalog">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
-        Tools
+        Catalogue
       </button>
       <button class="sidebar-item" data-tab="adaptations">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -288,6 +285,15 @@
       <button class="sidebar-item" data-tab="memory">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
         Memory
+      </button>
+      <div class="sidebar-group-label">Tools</div>
+      <button class="sidebar-item" data-tab="browser">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        Copilot
+      </button>
+      <button class="sidebar-item" data-tab="github">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg>
+        GitHub
       </button>
       <div class="sidebar-group-label">System</div>
       <button class="sidebar-item" data-tab="config">
@@ -314,7 +320,7 @@
 // ──────────────────────────────────────────────
 // Tab routing
 // ──────────────────────────────────────────────
-const TABS = ['logs','voice','walkie-talkie','catalog','adaptations','mcp','memory','config','email','browser','maintenance','about'];
+const TABS = ['logs','voice','walkie-talkie','catalog','adaptations','mcp','memory','config','email','browser','github','maintenance','about'];
 let activeTab = null;
 
 function getInitialTab() {
@@ -366,6 +372,7 @@ function renderTab(tab) {
     case 'config':      renderConfig(); break;
     case 'email':       renderEmail(); break;
     case 'browser':     renderBrowser(); break;
+    case 'github':      renderGithub(); break;
     case 'maintenance': renderMaintenance(); break;
     case 'about':       renderAbout(); break;
   }
@@ -754,8 +761,8 @@ const EMAIL_SECTIONS = [
 
 const BROWSER_SECTIONS = [
   {
-    id: 'browser-copilot',
-    title: 'Browser / Copilot',
+    id: 'copilot-tool',
+    title: 'Copilot',
     description: 'Lets the assistant hand off coding and research tasks to a real GitHub Copilot session running in a headed browser. The Copilot Sign-In Token below is the one credential it needs — Copilot does the work, and the same token is used to push your code to a workspace repo on GitHub.',
     fields: [
       { key: 'BROWSER_ENABLED', label: 'Enable Browser Agent', type: 'boolean', default: 'false', help: 'Turn this on to let the assistant launch a browser-based Copilot session when you ask it to write code or do deep research. Leave it off if you only want voice, phone, and email.' },
@@ -763,6 +770,17 @@ const BROWSER_SECTIONS = [
       { key: 'COPILOT_REMOTE_REPO', label: 'Workspace Repository', type: 'text', help: 'GitHub repo (owner/name) the assistant uses as its scratchpad when Copilot is writing code for you — every branch, commit, and push lands here. Leave this empty and the assistant will create a private repo called "delegate1-copilot-workspace" under the GitHub account that owns the Copilot Sign-In Token above (if one already exists with that name, it will reuse it).' },
       { key: 'VNC_PASSWORD', label: 'Watch-Along Password', type: 'password', sensitive: true, help: 'Password to peek at the browser while the assistant is using it (via the noVNC viewer). Useful for watching it work or stepping in manually if it gets stuck.' },
       { key: 'COPILOT_TIMEOUT_MS', label: 'Copilot Timeout (ms)', type: 'number', default: '120000', help: 'How long to wait for a single Copilot command before giving up. Increase if you ask for big tasks that take a while.' },
+    ],
+  },
+];
+
+const GITHUB_SECTIONS = [
+  {
+    id: 'github-tool',
+    title: 'GitHub',
+    description: 'Lets the assistant work with your GitHub account on your behalf — listing your repositories and filing issues when you ask. Needs a Personal Access Token; nothing else here.',
+    fields: [
+      { key: 'GITHUB_PAT', label: 'GitHub Personal Access Token', type: 'password', sensitive: true, help: 'Lets the assistant call the GitHub API for you when you say things like "what repos do I own?" or "open an issue about X". Create one at https://github.com/settings/tokens (classic or fine-grained) with repo access. Stored only here — never shared with Copilot.' },
     ],
   },
 ];
@@ -1214,7 +1232,11 @@ function renderWalkieTalkie() {
 }
 
 function renderBrowser() {
-  renderSectionsTab(BROWSER_SECTIONS, 'Browser / Copilot', 'Browser automation and GitHub integration.');
+  renderSectionsTab(BROWSER_SECTIONS, 'Copilot', 'GitHub Copilot agent running in a controlled browser.');
+}
+
+function renderGithub() {
+  renderSectionsTab(GITHUB_SECTIONS, 'GitHub', 'GitHub API integration for repo browsing and issue filing.');
 }
 
 // ──────────────────────────────────────────────
