@@ -22,6 +22,7 @@ import { registerVoiceDefaultsRoutes } from './server/routes/voiceDefaults';
 import { registerMemoryConfigRoutes } from './server/routes/memoryConfig';
 import { registerMemoriesRoutes } from './server/routes/memories';
 import { registerConfigRoutes } from './server/routes/config';
+import { registerAgentPromptDefaultsRoute } from './server/routes/agentPrompts';
 import { registerSetupRoutes } from './server/routes/setup';
 import { registerOpenAiSessionRoute } from './server/routes/openaiSession';
 import { registerCopilotRoutes } from './server/routes/copilot';
@@ -214,6 +215,25 @@ registerReinit(
   }
 );
 
+// Agent prompt edits are read fresh on every model call via the getter on
+// baseAgentConfig.instructions, so no actual reinit work is needed. Register
+// a no-op handler purely so the settings UI shows a confirmation toast and
+// users get clear feedback that the new prompts will apply on the next turn.
+registerReinit(
+  'Agent prompts',
+  ['AGENT_PERSONALITY', 'AGENT_INSTRUCTIONS'],
+  async (changedKeys) => {
+    const which = changedKeys
+      .map((k) => (k === 'AGENT_PERSONALITY' ? 'personality' : 'instructions'))
+      .join(' and ');
+    return {
+      service: 'Agent prompts',
+      status: 'ok',
+      message: `Updated ${which}. Applies on the next model turn.`,
+    };
+  }
+);
+
 app.use(express.urlencoded({ extended: false }));
 // Enable JSON body parsing for API endpoints
 app.use(express.json());
@@ -287,6 +307,7 @@ registerMemoryConfigRoutes(app);
 registerMemoriesRoutes(app);
 // App config management API
 registerConfigRoutes(app);
+registerAgentPromptDefaultsRoute(app);
 registerSetupRoutes(app);
 
 // OpenAI Realtime session token proxy

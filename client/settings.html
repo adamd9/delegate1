@@ -61,6 +61,18 @@
     .card-body { padding: 16px 18px; }
     .card+.card { margin-top: 16px; }
 
+    /* ── Prompt editor (Agent → Prompts) ── */
+    .card.danger { border-color: rgba(248,113,113,0.45); }
+    .card.danger .card-header { background: rgba(248,113,113,0.08); padding-bottom: 14px; border-bottom: 1px solid rgba(248,113,113,0.2); }
+    .card.danger .card-title { color: var(--red); }
+    .danger-warning { font-size: 12px; color: var(--red); margin-top: 6px; line-height: 1.45; }
+    .prompt-textarea { width: 100%; min-height: 280px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; padding: 12px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; resize: vertical; box-sizing: border-box; white-space: pre; }
+    .prompt-textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    .prompt-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--text-dim); }
+    .prompt-meta .modified { color: var(--amber); }
+    .prompt-meta .matches-default { color: var(--text-dim); }
+    .prompt-help { font-size: 12px; color: var(--text-dim); margin: 0 0 10px; line-height: 1.45; }
+
     /* ── iframe panels ── */
     .iframe-wrap { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
     .iframe-wrap iframe { display: block; width: 100%; height: 65vh; border: none; background: var(--bg); }
@@ -236,6 +248,7 @@
       <option value="logs">Logs</option>
       <option value="voice">Phone & Voice</option>
       <option value="walkie-talkie">Walkie-Talkie</option>
+      <option value="prompts">Prompts</option>
       <option value="catalog">Catalogue</option>
       <option value="adaptations">Adaptations</option>
       <option value="mcp">MCP Servers</option>
@@ -271,6 +284,10 @@
         Walkie-Talkie
       </button>
       <div class="sidebar-group-label">Agent</div>
+      <button class="sidebar-item" data-tab="prompts">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        Prompts
+      </button>
       <button class="sidebar-item" data-tab="catalog">
         <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
         Catalogue
@@ -321,7 +338,7 @@
 // ──────────────────────────────────────────────
 // Tab routing
 // ──────────────────────────────────────────────
-const TABS = ['logs','voice','walkie-talkie','catalog','adaptations','mcp','memory','config','email','browser','github','maintenance','about'];
+const TABS = ['logs','voice','walkie-talkie','prompts','catalog','adaptations','mcp','memory','config','email','browser','github','maintenance','about'];
 let activeTab = null;
 
 function getInitialTab() {
@@ -366,6 +383,7 @@ function renderTab(tab) {
     case 'logs':        renderLogs(); break;
     case 'voice':       renderVoice(); break;
     case 'walkie-talkie': renderWalkieTalkie(); break;
+    case 'prompts':     renderPrompts(); break;
     case 'catalog':     renderCatalog(); break;
     case 'adaptations': renderAdaptations(); break;
     case 'mcp':         renderMcp(); break;
@@ -1242,6 +1260,155 @@ function renderEmail() {
 
 function renderWalkieTalkie() {
   renderSectionsTab(WALKIE_TALKIE_SECTIONS, 'Walkie-Talkie', 'Push-to-talk voice messaging. Uses Deepgram for speech-to-text (separate from phone calls).');
+}
+
+// ──────────────────────────────────────────────
+// Prompts (Agent personality + base instructions)
+// ──────────────────────────────────────────────
+function renderPrompts() {
+  content.innerHTML = '<div class="loading">Loading prompts…</div>';
+
+  Promise.all([
+    fetch('/api/config').then(async r => {
+      const p = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(readErrorMessage(p, 'Failed to load config'));
+      return normalizeConfigItems(p);
+    }),
+    fetch('/api/agent-prompts/defaults').then(async r => {
+      const p = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(readErrorMessage(p, 'Failed to load defaults'));
+      return p;
+    }),
+  ]).then(([items, defaults]) => {
+    content.innerHTML = '';
+    const configMap = buildConfigMap(items);
+
+    const intro = card('Agent Prompts', body => {
+      body.appendChild(el('div', { class: 'section-description' },
+        'The text below is sent to the model as its system prompt on every turn. Personality is safe to play with. ' +
+        'Base instructions control tool use, response format, and channel behaviour — edit with care.'));
+    });
+    content.appendChild(intro);
+
+    // Personality first — encouraged to edit
+    content.appendChild(buildPromptCard({
+      key: 'AGENT_PERSONALITY',
+      title: 'Personality',
+      danger: false,
+      help: 'Tone, vocabulary, and persona. Tweak freely — this only changes how the assistant sounds, not what it can do. Default is the HK-47-lite persona.',
+      currentValue: (configMap.get('AGENT_PERSONALITY')?.value ?? ''),
+      defaultValue: defaults.AGENT_PERSONALITY || '',
+    }));
+
+    // Base instructions — explicit warning + at the bottom
+    content.appendChild(buildPromptCard({
+      key: 'AGENT_INSTRUCTIONS',
+      title: 'Base Instructions',
+      danger: true,
+      help: 'Operational rules: which tools to use, response length, channel-specific behaviour (voice backchannels, copilot dispatch protocol, memory, GitHub tools). The assistant relies on these to work correctly.',
+      warning: 'Changes here can break tool calls, response formatting, or whole features (e.g. the copilot dispatch protocol). Edit only if you know what you\'re doing. Use “Reset to default” to restore the shipped instructions if something goes wrong.',
+      currentValue: (configMap.get('AGENT_INSTRUCTIONS')?.value ?? ''),
+      defaultValue: defaults.AGENT_INSTRUCTIONS || '',
+    }));
+  }).catch(err => {
+    content.innerHTML = `<div class="error-msg">Failed to load: ${err.message}</div>`;
+  });
+}
+
+function buildPromptCard({ key, title, danger, help, warning, currentValue, defaultValue }) {
+  const c = el('div', { class: danger ? 'card danger' : 'card' });
+  const header = el('div', { class: 'card-header' });
+  header.appendChild(el('div', { class: 'card-title' }, title));
+  if (warning) header.appendChild(el('div', { class: 'danger-warning' }, warning));
+  c.appendChild(header);
+
+  const body = el('div', { class: 'card-body' });
+  body.appendChild(el('p', { class: 'prompt-help' }, help));
+
+  // Initial value: stored override if present, otherwise the default. Either
+  // way the textarea shows what the model is currently seeing.
+  const initialValue = currentValue && currentValue.length > 0 ? currentValue : defaultValue;
+  const textarea = el('textarea', {
+    class: 'prompt-textarea',
+    'data-config-key': key,
+    spellcheck: 'false',
+    autocomplete: 'off',
+  });
+  textarea.value = initialValue;
+  body.appendChild(textarea);
+
+  const meta = el('div', { class: 'prompt-meta' });
+  const status = el('span', {}, '');
+  meta.appendChild(status);
+  meta.appendChild(el('span', {}, `${initialValue.length.toLocaleString()} chars`));
+  body.appendChild(meta);
+
+  const updateStatus = () => {
+    const val = textarea.value;
+    if (val === defaultValue) {
+      status.className = 'matches-default';
+      status.textContent = currentValue ? 'Matches default (will revert override on save)' : 'Default';
+    } else {
+      status.className = 'modified';
+      status.textContent = 'Modified — unsaved';
+    }
+    meta.children[1].textContent = `${val.length.toLocaleString()} chars`;
+  };
+  textarea.addEventListener('input', updateStatus);
+  updateStatus();
+
+  const actions = el('div', { class: 'page-save', style: 'margin-top:12px; gap:8px;' });
+  const saveBtn = el('button', { class: 'btn btn-primary' }, 'Save');
+  const resetBtn = el('button', { class: danger ? 'btn btn-danger' : 'btn btn-ghost', type: 'button' }, 'Reset to default');
+  const msg = el('span', { class: 'save-msg' });
+
+  resetBtn.addEventListener('click', () => {
+    if (!confirm(`Reset ${title} to the shipped default? This will replace your edits in the textarea — the override won't be persisted until you press Save.`)) return;
+    textarea.value = defaultValue;
+    updateStatus();
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    resetBtn.disabled = true;
+    msg.className = 'save-msg';
+    msg.textContent = 'Saving…';
+    try {
+      const value = textarea.value;
+      // If the user has reset to default verbatim, persist an empty string so
+      // the resolver falls back to the compiled-in default — keeps future
+      // default updates flowing through automatically.
+      const payloadValue = value === defaultValue ? '' : value;
+      const resp = await fetch('/api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [{ key, value: payloadValue }] }),
+      });
+      const respPayload = await resp.json().catch(() => null);
+      if (!resp.ok) throw new Error(readErrorMessage(respPayload, 'Failed to save'));
+      msg.className = 'save-msg ok';
+      msg.textContent = 'Saved!';
+      showToast(`${title} saved. Applies on the next model turn.`);
+      currentValue = payloadValue;
+      updateStatus();
+    } catch (err) {
+      msg.className = 'save-msg err';
+      msg.textContent = 'Error: ' + err.message;
+      showToast('Save failed: ' + err.message, 'err');
+    } finally {
+      saveBtn.disabled = false;
+      resetBtn.disabled = false;
+      setTimeout(() => { if (msg.textContent === 'Saved!') msg.textContent = ''; }, 2500);
+    }
+  });
+
+  actions.appendChild(saveBtn);
+  actions.appendChild(resetBtn);
+  actions.appendChild(msg);
+  body.appendChild(actions);
+
+  c.appendChild(body);
+  return c;
 }
 
 function renderBrowser() {
