@@ -216,7 +216,6 @@ function establishBrowserRealtimeModelConnection() {
     {
       headers: {
         Authorization: `Bearer ${session.openAIApiKey}`,
-        "OpenAI-Beta": "realtime=v1",
       },
     }
   );

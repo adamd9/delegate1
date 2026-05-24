@@ -388,7 +388,6 @@ export function establishRealtimeModelConnection() {
     {
       headers: {
         Authorization: `Bearer ${session.openAIApiKey}`,
-        "OpenAI-Beta": "realtime=v1",
       },
     }
   );
