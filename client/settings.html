@@ -745,9 +745,9 @@ const EMAIL_SECTIONS = [
     title: 'Email Safety & Filtering',
     description: 'Restrict who the agent can contact and which inbound mail it processes. Both guards use the Allowed Recipient address below.',
     fields: [
-      { key: 'EMAIL_DEFAULT_TO', label: 'Allowed Recipient', type: 'text', help: '⚠️ Safety guard — the address used to lock down both sending and receiving. Similar to the phone number guard.' },
       { key: 'EMAIL_SENDING_RESTRICTED', label: 'Restrict Outbound', type: 'boolean', default: 'true', help: 'When enabled, all outbound email is forced to the Allowed Recipient.' },
       { key: 'EMAIL_RECEIVING_FILTER_ENABLED', label: 'Filter Inbound', type: 'boolean', default: 'true', help: 'When enabled, only processes emails addressed to the Allowed Recipient.' },
+      { key: 'EMAIL_DEFAULT_TO', label: 'Allowed Recipient', type: 'text', help: '⚠️ The address used by both guards above. The agent can only send to and receive from this address when restrictions are enabled.' },
     ],
   },
 ];
