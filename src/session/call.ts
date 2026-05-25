@@ -193,7 +193,16 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
         };
   
   const voiceConfig = getChatVoiceConfig();
-  
+
+  // GA API takes audio format as an object, not a string. µ-law (Twilio) is
+  // 8 kHz and implicit; PCM is 24 kHz. Without this, OpenAI defaults to PCM
+  // for both directions which silently breaks Twilio calls (the bytes are
+  // interpreted as PCM and the model's PCM output won't play through µ-law
+  // media streams).
+  const formatObj = audioFormat === 'g711_ulaw'
+    ? { type: 'audio/pcmu' as const }
+    : { type: 'audio/pcm' as const, rate: 24000 as const };
+
   return {
     type: "realtime" as const,
     output_modalities: ["audio"] as const,
@@ -201,10 +210,12 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
     tools: functionSchemas,
     audio: {
       input: {
+        format: formatObj,
         transcription: { model: "gpt-4o-mini-transcribe" },
         turn_detection: turnDetection,
       },
       output: {
+        format: formatObj,
         voice: voiceConfig.voice,
       },
     },
