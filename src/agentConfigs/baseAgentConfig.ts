@@ -49,9 +49,9 @@ export const baseAgentConfig: AgentConfig = {
   // Text (Responses API) model for chat interactions
   textModel: "gpt-5-mini",
   // Voice (Realtime API) model for call interactions
-  voiceModel: "gpt-realtime-1.5",
+  voiceModel: "gpt-realtime-2",
   // Backward compat: keep model; align it with voice model by default
-  model: "gpt-realtime-1.5",
+  model: "gpt-realtime-2",
   temperature: 0.8,
   // Reasoning effort for text (Responses API) calls
   reasoning: { effort: 'low' },

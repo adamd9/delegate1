@@ -729,7 +729,7 @@ const VOICE_CONFIG_SECTIONS = [
     title: 'Voice Settings',
     description: 'Controls the realtime voice model used for phone calls and browser voice.',
     fields: [
-      { key: 'REALTIME_MODEL', label: 'Realtime Model', type: 'select', default: 'gpt-realtime-1.5', options: [['gpt-realtime-1.5', 'GPT Realtime 1.5'], ['gpt-realtime-2025-08-28', 'GPT Realtime (Aug 2025)'], ['gpt-4o-realtime-preview-2024-12-17', 'GPT-4o Realtime Preview (Legacy)']], help: 'The OpenAI model powering live voice conversations.' },
+      { key: 'REALTIME_MODEL', label: 'Realtime Model', type: 'select', default: 'gpt-realtime-2', options: [['gpt-realtime-2', 'GPT Realtime 2 (GPT-5 class reasoning, May 2026)'], ['gpt-realtime-1.5', 'GPT Realtime 1.5'], ['gpt-realtime-2025-08-28', 'GPT Realtime (Aug 2025)'], ['gpt-4o-realtime-preview-2024-12-17', 'GPT-4o Realtime Preview (Legacy)']], help: 'The OpenAI model powering live voice conversations. GPT Realtime 2 is the latest and recommended.' },
       { key: 'REALTIME_VOICE', label: 'Voice', type: 'select', default: 'ballad', options: [['alloy', 'Alloy'], ['ash', 'Ash'], ['ballad', 'Ballad'], ['coral', 'Coral'], ['echo', 'Echo'], ['sage', 'Sage'], ['shimmer', 'Shimmer'], ['verse', 'Verse'], ['marin', 'Marin'], ['cedar', 'Cedar']], help: 'The voice used for phone calls and browser voice chat.' },
     ],
   },
