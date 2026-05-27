@@ -731,6 +731,7 @@ const VOICE_CONFIG_SECTIONS = [
     fields: [
       { key: 'REALTIME_MODEL', label: 'Realtime Model', type: 'select', default: 'gpt-realtime-2', options: [['gpt-realtime-2', 'GPT Realtime 2 (GPT-5 class reasoning, May 2026)'], ['gpt-realtime-1.5', 'GPT Realtime 1.5'], ['gpt-realtime-2025-08-28', 'GPT Realtime (Aug 2025)'], ['gpt-4o-realtime-preview-2024-12-17', 'GPT-4o Realtime Preview (Legacy)']], help: 'The OpenAI model powering live voice conversations. GPT Realtime 2 is the latest and recommended.' },
       { key: 'REALTIME_VOICE', label: 'Voice', type: 'select', default: 'ballad', options: [['alloy', 'Alloy'], ['ash', 'Ash'], ['ballad', 'Ballad'], ['coral', 'Coral'], ['echo', 'Echo'], ['sage', 'Sage'], ['shimmer', 'Shimmer'], ['verse', 'Verse'], ['marin', 'Marin'], ['cedar', 'Cedar']], help: 'The voice used for phone calls and browser voice chat.' },
+      { key: 'DELEGATE_VOICE_SPEED', label: 'Voice Speed', type: 'number', default: '1.1', help: 'Speaking speed for the agent voice across realtime calls and walkie-talkie TTS (default: 1.1; realtime supports 0.25–1.5, TTS supports up to 4.0).' },
     ],
   },
 ];
@@ -743,7 +744,6 @@ const WALKIE_TALKIE_SECTIONS = [
     fields: [
       { key: 'DEEPGRAM_API_KEY', label: 'Speech-to-Text API Key (Deepgram)', type: 'password', sensitive: true, help: 'Get a key from deepgram.com. Required for the walkie-talkie feature to work.' },
       { key: 'DELEGATE_TTS_MODEL', label: 'TTS Model', type: 'select', default: 'gpt-4o-mini-tts', options: [['gpt-4o-mini-tts', 'GPT-4o Mini TTS'], ['tts-1', 'TTS-1'], ['tts-1-hd', 'TTS-1 HD']], help: 'Text-to-speech model for walkie-talkie responses.' },
-      { key: 'DELEGATE_CHAT_VOICE_SPEED', label: 'Voice Speed', type: 'number', default: '1.3', help: 'Playback speed (default: 1.3, range 0.5–2.0).' },
       { key: 'DELEGATE_MAX_AUDIO_BYTES', label: 'Max Audio Size', type: 'number', default: '4194304', help: 'Upper limit for audio payload (default: 4MB).' },
     ],
   },

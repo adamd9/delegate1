@@ -76,7 +76,7 @@ const SETUP_GROUPS: SetupGroupDefinition[] = [
     items: [
       { key: 'DEEPGRAM_API_KEY', label: 'Deepgram API Key' },
       { key: 'DELEGATE_TTS_MODEL', label: 'TTS Model' },
-      { key: 'DELEGATE_CHAT_VOICE_SPEED', label: 'Chat Voice Speed' },
+      { key: 'DELEGATE_VOICE_SPEED', label: 'Voice Speed' },
     ],
   },
   {
