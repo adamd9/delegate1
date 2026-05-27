@@ -50,9 +50,10 @@ export interface Session {
     updatedAtMs?: number;
   };
   streamSid?: string;
-  lastAssistantItem?: string;
+  // True while a model response is generating (set on first audio delta of a response,
+  // cleared on response.audio.done / response.output_item.done / response.done / speech_started).
+  // Used by memory injection logic to decide whether to inject via session.update or shadow turn.
   responseStartTimestamp?: number;
-  responseCumulativeAudioMs?: number; // Cumulative audio duration sent to client (for accurate truncation)
   latestMediaTimestamp?: number;
   openAIApiKey?: string;
   conversationHistory?: ConversationItem[];
@@ -134,8 +135,6 @@ export function closeAllConnections() {
     session.frontendConn = undefined;
   }
   session.streamSid = undefined;
-  session.lastAssistantItem = undefined;
   session.responseStartTimestamp = undefined;
-  session.responseCumulativeAudioMs = undefined;
   session.latestMediaTimestamp = undefined;
 }

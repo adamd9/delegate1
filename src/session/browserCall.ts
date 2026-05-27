@@ -65,9 +65,7 @@ export function processBrowserCallEvent(data: RawData) {
     case "start": {
       console.info("\ud83c\udf10 Browser call started");
       session.latestMediaTimestamp = 0;
-      session.lastAssistantItem = undefined;
       session.responseStartTimestamp = undefined;
-      session.responseCumulativeAudioMs = undefined;
 
       try {
         ensureSession();

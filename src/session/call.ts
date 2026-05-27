@@ -91,30 +91,18 @@ function getHoldMusicPcm16Base64(): string {
 }
 
 // Helper function to calculate audio duration from base64 payload
-function calculateAudioDurationMs(base64Data: string, audioFormat: 'g711_ulaw' | 'pcm16'): number {
-  const base64Len = base64Data.length;
-  // Base64 encoding: 4 chars = 3 bytes. Padding ('=') is handled by Math.floor.
-  const audioBytes = Math.floor((base64Len * 3) / 4);
-  
-  if (audioFormat === 'g711_ulaw') {
-    // g711_ulaw @ 8kHz: 1 byte = 1 sample, 8000 samples/sec
-    // Duration (ms) = (bytes / 8000) * 1000 = bytes / 8
-    return audioBytes / 8;
-  } else {
-    // pcm16 @ 24kHz: 2 bytes = 1 sample, 24000 samples/sec
-    // Duration (ms) = (bytes / 2 / 24000) * 1000 = bytes / 48
-    return audioBytes / 48;
-  }
-}
+// (kept as a thin shim in case future code needs it; no current callers)
 
-// ===== Voice Activity Detection (VAD) and Barge-in Configuration =====
+// ===== Voice Activity Detection (VAD) =====
 // Default values are now loaded from the persisted voice-defaults store so they
 // can be edited at runtime via the Settings > Voice UI.
+//
+// Barge-in/interruption is handled NATIVELY by the OpenAI Realtime API via
+// server_vad with interrupt_response: true. We do NOT manually send
+// response.cancel or conversation.item.truncate on speech_started. Our only
+// barge-in responsibility is to flush downstream playback buffers (Twilio /
+// browser) and drop any in-flight audio deltas for the cancelled response.
 import { getVoiceModePreset } from '../voice/voiceDefaults';
-
-// Buffer latency estimate: typical client-side buffering before audio playback
-// Used to adjust truncation offset to match what the user actually heard
-const BUFFER_LATENCY_MS: number = 100;
 
 function getVoiceTuningForCall() {
   const tuning = (session as any)?.voiceTuning;
@@ -176,7 +164,10 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
   const agentInstructions = [contextInstructions(context), baseInstructions].join('\n');
   const { turnDetection: runtimeTurnDetection } = getVoiceTuningForCall();
   
-  // semantic_vad only accepts { type, eagerness? }; server_vad accepts { type, threshold, prefix_padding_ms, silence_duration_ms }
+  // semantic_vad only accepts { type, eagerness?, interrupt_response?, create_response? };
+  // server_vad accepts threshold/prefix_padding_ms/silence_duration_ms in addition.
+  // We explicitly set interrupt_response: true so the model cancels its in-flight
+  // response when user speech is detected — this is the native barge-in mechanism.
   const vadType = (runtimeTurnDetection?.type || 'server_vad') as 'server_vad' | 'semantic_vad';
   const turnDetection = runtimeTurnDetection?.type === 'none'
     ? { type: 'none' as const }
@@ -184,12 +175,16 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
       ? {
           type: 'semantic_vad' as const,
           ...(runtimeTurnDetection?.eagerness ? { eagerness: runtimeTurnDetection.eagerness } : {}),
+          create_response: true,
+          interrupt_response: true,
         }
       : {
           type: 'server_vad' as const,
           threshold: runtimeTurnDetection?.threshold,
           prefix_padding_ms: runtimeTurnDetection?.prefix_padding_ms,
           silence_duration_ms: runtimeTurnDetection?.silence_duration_ms,
+          create_response: true,
+          interrupt_response: true,
         };
   
   const voiceConfig = getChatVoiceConfig();
@@ -217,6 +212,7 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
       output: {
         format: formatObj,
         voice: voiceConfig.voice,
+        speed: voiceConfig.speed,
       },
     },
   };
@@ -339,9 +335,7 @@ export function processRealtimeCallEvent(data: RawData) {
       console.debug("📞 Call start event", msg);
       session.streamSid = msg.start.streamSid;
       session.latestMediaTimestamp = 0;
-      session.lastAssistantItem = undefined;
       session.responseStartTimestamp = undefined;
-      session.responseCumulativeAudioMs = undefined;
       // Establish a sticky conversation for the lifetime of the call
       try {
         ensureSession();
@@ -722,26 +716,56 @@ export function processRealtimeModelEvent(
       break;
     }
     case "input_audio_buffer.speech_started": {
+      // === Barge-in: flush downstream buffers and suppress in-flight assistant audio ===
+      //
+      // OpenAI's Realtime API (server_vad with interrupt_response: true) auto-cancels
+      // its in-flight response and auto-truncates the conversation item server-side.
+      // Our only job here is:
+      //   1. Flush any audio sitting in the downstream playback buffer (Twilio outbound
+      //      queue / browser audio queue). The model has no visibility into those.
+      //   2. Drop any late-arriving audio deltas for the cancelled response (they may
+      //      already be in flight from OpenAI by the time the cancel takes effect).
+      //   3. Stop hold music if a tool call is in flight, so it doesn't refill the
+      //      buffer we just cleared.
+      //
+      // We do NOT send response.cancel or conversation.item.truncate — the API does that.
       try {
-        console.debug('[BARGE-IN] input_audio_buffer.speech_started received', {
-          lastAssistantItem: session.lastAssistantItem,
-          responseStartTimestamp: session.responseStartTimestamp,
-          responseCumulativeAudioMs: session.responseCumulativeAudioMs,
-          hasModelConn: !!session.modelConn,
-          modelConnOpen: isOpen(session.modelConn),
+        console.debug('[BARGE-IN] speech_started — flushing downstream buffers', {
           hasTwilioConn: !!session.twilioConn,
           hasBrowserConn: !!session.browserConn,
           streamSid: session.streamSid,
+          waitingForTool: session.waitingForTool,
         });
       } catch {}
-      // On any interruption signal, send response.cancel immediately.
-      // We intentionally do this unconditionally for simpler, more reliable barge-in behavior.
-      // If no response is active, the backend suppresses the harmless
-      // response_cancel_not_active error.
-      // Eagerly inject memories while the user is still speaking (cache-hit only).
+
+      // 1. Suppress any in-flight assistant audio deltas until the next response begins.
+      //    Cleared on response.created (next response) and response.done (safety net).
+      (session as any)._suppressAssistantAudio = true;
+
+      // 2. If hold music is playing during a tool call, stop the loop and clear its buffers
+      //    so it doesn't refill what we're about to clear. stopHoldMusicLoop sends the
+      //    appropriate clear events for both Twilio and browser (hold.clear).
+      if (session.waitingForTool) {
+        try { stopHoldMusicLoop(); } catch {}
+      }
+
+      // 3. Flush downstream playback buffers (assistant audio that's already been forwarded).
+      if (session.twilioConn && session.streamSid && isOpen(session.twilioConn)) {
+        jsonSend(session.twilioConn, { event: 'clear', streamSid: session.streamSid } as any);
+      }
+      if (session.browserConn && isOpen(session.browserConn)) {
+        jsonSend(session.browserConn, { event: 'clear' } as any);
+      }
+
+      // 4. Clear in-flight response tracking — the API is cancelling its response,
+      //    so any pending memory injection / shadow-turn decisions should treat the
+      //    response as no-longer-active.
+      session.responseStartTimestamp = undefined;
+
+      // === Eagerly inject memories while the user is still speaking (cache-hit only) ===
       // With server_vad, the model starts responding as soon as it detects end-of-speech,
-      // which is BEFORE the transcript event arrives on our server. Injecting here
-      // ensures memories are in the session config before the next response starts.
+      // which is BEFORE the transcript event arrives on our server. Injecting here ensures
+      // memories are in the session config before the next response starts.
       // NOTE: We intentionally do NOT set session.pendingMemoryPromise here because
       // retrieve('') with a cold cache resolves to null immediately (empty query guard),
       // and a truthy-but-null Promise would shadow the real transcript-based fetch later.
@@ -759,61 +783,25 @@ export function processRealtimeModelEvent(
           }
         }).catch(() => {});
       } catch {}
-      const modelConn = session.modelConn;
-      if (isOpen(modelConn)) {
-        try {
-          console.debug('[BARGE-IN] Sending unconditional response.cancel on speech_started');
-        } catch {}
-        jsonSend(modelConn, {
-          type: "response.cancel",
-        } as any);
-      } else {
-        try {
-          console.debug('[BARGE-IN] response.cancel skipped on speech_started (model connection not open)', {
-            hasModelConn: !!modelConn,
-            modelReadyState: (modelConn as WebSocket | undefined)?.readyState,
-          });
-        } catch {}
-      }
 
-      if (session.lastAssistantItem) {
-        try {
-          console.debug('[BARGE-IN] Truncation path selected because lastAssistantItem is present', {
-            lastAssistantItem: session.lastAssistantItem,
-          });
-        } catch {}
-        handleTruncation();
-      } else {
-        try {
-          console.debug('[BARGE-IN] Truncation skipped: no lastAssistantItem set at speech_started', {
-            responseStartTimestamp: session.responseStartTimestamp,
-            responseCumulativeAudioMs: session.responseCumulativeAudioMs,
-          });
-        } catch {}
-      }
+      break;
+    }
+    case "response.created": {
+      // New response has begun — assistant audio deltas for it are legitimate again.
+      (session as any)._suppressAssistantAudio = false;
       break;
     }
     case "response.output_audio.delta":
-    case "response.audio.delta":
-      // Drop audio deltas for a cancelled/truncated response (race window after response.cancel)
-      if (event.item_id && event.item_id === (session as any)._cancelledItemId) {
+    case "response.audio.delta": {
+      // Drop deltas for a response that was interrupted (server VAD cancelled it
+      // but already-in-flight deltas can still arrive briefly afterwards).
+      if ((session as any)._suppressAssistantAudio) {
         break;
       }
       if (session.twilioConn && session.streamSid) {
         if (session.responseStartTimestamp === undefined) {
           session.responseStartTimestamp = Date.now();
-          session.responseCumulativeAudioMs = 0;
-          // New response started — clear any stale cancelled-item guard
-          (session as any)._cancelledItemId = undefined;
         }
-        if (event.item_id) session.lastAssistantItem = event.item_id;
-        
-        // Track cumulative audio duration for accurate truncation
-        if (event.delta && session.responseCumulativeAudioMs !== undefined) {
-          const durationMs = calculateAudioDurationMs(event.delta, 'g711_ulaw');
-          session.responseCumulativeAudioMs += durationMs;
-        }
-        
         if (isOpen(session.twilioConn)) {
           jsonSend(session.twilioConn, {
             event: "media",
@@ -829,17 +817,7 @@ export function processRealtimeModelEvent(
       if (session.browserConn) {
         if (session.responseStartTimestamp === undefined) {
           session.responseStartTimestamp = Date.now();
-          session.responseCumulativeAudioMs = 0;
-          (session as any)._cancelledItemId = undefined;
         }
-        if (event.item_id) session.lastAssistantItem = event.item_id;
-        
-        // Track cumulative audio duration for browser (pcm16 @ 24kHz)
-        if (event.delta && session.responseCumulativeAudioMs !== undefined) {
-          const durationMs = calculateAudioDurationMs(event.delta, 'pcm16');
-          session.responseCumulativeAudioMs += durationMs;
-        }
-        
         if (isOpen(session.browserConn)) {
           jsonSend(session.browserConn, {
             event: "media",
@@ -848,20 +826,20 @@ export function processRealtimeModelEvent(
         }
       }
       break;
+    }
     case "response.output_audio.done":
     case "response.audio.done":
-      // Audio generation for this response is complete. Clear the response-active
-      // tracking so that speech_started after this point doesn't try response.cancel.
-      // (response.output_item.done arrives later and clears lastAssistantItem too.)
-      try {
-        console.debug('[BARGE-IN] response.audio.done received; clearing responseStartTimestamp', {
-          previousResponseStartTimestamp: session.responseStartTimestamp,
-          lastAssistantItem: session.lastAssistantItem,
-          responseCumulativeAudioMs: session.responseCumulativeAudioMs,
-        });
-      } catch {}
+      // Audio generation for this response is complete. Clear in-flight flag so
+      // memory injection / shadow-turn logic treats the next turn correctly.
       session.responseStartTimestamp = undefined;
       break;
+    case "response.done": {
+      // Defense in depth: clear in-flight tracking and audio suppression on any
+      // response termination (completed, cancelled, failed, incomplete).
+      session.responseStartTimestamp = undefined;
+      (session as any)._suppressAssistantAudio = false;
+      break;
+    }
     case "response.output_item.done": {
       console.log("[VOICE][ASSISTANT][FINAL-VOICE]", event);
       const { item } = event;
@@ -894,6 +872,23 @@ export function processRealtimeModelEvent(
             console.error("Error handling function call:", err);
           });
       } else if (item.type === "message" && item.role === "assistant") {
+        // If the response was interrupted (barge-in via server_vad), the API marks
+        // the item with status 'incomplete'. Skip persisting interrupted speech to
+        // conversation history / ThoughtFlow so memory/summary code doesn't treat
+        // it as something the user actually heard in full.
+        const itemCompleted = !item?.status || item.status === 'completed';
+        if (!itemCompleted) {
+          try {
+            console.debug('[VOICE][ASSISTANT] skipping persistence of incomplete assistant item', {
+              itemId: item.id,
+              itemStatus: item.status,
+            });
+          } catch {}
+          // Still clean up per-item transcript accumulator to avoid leaks.
+          try { if (item?.id) assistantVoiceByItem.delete(item.id); } catch {}
+          break;
+        }
+
         // Handle text responses from assistant (and log voice-only assembled transcript)
         let assistantText: string | undefined;
         const textContent = item.content?.find((c: any) => c.type === "text");
@@ -985,20 +980,9 @@ export function processRealtimeModelEvent(
           }
         }
 
-        // Response finished; clear truncation tracking so subsequent speech_started
-        // does not truncate an already-completed assistant response.
-        try {
-          console.debug('[BARGE-IN] response.output_item.done clearing barge-in tracking state', {
-            itemId: item.id,
-            itemStatus: item.status,
-            previousLastAssistantItem: session.lastAssistantItem,
-            previousResponseStartTimestamp: session.responseStartTimestamp,
-            previousResponseCumulativeAudioMs: session.responseCumulativeAudioMs,
-          });
-        } catch {}
-        session.lastAssistantItem = undefined;
+        // Response item finished — clear in-flight tracking as a safety net.
+        // (response.done also clears these; this is belt-and-suspenders.)
         session.responseStartTimestamp = undefined;
-        session.responseCumulativeAudioMs = undefined;
 
         const convId = (session as any).currentConversationId as string | undefined;
         if (convId && session.currentRequest) {
@@ -1057,130 +1041,3 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
   }
 }
 
-/**
- * Handles barge-in by truncating the assistant's audio response.
- * 
- * This function is called when the user starts speaking (input_audio_buffer.speech_started)
- * while the assistant's audio may still be playing in the client's buffer.
- * 
- * State Machine:
- * - lastAssistantItem: Set when audio deltas arrive, cleared in response.output_item.done
- * - responseStartTimestamp: Set when audio deltas start, cleared in response.audio.done
- * - responseCumulativeAudioMs: Tracks total audio duration sent to client
- * 
- * response.cancel is sent unconditionally in the speech_started event handler.
- * This function is only responsible for truncating the item to the best known
- * playback offset and clearing client playback buffers/state.
- */
-function handleTruncation() {
-  try {
-    console.debug('[BARGE-IN] handleTruncation invoked', {
-      lastAssistantItem: session.lastAssistantItem,
-      responseStartTimestamp: session.responseStartTimestamp,
-      responseCumulativeAudioMs: session.responseCumulativeAudioMs,
-      hasModelConn: !!session.modelConn,
-      modelConnOpen: isOpen(session.modelConn),
-      hasTwilioConn: !!session.twilioConn,
-      hasBrowserConn: !!session.browserConn,
-      streamSid: session.streamSid,
-    });
-  } catch {}
-
-  if (
-    !session.lastAssistantItem ||
-    session.responseCumulativeAudioMs === undefined
-  )
-  {
-    try {
-      console.debug('[BARGE-IN] handleTruncation early return (missing required state)', {
-        hasLastAssistantItem: !!session.lastAssistantItem,
-        responseCumulativeAudioMs: session.responseCumulativeAudioMs,
-      });
-    } catch {}
-    return;
-  }
-  
-  // Use cumulative audio duration sent to client, accounting for buffering latency
-  // Research shows Twilio buffers ~60-100ms before playback to the caller
-  // We subtract this offset to avoid truncating audio the user actually heard
-  const rawAudioMs = session.responseCumulativeAudioMs;
-  const audio_end_ms = Math.floor(Math.max(0, rawAudioMs - BUFFER_LATENCY_MS));
-  
-  // Log truncation for debugging (console.debug is safe and won't throw in Node.js)
-  console.debug(`[TRUNCATE] Truncating assistant audio at ${audio_end_ms}ms (raw: ${rawAudioMs}ms, buffer: ${BUFFER_LATENCY_MS}ms)`);
-
-  // Track the cancelled item so late-arriving audio deltas for it are dropped
-  (session as any)._cancelledItemId = session.lastAssistantItem;
-  try {
-    console.debug('[BARGE-IN] Marked item as cancelled for late-delta guard', {
-      cancelledItemId: (session as any)._cancelledItemId,
-    });
-  } catch {}
-  
-  const modelConn = session.modelConn;
-  if (isOpen(modelConn)) {
-    // Truncate the stored conversation item to the point the user actually heard
-    try {
-      console.debug('[BARGE-IN] Sending conversation.item.truncate', {
-        itemId: session.lastAssistantItem,
-        audio_end_ms,
-      });
-    } catch {}
-    jsonSend(modelConn, {
-      type: "conversation.item.truncate",
-      item_id: session.lastAssistantItem,
-      content_index: 0,
-      audio_end_ms,
-    } as any);
-  } else {
-    try {
-      console.debug('[BARGE-IN] Model connection not open; skipping conversation.item.truncate', {
-        hasModelConn: !!modelConn,
-        modelReadyState: (modelConn as WebSocket | undefined)?.readyState,
-      });
-    } catch {}
-  }
-  if (session.twilioConn && session.streamSid) {
-    try {
-      console.debug('[BARGE-IN] Sending Twilio clear event', {
-        streamSid: session.streamSid,
-      });
-    } catch {}
-    jsonSend(session.twilioConn, {
-      event: "clear",
-      streamSid: session.streamSid,
-    } as any);
-  } else {
-    try {
-      console.debug('[BARGE-IN] Twilio clear skipped (no active twilioConn/streamSid)', {
-        hasTwilioConn: !!session.twilioConn,
-        streamSid: session.streamSid,
-      });
-    } catch {}
-  }
-  if (session.browserConn) {
-    try {
-      console.debug('[BARGE-IN] Sending browser clear event');
-    } catch {}
-    jsonSend(session.browserConn, { event: "clear" } as any);
-  } else {
-    try {
-      console.debug('[BARGE-IN] Browser clear skipped (no browserConn)');
-    } catch {}
-  }
-
-  const previousState = {
-    lastAssistantItem: session.lastAssistantItem,
-    responseStartTimestamp: session.responseStartTimestamp,
-    responseCumulativeAudioMs: session.responseCumulativeAudioMs,
-  };
-  session.lastAssistantItem = undefined;
-  session.responseStartTimestamp = undefined;
-  session.responseCumulativeAudioMs = undefined;
-  try {
-    console.debug('[BARGE-IN] Cleared truncation state after handleTruncation', {
-      previousState,
-      cancelledItemId: (session as any)._cancelledItemId,
-    });
-  } catch {}
-}
