@@ -51,6 +51,12 @@ export function establishBrowserCallSocket(ws: WebSocket, openAIApiKey: string) 
       const r = reason?.toString?.() || '';
       console.warn('[ws][browser-call] websocket closed', { code, reason: r });
     } catch {}
+    // Mirror the in-band "close" event cleanup so that abrupt browser
+    // disconnects (tab close, network drop) don't leave modelConn open
+    // and block the next session from initializing.
+    try {
+      closeAllConnections();
+    } catch {}
     try {
       endSession();
     } catch {}
@@ -98,6 +104,10 @@ export function processBrowserCallEvent(data: RawData) {
           type: "input_audio_buffer.append",
           audio: msg.media?.payload,
         });
+        try {
+          const cur = (session as any)._inboundAudioFramesSinceResponseStart || 0;
+          (session as any)._inboundAudioFramesSinceResponseStart = cur + 1;
+        } catch {}
       } else {
         logDroppingAudioIfNeeded();
       }

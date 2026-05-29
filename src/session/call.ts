@@ -316,6 +316,14 @@ export function establishCallSocket(ws: WebSocket, openAIApiKey: string) {
       console.warn('[ws][twilio-call] websocket closed', { code, reason: r, streamSid: session.streamSid });
     } catch {}
     finalizeRun();
+    // Twilio drops the WS directly on caller hangup without sending a
+    // media-stream "close" event, so the cleanup in processRealtimeCallEvent's
+    // "close" case never fires. Without this, modelConn survives across calls
+    // and establishRealtimeModelConnection() early-returns, leaving the next
+    // call silent. Mirror the media-stream close cleanup here for that case.
+    try {
+      closeAllConnections();
+    } catch {}
     try {
       endSession();
     } catch {}
@@ -362,6 +370,10 @@ export function processRealtimeCallEvent(data: RawData) {
           type: "input_audio_buffer.append",
           audio: msg.media.payload,
         });
+        try {
+          const cur = (session as any)._inboundAudioFramesSinceResponseStart || 0;
+          (session as any)._inboundAudioFramesSinceResponseStart = cur + 1;
+        } catch {}
       } else {
         logDroppingAudioIfNeeded('twilio');
       }
@@ -569,7 +581,8 @@ export function processRealtimeModelEvent(
     case "session.created":
     case "session.updated": {
       const voice = event.session?.voice || event.session?.audio?.output?.voice;
-      console.info(`[realtime] ${event.type}: voice=${voice}, model=${event.session?.model || 'unknown'}`);
+      const td = event.session?.audio?.input?.turn_detection || event.session?.turn_detection;
+      console.info(`[realtime] ${event.type}: voice=${voice}, model=${event.session?.model || 'unknown'}, turn_detection=${JSON.stringify(td)}`);
       break;
     }
     case "error": {
@@ -735,6 +748,8 @@ export function processRealtimeModelEvent(
           hasBrowserConn: !!session.browserConn,
           streamSid: session.streamSid,
           waitingForTool: session.waitingForTool,
+          inboundFramesSinceResp: (session as any)._inboundAudioFramesSinceResponseStart,
+          responseInFlight: session.responseStartTimestamp !== undefined,
         });
       } catch {}
 
@@ -789,6 +804,31 @@ export function processRealtimeModelEvent(
     case "response.created": {
       // New response has begun — assistant audio deltas for it are legitimate again.
       (session as any)._suppressAssistantAudio = false;
+      (session as any)._inboundAudioFramesSinceResponseStart = 0;
+      try {
+        console.debug('[VAD-DIAG] response.created', {
+          response_id: event.response?.id,
+          waitingForTool: session.waitingForTool,
+        });
+      } catch {}
+      break;
+    }
+    case "input_audio_buffer.speech_stopped": {
+      try {
+        console.debug('[VAD-DIAG] speech_stopped', {
+          item_id: event.item_id,
+          audio_end_ms: event.audio_end_ms,
+        });
+      } catch {}
+      break;
+    }
+    case "input_audio_buffer.committed": {
+      try {
+        console.debug('[VAD-DIAG] input_audio_buffer.committed', {
+          item_id: event.item_id,
+          previous_item_id: event.previous_item_id,
+        });
+      } catch {}
       break;
     }
     case "response.output_audio.delta":
@@ -838,6 +878,13 @@ export function processRealtimeModelEvent(
       // response termination (completed, cancelled, failed, incomplete).
       session.responseStartTimestamp = undefined;
       (session as any)._suppressAssistantAudio = false;
+      try {
+        console.debug('[VAD-DIAG] response.done', {
+          response_id: event.response?.id,
+          status: event.response?.status,
+          inboundFramesSinceResp: (session as any)._inboundAudioFramesSinceResponseStart,
+        });
+      } catch {}
       break;
     }
     case "response.output_item.done": {
