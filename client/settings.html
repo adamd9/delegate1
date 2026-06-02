@@ -785,7 +785,7 @@ const BROWSER_SECTIONS = [
     description: 'Lets the assistant hand off coding and research tasks to a real GitHub Copilot session running in a headed browser. The Copilot Sign-In Token below is the one credential it needs — Copilot does the work, and the same token is used to push your code to a workspace repo on GitHub.',
     fields: [
       { key: 'BROWSER_ENABLED', label: 'Enable Browser Agent', type: 'boolean', default: 'false', help: 'Turn this on to let the assistant launch a browser-based Copilot session when you ask it to write code or do deep research. Leave it off if you only want voice, phone, and email.' },
-      { key: 'COPILOT_GITHUB_TOKEN', label: 'Copilot Sign-In Token', type: 'password', sensitive: true, help: 'Signs the assistant into your GitHub Copilot subscription so it can actually run Copilot to write and commit code. Get it by running `copilot auth login` on your own machine and copying the token it stores. The same token is also used to create and push to your workspace repo on GitHub.' },
+      { key: 'COPILOT_GITHUB_TOKEN', label: 'Copilot Sign-In Token', type: 'password', sensitive: true, placeholder: 'Enter your Copilot sign-in token', help: 'Signs the assistant into your GitHub Copilot subscription so it can run Copilot to write and commit code. To get this token, run `copilot auth login` on your machine, then paste the token value here in Settings. This token is also used to create and push to your workspace repo on GitHub.' },
       { key: 'COPILOT_REMOTE_REPO', label: 'Workspace Repository', type: 'text', help: 'GitHub repo (owner/name) the assistant uses as its scratchpad when Copilot is writing code for you — every branch, commit, and push lands here. Leave this empty and the assistant will create a private repo called "delegate1-copilot-workspace" under the GitHub account that owns the Copilot Sign-In Token above (if one already exists with that name, it will reuse it).' },
       { key: 'VNC_PASSWORD', label: 'Watch-Along Password', type: 'password', sensitive: true, help: 'Password to peek at the browser while the assistant is using it (via the noVNC viewer). Useful for watching it work or stepping in manually if it gets stuck.' },
       { key: 'COPILOT_TIMEOUT_MS', label: 'Copilot Timeout (ms)', type: 'number', default: '120000', help: 'How long to wait for a single Copilot command before giving up. Increase if you ask for big tasks that take a while.' },
@@ -797,9 +797,9 @@ const GITHUB_SECTIONS = [
   {
     id: 'github-tool',
     title: 'GitHub',
-    description: 'Lets the assistant work with your GitHub account on your behalf — listing your repositories and filing issues when you ask. Needs a Personal Access Token; nothing else here.',
+    description: 'Lets the assistant work with your GitHub account on your behalf — listing your repositories and filing issues when you ask. Configure it here by entering a GitHub Personal Access Token (PAT).',
     fields: [
-      { key: 'GITHUB_PAT', label: 'GitHub Personal Access Token', type: 'password', sensitive: true, help: 'Lets the assistant call the GitHub API for you when you say things like "what repos do I own?" or "open an issue about X". Create one at https://github.com/settings/tokens (classic or fine-grained) with repo access. Stored only here — never shared with Copilot.' },
+      { key: 'GITHUB_PAT', label: 'GitHub Personal Access Token', type: 'password', sensitive: true, placeholder: 'Enter your GitHub PAT', help: 'How to create it (exact steps): 1) Sign in to GitHub. 2) Click your profile photo (top right) -> Settings. 3) In the left sidebar, open Developer settings. 4) Open Personal access tokens. 5) Click Fine-grained tokens -> Generate new token (recommended). 6) Set Token name (for example: delegate1-github), choose Expiration, and pick Resource owner. 7) Under Repository access, choose All repositories or select the repos you want this assistant to access. 8) Under Permissions, enable repository Issues (Read and write) so issue creation works. 9) Click Generate token, then copy the token immediately and paste it here. 10) Click Save All Settings. If your org blocks fine-grained tokens, use Tokens (classic) -> Generate new token (classic) with repo scope. Once saved here, this field shows as configured; leave it blank to keep the current token.' },
     ],
   },
 ];
@@ -884,7 +884,7 @@ function createConfigControl(field, item, idSuffix) {
   if (field.type === 'number') input.step = 'any';
   if (!isMaskedSensitive && currentValue) input.value = currentValue;
   if (isMaskedSensitive) input.placeholder = 'Configured — leave blank to keep existing value';
-  else if (field.sensitive) input.placeholder = 'Enter a new value';
+  else if (field.sensitive) input.placeholder = field.placeholder || 'Enter a value';
   else if (!currentValue && defaultValue) input.placeholder = `Default: ${defaultValue}`;
 
   if (!field.sensitive) {

@@ -6,7 +6,7 @@ const GITHUB_API = 'https://api.github.com';
 function getHeaders(): { headers: Record<string, string>; error?: undefined } | { error: string } {
   const pat = configService.get('GITHUB_PAT');
   if (!pat) {
-    return { error: 'No GitHub token configured. Set GITHUB_PAT to a GitHub Personal Access Token (Settings → Tools → GitHub).' };
+    return { error: 'No GitHub token configured. Open Settings -> GitHub, paste your GitHub Personal Access Token, and save.' };
   }
   return {
     headers: {
@@ -20,7 +20,7 @@ function getHeaders(): { headers: Record<string, string>; error?: undefined } | 
 
 async function handleResponse(res: Response, context: string): Promise<{ error: string } | any> {
   if (res.status === 401) {
-    return { error: `GitHub authentication failed (401). Check that GITHUB_PAT is valid and has the required scopes.` };
+    return { error: `GitHub authentication failed (401). Check the token saved in Settings -> GitHub and confirm it has the required scopes.` };
   }
   if (res.status === 403) {
     const remaining = res.headers.get('X-RateLimit-Remaining');
@@ -29,10 +29,10 @@ async function handleResponse(res: Response, context: string): Promise<{ error: 
       const resetDate = reset ? new Date(Number(reset) * 1000).toISOString() : 'unknown';
       return { error: `GitHub API rate limit exceeded. Resets at ${resetDate}.` };
     }
-    return { error: `GitHub API forbidden (403) for ${context}. Check PAT permissions.` };
+    return { error: `GitHub API forbidden (403) for ${context}. Check the token permissions configured in Settings -> GitHub.` };
   }
   if (res.status === 404) {
-    return { error: `Not found (404): ${context}. Check that the repository exists and the PAT has access.` };
+    return { error: `Not found (404): ${context}. Check that the repository exists and that your token in Settings -> GitHub has access.` };
   }
   if (!res.ok) {
     const body = await res.text().catch(() => '');

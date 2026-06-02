@@ -23,6 +23,28 @@ Go to **Settings** and enable the browser agent. You'll need two things:
 1. **Browser agent toggle** — turns the feature on (`BROWSER_ENABLED=true`)
 2. **GitHub Personal Access Token** — the browser agent uses GitHub Copilot as its "brain" to understand your instructions and decide what to click. A GitHub token is how it accesses that capability.
 
+### Create the GitHub token (exact clicks)
+
+1. Sign in to GitHub.
+2. Click your profile photo (top right) -> **Settings**.
+3. In the left sidebar, open **Developer settings**.
+4. Open **Personal access tokens**.
+5. Click **Fine-grained tokens** -> **Generate new token** (recommended).
+6. Fill in:
+	- **Token name**: use something like `delegate1-browser-agent`
+	- **Expiration**: choose a date that matches your security policy
+	- **Resource owner**: your user or org that owns the repos you need
+7. Under **Repository access**, choose:
+	- **All repositories** for broad access, or
+	- **Only select repositories** for least privilege.
+8. Under **Permissions**, grant at least what you need for your workflow. For coding tasks, **Contents: Read and write** is the common minimum.
+9. Click **Generate token**.
+10. Copy the token immediately (GitHub only shows the full value once).
+11. In Delegate settings, open **Browser**, paste it into **Copilot Sign-In Token**, then click **Save All Settings**.
+
+If your organization blocks fine-grained tokens, create a classic token via:
+**Personal access tokens** -> **Tokens (classic)** -> **Generate new token (classic)**.
+
 Once enabled, a browser session will be available in the background ready to take on tasks.
 
 ## Using the browser agent

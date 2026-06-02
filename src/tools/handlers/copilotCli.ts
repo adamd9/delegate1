@@ -139,7 +139,7 @@ export const copilotDispatchHandler: FunctionHandler = {
       // 2. Check auth token
       if (!configService.get('COPILOT_GITHUB_TOKEN')) {
         return {
-          error: 'COPILOT_GITHUB_TOKEN not set. Provide a GitHub PAT with Copilot permissions.',
+          error: 'Copilot Sign-In Token is not configured. Open Settings -> Browser, enter your Copilot Sign-In Token, and save.',
         };
       }
 

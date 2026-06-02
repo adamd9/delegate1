@@ -68,7 +68,7 @@ Adaptive memory is configured through the in-app Memory settings and `runtime-da
 | Key | Purpose |
 |---|---|
 | `BROWSER_ENABLED` | `true` to register browser tools |
-| `COPILOT_GITHUB_TOKEN` / `GITHUB_PAT` | Auth for Copilot CLI |
+| `COPILOT_GITHUB_TOKEN` / `GITHUB_PAT` | Token keys used internally. Configure these through Settings -> Browser (Copilot Sign-In Token) and Settings -> GitHub (GitHub Personal Access Token). |
 | `COPILOT_REMOTE_REPO` | Remote repo Copilot CLI should operate on |
 | `COPILOT_TIMEOUT_MS` | Per-task timeout |
 | `CODEX_CLI` | Path or flag for Codex CLI integration |

@@ -27,8 +27,9 @@ CALL_MY_PHONE_ENDPOINT=https://your-notify-endpoint.example.com/notify
 CALL_MY_PHONE_SECRET=your-secret-api-key-here
 
 # Browser agent (Copilot CLI + Playwright) — optional
+# Enable and configure this in Settings -> Browser
+# (including the Copilot Sign-In Token)
 # BROWSER_ENABLED=true
-# COPILOT_GITHUB_TOKEN=your-github-pat-here
 # VNC_PASSWORD=delegate
 
 FRONTEND_URL=http://localhost:8081
@@ -63,6 +64,28 @@ Once installed and logged in, **Settings** (`/settings.html`) lets you edit ever
 
 See the full table in **[Reference → Env Vars](../../reference/env-vars/)**.
 
+### GitHub token setup (explicit steps)
+
+Use the Settings pages for GitHub tokens:
+
+1. For browser/Copilot tasks: **Settings -> Browser -> Copilot Sign-In Token**.
+2. For GitHub API tools (repo listing/issues): **Settings -> GitHub -> GitHub Personal Access Token**.
+
+How to create a GitHub PAT:
+
+1. Sign in to GitHub.
+2. Click profile photo (top right) -> **Settings**.
+3. Open **Developer settings**.
+4. Open **Personal access tokens**.
+5. Choose **Fine-grained tokens** -> **Generate new token** (recommended).
+6. Set token name, expiration, and resource owner.
+7. Choose repository access (all or selected repos).
+8. Add required permissions for your use case (for issue filing, include **Issues: Read and write**).
+9. Click **Generate token** and copy it immediately.
+10. Paste into the relevant Delegate Settings field above and click **Save All Settings**.
+
+If fine-grained tokens are blocked by org policy, use **Tokens (classic)** -> **Generate new token (classic)** as a fallback.
+
 ## Bootstrap vs in-app config
 
 | Setting | Where to set | Reason |
@@ -70,6 +93,6 @@ See the full table in **[Reference → Env Vars](../../reference/env-vars/)**.
 | `PORT` | `.env` only | Read once on startup |
 | `RUNTIME_DATA_DIR` | `.env` only | Determines where the in-app store lives |
 | `ADMIN_PASSWORD` | `.env` *or* install flow | Either works |
-| `OPENAI_API_KEY`, `TWILIO_*`, `EMAIL_*`, `DEEPGRAM_API_KEY`, `PUBLIC_URL`, `BROWSER_ENABLED`, `COPILOT_GITHUB_TOKEN`, etc. | Settings UI *or* `.env` | UI is preferred for prod (encrypted at rest) |
+| `OPENAI_API_KEY`, `TWILIO_*`, `EMAIL_*`, `DEEPGRAM_API_KEY`, `PUBLIC_URL`, `BROWSER_ENABLED`, etc. | Settings UI *or* `.env` | UI is preferred for prod (encrypted at rest). For GitHub tokens, use the Settings pages (Browser and GitHub). |
 
 Next: [First run](../first-run/).
