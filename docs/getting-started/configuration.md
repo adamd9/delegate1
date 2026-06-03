@@ -71,6 +71,15 @@ Use the Settings pages for GitHub tokens:
 1. For browser/Copilot tasks: **Settings -> Browser -> Copilot Sign-In Token**.
 2. For GitHub API tools (repo listing/issues): **Settings -> GitHub -> GitHub Personal Access Token**.
 
+For **Settings -> Browser -> Copilot Sign-In Token**, use this simple flow:
+
+1. Create a **fine-grained** PAT in GitHub.
+2. Set **Resource owner** to your personal account.
+3. Under **Permissions -> Account**, add **Copilot Requests**.
+4. Generate the token, copy it, paste it into the Browser field, and save.
+
+For **Settings -> GitHub**, create or use a token with the repo/issue permissions you need for those tools.
+
 How to create a GitHub PAT:
 
 1. Sign in to GitHub.

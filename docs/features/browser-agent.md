@@ -37,10 +37,13 @@ Go to **Settings** and enable the browser agent. You'll need two things:
 7. Under **Repository access**, choose:
 	- **All repositories** for broad access, or
 	- **Only select repositories** for least privilege.
-8. Under **Permissions**, grant at least what you need for your workflow. For coding tasks, **Contents: Read and write** is the common minimum.
-9. Click **Generate token**.
-10. Copy the token immediately (GitHub only shows the full value once).
-11. In Delegate settings, open **Browser**, paste it into **Copilot Sign-In Token**, then click **Save All Settings**.
+8. Under **Permissions -> Account**, add **Copilot Requests** (required for Copilot CLI PAT auth).
+9. Under **Permissions -> Repository**, grant what you need for your workflow. For coding tasks, **Contents: Read and write** is a common minimum.
+10. Click **Generate token**.
+11. Copy the token immediately (GitHub only shows the full value once).
+12. In Delegate settings, open **Browser**, paste it into **Copilot Sign-In Token**, then click **Save All Settings**.
+
+Important: set Resource owner to your personal account. If you use GitHub repo/issue tools as well, configure their token separately in **Settings -> GitHub**.
 
 If your organization blocks fine-grained tokens, create a classic token via:
 **Personal access tokens** -> **Tokens (classic)** -> **Generate new token (classic)**.
