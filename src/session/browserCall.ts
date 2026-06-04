@@ -11,10 +11,77 @@ import {
   closeAllConnections,
   closeModel,
 } from "./state";
-import { processRealtimeModelEvent, buildRealtimeSessionConfig } from "./call";
+import { processRealtimeModelEvent, buildRealtimeSessionConfig, sendVoiceSessionRecycleCue } from "./call";
 import { getChatVoiceConfig } from "../voice/voiceConfig";
 import { classifyOpenAIError } from "../services/openaiErrors";
 import { getVoiceModePreset } from "../voice/voiceDefaults";
+import { configService } from "../config";
+
+let browserSessionRecycleTimer: NodeJS.Timeout | undefined;
+const BROWSER_SESSION_RECYCLE_INTERVAL_MS = 90_000;
+const BROWSER_SESSION_RECYCLE_DEFER_MS = 5_000;
+const BROWSER_SESSION_RECYCLE_IDLE_GRACE_MS = 4_000;
+
+function isServerVadPeriodicSessionRecycleEnabled(): boolean {
+  const raw = String(
+    configService.get('SERVER_VAD_PERIODIC_SESSION_RECYCLE_ENABLED')
+    || ''
+  ).trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+}
+
+function stopBrowserSessionRecycleLoop() {
+  if (browserSessionRecycleTimer) {
+    clearTimeout(browserSessionRecycleTimer);
+    browserSessionRecycleTimer = undefined;
+  }
+}
+
+function scheduleBrowserSessionRecycleLoop(delayMs = BROWSER_SESSION_RECYCLE_INTERVAL_MS) {
+  stopBrowserSessionRecycleLoop();
+  if (!isServerVadPeriodicSessionRecycleEnabled()) return;
+
+  browserSessionRecycleTimer = setTimeout(() => {
+    browserSessionRecycleTimer = undefined;
+
+    if (!isServerVadPeriodicSessionRecycleEnabled()) return;
+    if (!(session.browserConn && isOpen(session.browserConn))) return;
+
+    const turnType = (session as any).voiceTuning?.turnDetection?.type || getVoiceModePreset('normal').vad_type;
+    if (turnType !== 'server_vad') {
+      scheduleBrowserSessionRecycleLoop();
+      return;
+    }
+
+    const now = Date.now();
+    const lastInboundAudioAtMs = (session as any).lastInboundAudioAtMs as number | undefined;
+    const inboundRecently = typeof lastInboundAudioAtMs === 'number'
+      ? (now - lastInboundAudioAtMs) < BROWSER_SESSION_RECYCLE_IDLE_GRACE_MS
+      : false;
+    const responseInFlight = session.responseStartTimestamp !== undefined;
+    const toolInFlight = !!session.waitingForTool;
+    const modelOpen = isOpen(session.modelConn);
+
+    if (inboundRecently || responseInFlight || toolInFlight || !modelOpen) {
+      scheduleBrowserSessionRecycleLoop(BROWSER_SESSION_RECYCLE_DEFER_MS);
+      return;
+    }
+
+    try {
+      console.info('[voice][browser] Periodic realtime session recycle triggered');
+      sendVoiceSessionRecycleCue();
+      closeModel();
+      establishBrowserRealtimeModelConnection({
+        skipGreeting: true,
+        reason: 'browser_periodic_recycle',
+      });
+    } catch (err) {
+      console.warn('[voice][browser] Periodic realtime session recycle failed', err);
+    }
+
+    scheduleBrowserSessionRecycleLoop();
+  }, Math.max(1000, delayMs));
+}
 
 function logDroppingAudioIfNeeded() {
   const now = Date.now();
@@ -42,6 +109,7 @@ export function establishBrowserCallSocket(ws: WebSocket, openAIApiKey: string) 
     try {
       console.error('[ws][browser-call] websocket error', err);
     } catch {}
+    stopBrowserSessionRecycleLoop();
     try {
       ws.close();
     } catch {}
@@ -51,6 +119,7 @@ export function establishBrowserCallSocket(ws: WebSocket, openAIApiKey: string) 
       const r = reason?.toString?.() || '';
       console.warn('[ws][browser-call] websocket closed', { code, reason: r });
     } catch {}
+    stopBrowserSessionRecycleLoop();
     // Mirror the in-band "close" event cleanup so that abrupt browser
     // disconnects (tab close, network drop) don't leave modelConn open
     // and block the next session from initializing.
@@ -95,10 +164,12 @@ export function processBrowserCallEvent(data: RawData) {
       } catch {}
 
       establishBrowserRealtimeModelConnection();
+      scheduleBrowserSessionRecycleLoop();
       break;
     }
     case "media": {
       session.latestMediaTimestamp = msg.media?.timestamp;
+      (session as any).lastInboundAudioAtMs = Date.now();
       if (isOpen(session.modelConn)) {
         jsonSend(session.modelConn, {
           type: "input_audio_buffer.append",
@@ -200,6 +271,7 @@ export function processBrowserCallEvent(data: RawData) {
     }
     case "close": {
       console.info("\ud83c\udf10 Browser call closed");
+      stopBrowserSessionRecycleLoop();
       closeAllConnections();
       try {
         endSession();
@@ -209,7 +281,7 @@ export function processBrowserCallEvent(data: RawData) {
   }
 }
 
-function establishBrowserRealtimeModelConnection() {
+function establishBrowserRealtimeModelConnection(options?: { skipGreeting?: boolean; reason?: string }) {
   const hasConnection = !!session.browserConn;
   if (!hasConnection || !session.openAIApiKey) return;
   if (isOpen(session.modelConn)) return;
@@ -229,13 +301,18 @@ function establishBrowserRealtimeModelConnection() {
   );
 
   session.modelConn.on("open", () => {
+    try {
+      console.info('[ws][openai-realtime] browser model websocket open', {
+        reason: options?.reason || 'browser_call_start',
+      });
+    } catch {}
     const sessionConfig = buildRealtimeSessionConfig('voice', 'pcm16');
     jsonSend(session.modelConn, {
       type: "session.update",
       session: sessionConfig,
     });
 
-    if (session.browserConn) {
+    if (session.browserConn && !options?.skipGreeting) {
       jsonSend(session.modelConn, {
         type: "response.create",
         response: {

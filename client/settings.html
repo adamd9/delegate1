@@ -732,6 +732,7 @@ const VOICE_CONFIG_SECTIONS = [
       { key: 'REALTIME_MODEL', label: 'Realtime Model', type: 'select', default: 'gpt-realtime-2', options: [['gpt-realtime-2', 'GPT Realtime 2 (GPT-5 class reasoning, May 2026)'], ['gpt-realtime-1.5', 'GPT Realtime 1.5'], ['gpt-realtime-2025-08-28', 'GPT Realtime (Aug 2025)'], ['gpt-4o-realtime-preview-2024-12-17', 'GPT-4o Realtime Preview (Legacy)']], help: 'The OpenAI model powering live voice conversations. GPT Realtime 2 is the latest and recommended.' },
       { key: 'REALTIME_VOICE', label: 'Voice', type: 'select', default: 'ballad', options: [['alloy', 'Alloy'], ['ash', 'Ash'], ['ballad', 'Ballad'], ['coral', 'Coral'], ['echo', 'Echo'], ['sage', 'Sage'], ['shimmer', 'Shimmer'], ['verse', 'Verse'], ['marin', 'Marin'], ['cedar', 'Cedar']], help: 'The voice used for phone calls and browser voice chat.' },
       { key: 'DELEGATE_VOICE_SPEED', label: 'Voice Speed', type: 'number', default: '1.1', help: 'Speaking speed for the agent voice across realtime calls and walkie-talkie TTS (default: 1.1; realtime supports 0.25–1.5, TTS supports up to 4.0).' },
+      { key: 'SERVER_VAD_PERIODIC_SESSION_RECYCLE_ENABLED', label: 'Periodic Server VAD Session Recycle', type: 'boolean', default: 'false', help: 'Mitigates long-session echo buildup by periodically reconnecting the OpenAI realtime voice session during idle moments when Server VAD is active. Applies to Twilio and browser realtime voice without disconnecting the call/socket.' },
     ],
   },
 ];

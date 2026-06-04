@@ -23,8 +23,41 @@ const assistantVoiceByItem = new Map<string, string>();
 // Timer handle for hold music loop
 let holdMusicTimer: NodeJS.Timeout | undefined;
 let browserHoldMusicTimer: NodeJS.Timeout | undefined;
+let twilioSessionRecycleTimer: NodeJS.Timeout | undefined;
 // Add slight gap between hold music loops to avoid a harsh beat
 const HOLD_MUSIC_LOOP_INTERVAL_MS = HOLD_MUSIC_DURATION_MS + 250;
+const TWILIO_SESSION_RECYCLE_INTERVAL_MS = 90_000;
+const TWILIO_SESSION_RECYCLE_DEFER_MS = 5_000;
+const TWILIO_SESSION_RECYCLE_IDLE_GRACE_MS = 4_000;
+
+function isServerVadPeriodicSessionRecycleEnabled(): boolean {
+  const raw = String(
+    configService.get('SERVER_VAD_PERIODIC_SESSION_RECYCLE_ENABLED')
+    || ''
+  ).trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+}
+
+export function sendVoiceSessionRecycleCue() {
+  // Reuse the same hold/chime sound users already hear during tool waits.
+  if (session.twilioConn && session.streamSid && isOpen(session.twilioConn)) {
+    jsonSend(session.twilioConn, {
+      event: 'media',
+      streamSid: session.streamSid,
+      media: { payload: HOLD_MUSIC_ULAW_BASE64 },
+    } as any);
+    jsonSend(session.twilioConn, {
+      event: 'mark',
+      streamSid: session.streamSid,
+    } as any);
+  }
+  if (session.browserConn && isOpen(session.browserConn)) {
+    jsonSend(session.browserConn, {
+      event: 'hold.media',
+      media: { payload: getHoldMusicPcm16Base64() },
+    } as any);
+  }
+}
 
 function logDroppingAudioIfNeeded(source: 'twilio' | 'browser') {
   const now = Date.now();
@@ -239,6 +272,61 @@ function stopHoldMusicLoop() {
   }
 }
 
+function stopTwilioSessionRecycleLoop() {
+  if (twilioSessionRecycleTimer) {
+    clearTimeout(twilioSessionRecycleTimer);
+    twilioSessionRecycleTimer = undefined;
+  }
+}
+
+function scheduleTwilioSessionRecycleLoop(delayMs = TWILIO_SESSION_RECYCLE_INTERVAL_MS) {
+  stopTwilioSessionRecycleLoop();
+  if (!isServerVadPeriodicSessionRecycleEnabled()) return;
+
+  twilioSessionRecycleTimer = setTimeout(() => {
+    twilioSessionRecycleTimer = undefined;
+
+    if (!isServerVadPeriodicSessionRecycleEnabled()) return;
+    if (!(session.twilioConn && session.streamSid && isOpen(session.twilioConn))) return;
+
+    // This mitigation targets server-side VAD calls where long sessions can
+    // accumulate echo/queue artifacts over time. Keep semantic/none untouched.
+    const turnDetection = getVoiceTuningForCall().turnDetection;
+    if (turnDetection?.type && turnDetection.type !== 'server_vad') {
+      scheduleTwilioSessionRecycleLoop();
+      return;
+    }
+
+    const now = Date.now();
+    const lastInboundAudioAtMs = (session as any).lastInboundAudioAtMs as number | undefined;
+    const inboundRecently = typeof lastInboundAudioAtMs === 'number'
+      ? (now - lastInboundAudioAtMs) < TWILIO_SESSION_RECYCLE_IDLE_GRACE_MS
+      : false;
+    const responseInFlight = session.responseStartTimestamp !== undefined;
+    const toolInFlight = !!session.waitingForTool;
+    const modelOpen = isOpen(session.modelConn);
+
+    if (inboundRecently || responseInFlight || toolInFlight || !modelOpen) {
+      scheduleTwilioSessionRecycleLoop(TWILIO_SESSION_RECYCLE_DEFER_MS);
+      return;
+    }
+
+    try {
+      console.info('[voice][twilio] Periodic realtime session recycle triggered');
+      sendVoiceSessionRecycleCue();
+      closeModel();
+      establishRealtimeModelConnection({
+        skipGreeting: true,
+        reason: 'twilio_periodic_recycle',
+      });
+    } catch (err) {
+      console.warn('[voice][twilio] Periodic realtime session recycle failed', err);
+    }
+
+    scheduleTwilioSessionRecycleLoop();
+  }, Math.max(1000, delayMs));
+}
+
 function startHoldMusicLoop() {
   if (!(session.twilioConn && session.streamSid) && !session.browserConn) return;
 
@@ -306,6 +394,7 @@ export function establishCallSocket(ws: WebSocket, openAIApiKey: string) {
       console.error('[ws][twilio-call] websocket error', err);
     } catch {}
     finalizeRun('error');
+    stopTwilioSessionRecycleLoop();
     try {
       ws.close();
     } catch {}
@@ -316,6 +405,7 @@ export function establishCallSocket(ws: WebSocket, openAIApiKey: string) {
       console.warn('[ws][twilio-call] websocket closed', { code, reason: r, streamSid: session.streamSid });
     } catch {}
     finalizeRun();
+    stopTwilioSessionRecycleLoop();
     // Twilio drops the WS directly on caller hangup without sending a
     // media-stream "close" event, so the cleanup in processRealtimeCallEvent's
     // "close" case never fires. Without this, modelConn survives across calls
@@ -362,9 +452,11 @@ export function processRealtimeCallEvent(data: RawData) {
         }
       } catch {}
       establishRealtimeModelConnection();
+      scheduleTwilioSessionRecycleLoop();
       break;
     case "media":
       session.latestMediaTimestamp = msg.media.timestamp;
+      (session as any).lastInboundAudioAtMs = Date.now();
       if (isOpen(session.modelConn)) {
         jsonSend(session.modelConn, {
           type: "input_audio_buffer.append",
@@ -381,6 +473,7 @@ export function processRealtimeCallEvent(data: RawData) {
     case "close":
       console.info("📞 Call closed");
       finalizeRun();
+      stopTwilioSessionRecycleLoop();
       closeAllConnections();
       try { endSession(); } catch {}
       break;
@@ -388,7 +481,7 @@ export function processRealtimeCallEvent(data: RawData) {
 }
 
 // Ensure the OpenAI realtime model connection is established for voice calls
-export function establishRealtimeModelConnection() {
+export function establishRealtimeModelConnection(options?: { skipGreeting?: boolean; reason?: string }) {
   // Connect to model if we have either a Twilio connection OR a chat connection
   const hasConnection = (session.twilioConn && session.streamSid) || session.chatConn;
   if (!hasConnection || !session.openAIApiKey)
@@ -400,6 +493,7 @@ export function establishRealtimeModelConnection() {
       hasTwilioConn: !!session.twilioConn,
       hasBrowserConn: !!session.browserConn,
       streamSid: session.streamSid,
+      reason: options?.reason || 'call_start',
     });
   } catch {}
 
@@ -433,7 +527,7 @@ export function establishRealtimeModelConnection() {
     });
 
     // Send greeting — contextual if outbound, generic if inbound
-    if (session.twilioConn) {
+    if (session.twilioConn && !options?.skipGreeting) {
       const greetingInstruction = outboundCtx && outboundCtx.recentTurns.length > 0
         ? "You called the user as a follow-up to your prior conversation. Greet them briefly and continue naturally from where you left off."
         : "Greet the caller briefly in English, in a style that aligns with your given personality, before awaiting input.";
