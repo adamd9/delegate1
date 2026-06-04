@@ -701,6 +701,7 @@ const CONFIG_SECTIONS = [
     fields: [
       { key: 'PUBLIC_URL', label: 'Public URL Override', help: 'Only for dev behind NAT/proxy (e.g. ngrok). In production the hostname is used automatically.', type: 'text' },
       { key: 'SESSION_HISTORY_LIMIT', label: 'Session History Limit', help: 'Conversation items in context (default: 50).', type: 'number' },
+      { key: 'SESSION_IDLE_TIMEOUT_MINUTES', label: 'Session Idle Timeout (minutes)', help: 'Auto-end the active session after this many minutes of no activity. Default: 60. Set to 0 to disable.', type: 'number', default: '60' },
     ],
   },
 ];

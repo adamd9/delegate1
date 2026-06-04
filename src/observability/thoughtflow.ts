@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, appendFileSync, readFileSync, readdirSync } from
 import { randomUUID } from 'crypto';
 import { join, sep } from 'path';
 import { session } from '../session/state';
+import { configService } from '../config';
 import { upsertSession, finalizeSession, upsertConversation, updateConversationStatus, addConversationEvent, getLastEventTimestampForConversation, upsertThoughtflowArtifact } from '../db/sqlite';
 import { getEffectivePublicUrl } from '../server/config/env';
 
@@ -20,11 +21,74 @@ export enum ThoughtFlowStepType {
 const isDist = __dirname.includes(`${sep}dist${sep}`);
 const baseRoot = isDist ? join(__dirname, '..', '..', '..') : join(__dirname, '..', '..');
 const BASE_DIR = join(baseRoot, 'runtime-data', 'thoughtflow');
+const SESSION_IDLE_TIMEOUT_MINUTES_DEFAULT = 60;
+
+let inactivityTimer: NodeJS.Timeout | undefined;
+let inactivityTimerSessionId: string | undefined;
 
 function ensureDir() {
   if (!existsSync(BASE_DIR)) {
     mkdirSync(BASE_DIR, { recursive: true });
   }
+}
+
+function getSessionIdleTimeoutMs(): number | null {
+  const raw = String(configService.get('SESSION_IDLE_TIMEOUT_MINUTES') || '').trim();
+  const parsed = raw ? Number(raw) : SESSION_IDLE_TIMEOUT_MINUTES_DEFAULT;
+  if (!Number.isFinite(parsed)) return SESSION_IDLE_TIMEOUT_MINUTES_DEFAULT * 60_000;
+  if (parsed <= 0) return null;
+  const clampedMinutes = Math.max(1, Math.min(10_080, parsed));
+  return Math.floor(clampedMinutes * 60_000);
+}
+
+function clearInactivityTimer(targetSessionId?: string) {
+  if (targetSessionId && inactivityTimerSessionId && targetSessionId !== inactivityTimerSessionId) {
+    return;
+  }
+  if (inactivityTimer) {
+    clearTimeout(inactivityTimer);
+    inactivityTimer = undefined;
+  }
+  inactivityTimerSessionId = undefined;
+}
+
+function scheduleInactivityTimer(targetSessionId: string) {
+  clearInactivityTimer();
+  const timeoutMs = getSessionIdleTimeoutMs();
+  if (!timeoutMs) return;
+
+  inactivityTimerSessionId = targetSessionId;
+  inactivityTimer = setTimeout(() => {
+    inactivityTimer = undefined;
+    inactivityTimerSessionId = undefined;
+
+    const activeSessionId = ((session.thoughtflow || {}) as any).sessionId as string | undefined;
+    if (!activeSessionId || activeSessionId !== targetSessionId) return;
+
+    try {
+      const conversationId = (session as any).currentConversationId as string | undefined;
+      if (conversationId) {
+        appendEvent({
+          type: 'conversation.completed',
+          conversation_id: conversationId,
+          ended_at: new Date().toISOString(),
+          status: 'timeout',
+        });
+      }
+    } catch {}
+
+    try {
+      session.currentRequest = undefined;
+      try { (session as any).currentConversationId = undefined; } catch {}
+      try { (session as any).lastAssistantStepId = undefined; } catch {}
+      try { (session as any).lastUserStepId = undefined; } catch {}
+      try { (session as any).pendingMemoryPromise = undefined; } catch {}
+      endSession({ statusOverride: 'timeout' });
+      console.info('[thoughtflow] Session auto-finalized due to inactivity timeout');
+    } catch (e) {
+      console.warn('[thoughtflow] Session inactivity auto-finalization failed:', (e as any)?.message || e);
+    }
+  }, timeoutMs);
 }
 
 export function ensureSession(): { id: string; jsonlPath: string } {
@@ -45,6 +109,7 @@ export function ensureSession(): { id: string; jsonlPath: string } {
     // Ensure a DB session row exists
     upsertSession(tf.sessionId, new Date(tf.startedAt!).toISOString());
   } catch {}
+  scheduleInactivityTimer(tf.sessionId);
   return { id: tf.sessionId, jsonlPath };
 }
 
@@ -88,6 +153,8 @@ export function appendEvent(event: any) {
         }
       }
     } catch {}
+    const sid = ((session.thoughtflow || {}) as any).sessionId as string | undefined;
+    if (sid) scheduleInactivityTimer(sid);
   } catch (e) {
     console.warn('[thoughtflow] appendEvent failed:', (e as any)?.message || e);
   }
@@ -227,6 +294,7 @@ export function endSession(opts?: { statusOverride?: string; sessionId?: string 
     const tf = (session.thoughtflow ||= {} as any);
     const active = ensureSession();
     const id = opts?.sessionId || active.id;
+    clearInactivityTimer(id);
     const jsonlPath = opts?.sessionId ? join(BASE_DIR, `${opts.sessionId}.jsonl`) : active.jsonlPath;
     // Read JSONL events and aggregate into runs/steps
     const raw = readFileSync(jsonlPath, 'utf8');
