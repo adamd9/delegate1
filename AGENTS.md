@@ -39,3 +39,7 @@ Delegate 1 is a single-session, multi-channel AI assistant (text, voice, phone) 
 
 ## Tests
 - E2E: `npm run test:e2e` (requires backend running and valid OpenAI key).
+
+## User preference
+- For natural-language interpretation tasks (query intent, fuzzy retrieval, semantic ranking, summarization), prefer model-mediated implementations over hardcoded regex/keyword heuristics.
+- Keep deterministic code for validation, limits, safety, and fallback behavior, but do not present brittle pattern matching as "natural language" capability.

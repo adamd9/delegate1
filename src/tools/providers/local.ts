@@ -9,6 +9,8 @@ import { listAdaptationsFunction, getAdaptationFunction, updateAdaptationFunctio
 import { hangupCallTool } from "../handlers/hangup";
 import { listGithubReposFunction, createGithubIssueFunction } from "../handlers/github";
 import { retrieveMemoryFunction, storeMemoryFunction } from "../handlers/memory";
+import { readConversationsFunction } from "../handlers/conversations";
+import { readSelfLogsFunction } from "../handlers/self-logs";
 
 function wrap(name: string, description: string, parameters: any, origin: ToolOrigin, tags: string[], handler: (args: any) => Promise<any>) {
   return {
@@ -186,6 +188,22 @@ export function registerLocalTools() {
       'local',
       ['local', 'base-default'],
       (args) => storeMemoryFunction.handler(args)
+    ),
+    wrap(
+      readConversationsFunction.schema.name,
+      readConversationsFunction.schema.description,
+      readConversationsFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => readConversationsFunction.handler(args)
+    ),
+    wrap(
+      readSelfLogsFunction.schema.name,
+      readSelfLogsFunction.schema.description,
+      readSelfLogsFunction.schema.parameters,
+      'local',
+      ['local', 'base-default'],
+      (args) => readSelfLogsFunction.handler(args)
     ),
   ];
 
