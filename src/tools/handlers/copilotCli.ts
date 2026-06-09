@@ -1,110 +1,131 @@
+/**
+ * Copilot CLI tool handlers — thin wrappers over taskRunner.
+ *
+ * Backwards-compatible exports:
+ *   - copilotDispatchHandler    → creates a new task and runs its first turn
+ *   - copilotGetResultHandler   → returns status of the most recent task (legacy `copilot_status`)
+ *
+ * New tools:
+ *   - copilotContinueHandler    → enqueues a new prompt on an existing task
+ *   - copilotTaskStatusHandler  → read-only status + recent output for an existing task
+ *
+ * Legacy exports (kept for tests/route imports):
+ *   getSessionOutput, getLastCompletedSession, clearLastCompletedSession,
+ *   setCopilotBroadcast, setFallbackInjector, markHookDelivered
+ */
+
 import { FunctionHandler } from '../../agentConfigs/types';
-import { spawn, ChildProcess } from 'child_process';
-import { execFile } from 'child_process';
-import fs from 'fs';
-import { homedir } from 'os';
-import { COPILOT_WORK_DIR, COPILOT_HOME_DIR, BROWSER_PROFILE_DIR, commitAndPushWorkDir, GLOBAL_LOG_FILE, GitSyncResult } from '../../browser';
 import { configService } from '../../config';
-import { getPort } from '../../server/config/env';
+import {
+  createTaskWithFirstTurn,
+  enqueueInput,
+  getActiveTurn,
+  setTaskBroadcast,
+  cancelActiveTurn,
+} from '../../copilot/taskRunner';
+import {
+  findTaskByName,
+  getTask,
+  listTasks,
+  summarizeTask,
+  CopilotTaskRow,
+} from '../../copilot/tasks';
+import type { GitSyncResult } from '../../browser';
 
-// GLOBAL_LOG_FILE is imported from browser/index.ts — it is an append-only log
-// file tailed by the persistent xterm in the VNC display.
+// ---------------------------------------------------------------------------
+// Broadcast bridge: route legacy copilot.* and new copilot.task.* through a
+// single setter so the WS layer doesn't care which it's wiring up.
+// ---------------------------------------------------------------------------
 
-// Single-session enforcement
-let activeSession: { child: ChildProcess; task: string; startedAt: number; stdout: string; stderr: string } | null = null;
-
-// Preserved output from the last completed session (for copilot_status)
-let lastCompletedSession: { task: string; status: string; stdout: string; stderr: string; completedAt: number; gitResult?: GitSyncResult } | null = null;
-
-export function getActiveSession() {
-  return activeSession
-    ? { task: activeSession.task, startedAt: activeSession.startedAt, pid: activeSession.child.pid }
-    : null;
+let legacyBroadcastFn: ((msg: { type: string; [k: string]: any }) => void) | null = null;
+export function setCopilotBroadcast(fn: ((msg: { type: string; [k: string]: any }) => void) | null) {
+  legacyBroadcastFn = fn;
+  setTaskBroadcast(fn);
 }
 
+// ---------------------------------------------------------------------------
+// Legacy single-session API surface (used by routes/copilot.ts and tests).
+// Each call peeks at the latest task to maintain compatibility.
+// ---------------------------------------------------------------------------
+
 export function getSessionOutput(): { stdout: string; stderr: string; task: string } | null {
-  if (!activeSession) return null;
+  const active = getActiveTurn();
+  if (!active) return null;
+  const t = getTask(active.taskId);
+  if (!t) return null;
+  return { stdout: t.last_summary || '', stderr: '', task: t.title };
+}
+
+export function getLastCompletedSession(): {
+  task: string;
+  status: string;
+  stdout: string;
+  stderr: string;
+  completedAt: number;
+  gitResult?: GitSyncResult;
+} | null {
+  const recent = listTasks({ limit: 1 });
+  if (!recent.length) return null;
+  const t = recent[0];
+  if (t.status === 'running') return null;
+  let gitResult: GitSyncResult | undefined;
+  try {
+    const meta = t.meta_json ? JSON.parse(t.meta_json) : {};
+    if (meta.lastGit) gitResult = meta.lastGit;
+  } catch { /* ignore */ }
   return {
-    stdout: activeSession.stdout,
-    stderr: activeSession.stderr,
-    task: activeSession.task,
+    task: t.title,
+    status: t.status,
+    stdout: t.last_summary || '',
+    stderr: '',
+    completedAt: t.ended_at_ms || t.last_active_at_ms,
+    gitResult,
   };
 }
 
-export function getLastCompletedSession() {
-  return lastCompletedSession;
+export function clearLastCompletedSession(): void {
+  // No-op now that tasks are persistent. Kept for compatibility.
 }
 
-export function clearLastCompletedSession() {
-  lastCompletedSession = null;
+/** Back-compat: legacy WS layer queries this for the "currently active copilot session" banner. */
+export function getActiveSession(): { task: string; startedAt: number; pid?: number; taskId: string } | null {
+  const active = getActiveTurn();
+  if (!active) return null;
+  const t = getTask(active.taskId);
+  return {
+    task: t?.title || active.taskId,
+    startedAt: active.startedAt,
+    pid: active.pid,
+    taskId: active.taskId,
+  };
 }
 
-// Broadcast callback — set by the WS layer so handler can push stdout/stderr chunks
-let broadcastFn: ((msg: { type: string; [k: string]: any }) => void) | null = null;
-export function setCopilotBroadcast(fn: ((msg: { type: string; [k: string]: any }) => void) | null) {
-  broadcastFn = fn;
+let _fallbackInjector: ((task: string, status: string, stdout: string, stderr: string, gitResult?: GitSyncResult) => void) | null = null;
+export function setFallbackInjector(fn: typeof _fallbackInjector) {
+  _fallbackInjector = fn;
 }
+export function getFallbackInjector() { return _fallbackInjector; }
 
-// Fallback injector — set by the callback route so the close handler can inject
-// results if hooks didn't fire (crash, misconfiguration, etc.)
-let fallbackInjector: ((task: string, status: string, stdout: string, stderr: string, gitResult?: GitSyncResult) => void) | null = null;
-export function setFallbackInjector(fn: ((task: string, status: string, stdout: string, stderr: string, gitResult?: GitSyncResult) => void) | null) {
-  fallbackInjector = fn;
-}
+let _hookDelivered = false;
+export function markHookDelivered() { _hookDelivered = true; }
+export function consumeHookDelivered(): boolean { const v = _hookDelivered; _hookDelivered = false; return v; }
 
-// Called by the callback route when a sessionEnd hook successfully delivers
-let export_setHookDelivered: ((v: boolean) => void) | null = null;
-export function markHookDelivered() {
-  export_setHookDelivered?.(true);
-}
-
-// Cache resolved binary path + mode across invocations
-let copilotCache: { path: string; ghMode: boolean } | null | undefined; // undefined = not checked yet
-
-function getCopilotInfo(): Promise<{ path: string; ghMode: boolean } | null> {
-  return new Promise((resolve) => {
-    if (copilotCache !== undefined) {
-      return resolve(copilotCache);
-    }
-    // Try standalone `copilot` first
-    execFile('which', ['copilot'], (err, stdout) => {
-      if (!err && stdout.trim()) {
-        copilotCache = { path: stdout.trim(), ghMode: false };
-        return resolve(copilotCache);
-      }
-      // Check the well-known path where `gh copilot` auto-downloads the binary
-      const home = homedir() || '/root';
-      const knownBin = `${home}/.local/share/gh/copilot/copilot`;
-      if (require('fs').existsSync(knownBin)) {
-        copilotCache = { path: knownBin, ghMode: false };
-        return resolve(copilotCache);
-      }
-      // Fall back to `gh copilot` wrapper (only if gh is present)
-      execFile('which', ['gh'], (err2, stdout2) => {
-        if (!err2 && stdout2.trim()) {
-          copilotCache = { path: stdout2.trim(), ghMode: true };
-          return resolve(copilotCache);
-        }
-        copilotCache = null;
-        resolve(null);
-      });
-    });
-  });
-}
+// ---------------------------------------------------------------------------
+// copilot_dispatch — create a new task and run its first turn
+// ---------------------------------------------------------------------------
 
 export const copilotDispatchHandler: FunctionHandler = {
   schema: {
     name: 'copilot_dispatch',
     type: 'function',
     description:
-      'Dispatch a task to a background Copilot CLI agent. Returns immediately — results are delivered asynchronously. The agent can browse the web (via Playwright), read/write files, and perform multi-step tasks. Use for web research, data extraction, and browser automation.',
+      'Dispatch a new task to the background Copilot CLI agent. Returns immediately with a task id — results stream into the task and are delivered asynchronously. The agent can browse the web (via Playwright), read/write files in the task\'s isolated subfolder, and perform multi-step tasks. If the task pauses needing user help (e.g. login wall), it transitions to status `awaiting_user` and you can resume it later with `copilot_continue`.',
     parameters: {
       type: 'object',
       properties: {
         task: {
           type: 'string',
-          description:
-            'Natural language description of the task to perform. Be specific about what you want accomplished.',
+          description: 'Natural language description of the task to perform. Be specific about what you want accomplished. Becomes the task title.',
         },
       },
       required: ['task'],
@@ -116,224 +137,61 @@ export const copilotDispatchHandler: FunctionHandler = {
     args: { task: string },
     addBreadcrumb?: (title: string, data?: any) => void,
   ): Promise<any> => {
-    try {
-      const { task } = args;
+    const task = String(args?.task || '').trim();
+    if (!task) return { error: 'task is required' };
 
-      const truncatedTask = task.length > 120 ? task.slice(0, 120) + '…' : task;
-      addBreadcrumb?.('Copilot dispatch started', { task: truncatedTask });
+    // Preflight: same checks as before (browser enabled, token present, no live turn)
+    if (configService.get('BROWSER_ENABLED') !== 'true') {
+      return { error: 'Browser agent not enabled. Set BROWSER_ENABLED=true to use this tool.' };
+    }
+    if (!configService.get('COPILOT_GITHUB_TOKEN')) {
+      return { error: 'COPILOT_GITHUB_TOKEN not set. Open Settings -> Browser and add your Copilot Sign-In Token.' };
+    }
 
-      // 0. Single-session enforcement
-      if (activeSession) {
-        return {
-          error: `A copilot session is already running (started ${new Date(activeSession.startedAt).toISOString()}, task: "${activeSession.task.slice(0, 80)}"). Wait for it to finish.`,
-        };
-      }
-
-      // 1. Check BROWSER_ENABLED
-      if (configService.get('BROWSER_ENABLED') !== 'true') {
-        return {
-          error: 'Browser agent not enabled. Set BROWSER_ENABLED=true to use this tool.',
-        };
-      }
-
-      // 2. Check auth token
-      if (!configService.get('COPILOT_GITHUB_TOKEN')) {
-        return {
-          error: 'Copilot Sign-In Token is not configured. Open Settings -> Browser, enter your Copilot Sign-In Token, and save.',
-        };
-      }
-
-      // 3. Check copilot CLI availability
-      const copilotInfo = await getCopilotInfo();
-      if (!copilotInfo) {
-        // Clear cache so next call re-checks (binary may appear after entrypoint finishes)
-        copilotCache = undefined;
-        return { error: 'Copilot CLI not installed or not in PATH. Checked `copilot`, known gh binary path, and `gh`.' };
-      }
-
-      // 4. Resolve working directory — ensure it exists, fall back to cwd
-      let cwd = COPILOT_WORK_DIR || process.cwd();
-      if (!fs.existsSync(cwd)) {
-        fs.mkdirSync(cwd, { recursive: true });
-      }
-
-      // 5. Build env
-      const port = String(getPort());
-      const envSource = process['env'] as Record<string, string>;
-      const env: Record<string, string> = {
-        ...envSource,
-        COPILOT_GITHUB_TOKEN: configService.get('COPILOT_GITHUB_TOKEN') || '',
-        COPILOT_HOME: COPILOT_HOME_DIR || '',
-        PLAYWRIGHT_CLI_SESSION: 'delegate',
-        PLAYWRIGHT_DAEMON_SESSION_DIR: BROWSER_PROFILE_DIR,
-        AGENT_CALLBACK_URL: `http://localhost:${port}`,
-      };
-      // 6. Timeout — default 30 min for research/browsing tasks.
-      // Copilot CLI catches SIGTERM and finishes its current step before exiting,
-      // so we send SIGTERM first and escalate to SIGKILL after a 30 s grace period.
-      const timeoutMs = parseInt(configService.get('COPILOT_TIMEOUT_MS') || '1800000', 10);
-      const sigkillGraceMs = 30000;
-
-      // 7. Spawn copilot process (async — returns immediately, results via hooks)
-      // Per docs: -p (prompt) + --no-ask-user + --yolo + --agent
-      // -s (silent/scriptable) is intentionally omitted so the full reasoning trace
-      // is written to the log file and visible in the VNC terminal.
-      // --share writes the full session transcript to a file as an additional fallback.
-      const sessionShareFile = '/tmp/copilot-session-share.md';
-
-      // If a prior session exists, prepend its summary as context so the agent knows
-      // what was already accomplished and can continue naturally.
-      let effectiveTask = task;
-      if (lastCompletedSession) {
-        const prevSummary =
-          `## Context from previous session\n` +
-          `Task: ${lastCompletedSession.task}\n` +
-          `Status: ${lastCompletedSession.status}\n` +
-          `Completed: ${new Date(lastCompletedSession.completedAt).toISOString()}\n\n` +
-          `Output summary:\n${lastCompletedSession.stdout.slice(0, 2000)}` +
-          (lastCompletedSession.stdout.length > 2000 ? '\n...[truncated]' : '') +
-          `\n\n---\n\n## New task\n${task}`;
-        effectiveTask = prevSummary;
-      }
-
-      const baseArgs = ['-p', effectiveTask, '--no-ask-user', '--yolo',
-        '--agent=delegate-browser',
-        `--share=${sessionShareFile}`];
-      const spawnArgs = copilotInfo.ghMode ? ['copilot', ...baseArgs] : baseArgs;
-
-      // Append session start marker to the global log (history is preserved across sessions)
-      try {
-        fs.appendFileSync(GLOBAL_LOG_FILE,
-          `\n${'═'.repeat(60)}\n` +
-          `SESSION STARTED  ${new Date().toISOString()}\n` +
-          `Task: ${task}\n` +
-          `${'═'.repeat(60)}\n\n`);
-      } catch (_) { /* non-fatal */ }
-
-      const child = spawn(copilotInfo.path, spawnArgs, { cwd, env, stdio: 'pipe' });
-      activeSession = { child, task, startedAt: Date.now(), stdout: '', stderr: '' };
-
-      broadcastFn?.({ type: 'copilot.session.start', task: truncatedTask, timestamp: Date.now() });
-
-      let killed = false;
-      // Track whether the sessionEnd hook already injected the result
-      let hookDelivered = false;
-      export_setHookDelivered = (v: boolean) => { hookDelivered = v; };
-
-      child.stdout.on('data', (chunk: Buffer) => {
-        const text = chunk.toString();
-        if (activeSession) activeSession.stdout += text;
-        try { fs.appendFileSync(GLOBAL_LOG_FILE, text); } catch (_) { /* non-fatal */ }
-        broadcastFn?.({ type: 'copilot.stdout', output: text, timestamp: Date.now() });
-      });
-      child.stderr.on('data', (chunk: Buffer) => {
-        const text = chunk.toString();
-        if (activeSession) activeSession.stderr += text;
-        try { fs.appendFileSync(GLOBAL_LOG_FILE, `[stderr] ${text}`); } catch (_) { /* non-fatal */ }
-        broadcastFn?.({ type: 'copilot.stderr', output: text, timestamp: Date.now() });
-      });
-
-      const timer = setTimeout(() => {
-        killed = true;
-        try { fs.appendFileSync(GLOBAL_LOG_FILE, `\n[timeout] Sending SIGTERM (${timeoutMs / 60000} min limit reached)...\n`); } catch (_) { /* non-fatal */ }
-        child.kill('SIGTERM');
-        // Escalate to SIGKILL if the process doesn't exit within the grace period
-        setTimeout(() => {
-          try {
-            child.kill('SIGKILL');
-            fs.appendFileSync(GLOBAL_LOG_FILE, '[timeout] SIGTERM ignored — sent SIGKILL\n');
-          } catch (_) { /* already exited */ }
-        }, sigkillGraceMs);
-      }, timeoutMs);
-
-      child.on('error', (err) => {
-        clearTimeout(timer);
-        const output = activeSession?.stdout?.trim() || '';
-        activeSession = null;
-        export_setHookDelivered = null;
-        broadcastFn?.({ type: 'copilot.session.end', status: 'error', timestamp: Date.now() });
-        console.error(`[copilot-dispatch] Process error: ${err.message}`);
-      });
-
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        let sessionStdout = activeSession?.stdout?.trim() || '';
-        const sessionStderr = activeSession?.stderr?.trim() || '';
-        const sessionTask = activeSession?.task || task;
-
-        const status = killed ? 'timeout' : code !== 0 ? 'error' : 'completed';
-
-        // If stdout is sparse, supplement with the --share transcript
-        if (!sessionStdout || sessionStdout.length < 100) {
-          try {
-            const shareContent = fs.readFileSync(sessionShareFile, 'utf-8').trim();
-            if (shareContent) {
-              sessionStdout = sessionStdout
-                ? `${sessionStdout}\n\n--- Full transcript ---\n${shareContent}`
-                : shareContent;
-            }
-          } catch (_) { /* share file may not exist if session crashed early */ }
-        }
-
-        // Commit + push session outputs to remote repo (non-fatal)
-        const gitResult = commitAndPushWorkDir(sessionTask);
-
-        // Preserve output for copilot_status (includes git result)
-        lastCompletedSession = {
-          task: sessionTask,
-          status,
-          stdout: sessionStdout,
-          stderr: sessionStderr,
-          completedAt: Date.now(),
-          gitResult,
-        };
-
-        activeSession = null;
-        export_setHookDelivered = null;
-        broadcastFn?.({ type: 'copilot.session.end', status, timestamp: Date.now() });
-        console.log(`[copilot-dispatch] Process closed (status=${status}, code=${code}, hookDelivered=${hookDelivered}, outputLen=${sessionStdout.length}, stderrLen=${sessionStderr.length})`);
-        // Append a completion marker to the log so the persistent VNC terminal shows the final status
-        try {
-          fs.appendFileSync(GLOBAL_LOG_FILE,
-            `\n==============================\n` +
-            `Session ${status.toUpperCase()} at ${new Date().toISOString()}\n` +
-            (sessionStderr ? `\n[stderr]\n${sessionStderr}\n` : '') +
-            `==============================\n`);
-        } catch (_) { /* non-fatal */ }
-
-        // Fallback: if the sessionEnd hook didn't fire (crash, hook misconfigured),
-        // inject the result via the fallback callback
-        if (!hookDelivered && fallbackInjector) {
-          console.log('[copilot-dispatch] Hook did not deliver — using fallback injection');
-          fallbackInjector(sessionTask, status, sessionStdout, sessionStderr, gitResult);
-        }
-      });
-
-      addBreadcrumb?.('Copilot dispatch async', { pid: child.pid });
-
+    const active = getActiveTurn();
+    if (active) {
+      const existing = getTask(active.taskId);
       return {
-        status: 'dispatched',
-        message: `Task dispatched to Copilot CLI agent (pid ${child.pid}). Results will be delivered asynchronously. You should now save a note with the task context and any user preferences so you can retrieve it when the task completes.`,
-      };
-    } catch (err: any) {
-      addBreadcrumb?.('Copilot dispatch unexpected error', {
-        error: err?.message,
-      });
-      return {
-        status: 'error',
-        output: '',
-        error: err?.message || 'Unexpected error in copilot dispatch handler',
+        error: `A copilot task is already running (id: ${active.taskId}, title: "${existing?.title?.slice(0, 80) || ''}"). Wait for it to finish, or call copilot_continue on that task.`,
       };
     }
+
+    // Pull conversation id (best-effort) so we can link task ↔ chat
+    let originatingConversationId: string | null = null;
+    try {
+      const sess = require('../../session/state').session;
+      originatingConversationId = (sess as any)?.currentConversationId || null;
+    } catch { /* ignore */ }
+
+    addBreadcrumb?.('Copilot task created', { taskPrefix: task.slice(0, 80) });
+
+    const result = await createTaskWithFirstTurn({
+      prompt: task,
+      source: 'chat-agent',
+      via: 'chat',
+      originatingConversationId,
+    });
+    if (result.error) return { error: result.error };
+
+    return {
+      status: 'dispatched',
+      task_id: result.task.id,
+      title: result.task.title,
+      message: `Task ${result.task.id} ("${result.task.title}") started. Use copilot_task_status with that id to check progress, or copilot_continue to add a follow-up instruction.`,
+    };
   },
 };
+
+// ---------------------------------------------------------------------------
+// copilot_status (legacy) — status of the most recent task
+// ---------------------------------------------------------------------------
 
 export const copilotGetResultHandler: FunctionHandler = {
   schema: {
     name: 'copilot_status',
     type: 'function',
     description:
-      'Check the status of the Copilot CLI agent — works whether a session is currently running or has already completed. Returns live progress (stdout so far, elapsed time) for a running session, or the full output for a completed/timed-out session.',
+      'Check the status of the most recent Copilot task. Returns the live or completed status, the task id, and a tail of the output. For a specific task, prefer copilot_task_status.',
     parameters: {
       type: 'object',
       properties: {},
@@ -346,41 +204,160 @@ export const copilotGetResultHandler: FunctionHandler = {
     _args: Record<string, never>,
     addBreadcrumb?: (title: string, data?: any) => void,
   ): Promise<any> => {
-    // Check for a currently running session first
-    if (activeSession) {
-      const elapsed = Math.round((Date.now() - activeSession.startedAt) / 1000);
-      addBreadcrumb?.('Copilot get result — session in progress', { elapsed });
+    const active = getActiveTurn();
+    if (active) {
+      const t = getTask(active.taskId);
+      const elapsed = Math.round((Date.now() - active.startedAt) / 1000);
+      addBreadcrumb?.('copilot_status — active', { taskId: active.taskId, elapsed });
       return {
         status: 'running',
-        task: activeSession.task,
+        task_id: active.taskId,
+        task: t?.title || 'unknown',
         elapsedSeconds: elapsed,
-        stdoutSoFar: activeSession.stdout.trim(),
-        stderrSoFar: activeSession.stderr.trim(),
+        outputTail: (t?.last_summary || '').slice(-1200),
       };
     }
-
-    // Return last completed session
-    if (lastCompletedSession) {
-      addBreadcrumb?.('Copilot get result — returning completed session', {
-        status: lastCompletedSession.status,
-        outputLen: lastCompletedSession.stdout.length,
-      });
-      return {
-        status: lastCompletedSession.status,
-        task: lastCompletedSession.task,
-        output: lastCompletedSession.stdout,
-        stderr: lastCompletedSession.stderr || undefined,
-        completedAt: new Date(lastCompletedSession.completedAt).toISOString(),
-        gitSync: lastCompletedSession.gitResult
-          ? { status: lastCompletedSession.gitResult.status, message: lastCompletedSession.gitResult.message }
-          : undefined,
-      };
+    const recent = listTasks({ limit: 1 });
+    if (!recent.length) {
+      addBreadcrumb?.('copilot_status — none');
+      return { status: 'none', message: 'No copilot task has run yet.' };
     }
-
-    addBreadcrumb?.('Copilot get result — no session');
+    const t = recent[0];
+    addBreadcrumb?.('copilot_status — most recent', { id: t.id, status: t.status });
     return {
-      status: 'none',
-      message: 'No copilot session has run yet.',
+      status: t.status,
+      task_id: t.id,
+      task: t.title,
+      needs_user_reason: t.needs_user_reason || undefined,
+      completedAt: t.ended_at_ms ? new Date(t.ended_at_ms).toISOString() : undefined,
+      output: t.last_summary || '',
     };
   },
 };
+
+// ---------------------------------------------------------------------------
+// copilot_continue — enqueue a new prompt on an existing task
+// ---------------------------------------------------------------------------
+
+export const copilotContinueHandler: FunctionHandler = {
+  schema: {
+    name: 'copilot_continue',
+    type: 'function',
+    description:
+      'Send a new instruction to an existing Copilot task — resumes the same Copilot session in its saved working subfolder. Use this when the user wants to keep working on a task (e.g. "tell my Coles task I\'m logged in"). Identify the task by its id (e.g. `c4f-coles-shopping`) or by a fuzzy match on its title.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task_id_or_name: {
+          type: 'string',
+          description: 'Either the task id (preferred) or part of the task title to fuzzy-match. Most recent match wins.',
+        },
+        prompt: {
+          type: 'string',
+          description: 'The new instruction to send to the task.',
+        },
+      },
+      required: ['task_id_or_name', 'prompt'],
+      additionalProperties: false,
+    },
+  },
+
+  handler: async (
+    args: { task_id_or_name: string; prompt: string },
+    addBreadcrumb?: (title: string, data?: any) => void,
+  ): Promise<any> => {
+    const query = String(args?.task_id_or_name || '').trim();
+    const prompt = String(args?.prompt || '').trim();
+    if (!query) return { error: 'task_id_or_name is required' };
+    if (!prompt) return { error: 'prompt is required' };
+
+    if (configService.get('BROWSER_ENABLED') !== 'true') {
+      return { error: 'Browser agent not enabled.' };
+    }
+
+    const task = findTaskByName(query);
+    if (!task) return { error: `No task found matching: ${query}` };
+
+    addBreadcrumb?.('copilot_continue', { taskId: task.id });
+
+    try {
+      const result = enqueueInput({
+        taskId: task.id,
+        prompt,
+        source: 'chat-agent',
+        via: 'chat',
+      });
+      return {
+        status: result.willStartImmediately ? 'started' : 'queued',
+        task_id: task.id,
+        title: task.title,
+        message: result.willStartImmediately
+          ? `Resumed task ${task.id}. Output will stream into the task; check status with copilot_task_status.`
+          : `Queued instruction on task ${task.id} (another turn is already running). It will run next.`,
+      };
+    } catch (err: any) {
+      return { error: err?.message || 'Failed to enqueue input' };
+    }
+  },
+};
+
+// ---------------------------------------------------------------------------
+// copilot_task_status — read-only summary of any task (no new Copilot turn)
+// ---------------------------------------------------------------------------
+
+export const copilotTaskStatusHandler: FunctionHandler = {
+  schema: {
+    name: 'copilot_task_status',
+    type: 'function',
+    description:
+      'Read-only summary of a Copilot task — status, title, last summary, recent output tail, last NEEDS_USER reason if any. Does NOT spend a new Copilot turn. Pass omit task_id_or_name to get the most recent task.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task_id_or_name: {
+          type: 'string',
+          description: 'Task id or partial title. Omit to get the most recent task.',
+        },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+  },
+
+  handler: async (
+    args: { task_id_or_name?: string },
+    addBreadcrumb?: (title: string, data?: any) => void,
+  ): Promise<any> => {
+    let task: CopilotTaskRow | null = null;
+    if (args?.task_id_or_name) {
+      task = findTaskByName(args.task_id_or_name);
+      if (!task) return { error: `No task found matching: ${args.task_id_or_name}` };
+    } else {
+      const recent = listTasks({ limit: 1 });
+      if (!recent.length) return { status: 'none', message: 'No copilot task has run yet.' };
+      task = recent[0];
+    }
+    addBreadcrumb?.('copilot_task_status', { id: task.id, status: task.status });
+    const summary = summarizeTask(task.id);
+    return {
+      task_id: task.id,
+      title: task.title,
+      status: task.status,
+      copilot_session_id: task.copilot_session_id,
+      turn_count: task.turn_count,
+      created_at: new Date(task.created_at_ms).toISOString(),
+      last_active_at: new Date(task.last_active_at_ms).toISOString(),
+      ended_at: task.ended_at_ms ? new Date(task.ended_at_ms).toISOString() : null,
+      needs_user_reason: task.needs_user_reason || null,
+      last_prompt: task.last_prompt || null,
+      last_summary: task.last_summary || null,
+      recent_output_tail: summary?.recentOutput?.slice(-2000) || '',
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Backwards-compatible alias for the existing route module
+// ---------------------------------------------------------------------------
+
+export function cancelTask(taskId: string) { return cancelActiveTurn(taskId); }

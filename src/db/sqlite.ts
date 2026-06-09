@@ -91,6 +91,37 @@ export function getDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_deepgram_transcripts_created_at
       ON deepgram_transcripts(created_at_ms);
+
+    CREATE TABLE IF NOT EXISTS copilot_tasks (
+      id                          TEXT PRIMARY KEY,
+      copilot_session_id          TEXT,
+      title                       TEXT NOT NULL,
+      status                      TEXT NOT NULL,
+      workdir                     TEXT NOT NULL,
+      originating_conversation_id TEXT,
+      created_at_ms               INTEGER NOT NULL,
+      last_active_at_ms           INTEGER NOT NULL,
+      ended_at_ms                 INTEGER,
+      last_prompt                 TEXT,
+      last_summary                TEXT,
+      needs_user_reason           TEXT,
+      turn_count                  INTEGER DEFAULT 0,
+      archived                    INTEGER DEFAULT 0,
+      meta_json                   TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_copilot_tasks_status         ON copilot_tasks(status);
+    CREATE INDEX IF NOT EXISTS idx_copilot_tasks_last_active    ON copilot_tasks(last_active_at_ms DESC);
+    CREATE INDEX IF NOT EXISTS idx_copilot_tasks_archived       ON copilot_tasks(archived);
+
+    CREATE TABLE IF NOT EXISTS copilot_task_events (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id           TEXT NOT NULL,
+      created_at_ms     INTEGER NOT NULL,
+      kind              TEXT NOT NULL,        -- 'user_prompt' | 'agent_output' | 'agent_stderr' | 'system' | 'needs_user' | 'turn_start' | 'turn_end' | 'cancelled'
+      payload_json      TEXT NOT NULL,
+      FOREIGN KEY(task_id) REFERENCES copilot_tasks(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_copilot_task_events_task ON copilot_task_events(task_id, id);
   `);
   return databaseInstance;
 }
