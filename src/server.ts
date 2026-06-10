@@ -26,6 +26,7 @@ import { registerAgentPromptDefaultsRoute } from './server/routes/agentPrompts';
 import { registerSetupRoutes } from './server/routes/setup';
 import { registerOpenAiSessionRoute } from './server/routes/openaiSession';
 import { registerCopilotRoutes } from './server/routes/copilot';
+import { registerCopilotTasksRoutes } from './server/routes/copilotTasks';
 import { registerAgentMessageRoutes } from './server/routes/agentMessage';
 import { registerVncRoutes } from './server/routes/vnc';
 import { registerDevWalkieRoutes } from './server/routes/devWalkie';
@@ -315,6 +316,8 @@ registerOpenAiSessionRoute(app);
 
 // Copilot CLI hook callback routes
 registerCopilotRoutes(app);
+// Copilot Tasks (durable tasks UI + API)
+registerCopilotTasksRoutes(app);
 
 // External agent injection routes
 registerMcpServerRoutes(app);
@@ -326,6 +329,11 @@ registerVncRoutes(app);
 // TEMPORARY: ZeppOS walkie-talkie dev/debug routes (/_dev/walkie/*)
 registerDevWalkieRoutes(app);
 registerDevWalkieVoiceRoutes(app);
+
+// Pretty URL for task detail: /tasks/<id> → client/task.html (resolved client-side from path)
+app.get('/tasks/:id', (_req, res) => {
+  res.sendFile(join(vanillaClientDir, 'task.html'));
+});
 
 // Serve the vanilla JS client (after all API routes so they take priority)
 app.use(express.static(vanillaClientDir, { extensions: ['html'] }));
@@ -346,6 +354,13 @@ server.listen(PORT, () => {
   serverListening = true;
   // Finalize any open sessions at startup for consistency
   finalizeOpenSessionsOnStartup();
+  // Reset copilot tasks that were left in 'running' across a restart
+  try {
+    const { reconcileOnStartup } = require('./copilot/taskRunner');
+    reconcileOnStartup();
+  } catch (err: any) {
+    console.warn('[server] copilot tasks reconcile failed:', err?.message || err);
+  }
   // If tools are already ready, this will write immediately
   void writeLatestStartupResultsIfReady();
   // Update readiness

@@ -1,5 +1,10 @@
 import { registerTools } from "../registry";
-import { copilotDispatchHandler, copilotGetResultHandler } from "../handlers/copilotCli";
+import {
+  copilotDispatchHandler,
+  copilotGetResultHandler,
+  copilotContinueHandler,
+  copilotTaskStatusHandler,
+} from "../handlers/copilotCli";
 import { configService } from '../../config';
 
 function wrapHandler(h: typeof copilotDispatchHandler) {
@@ -16,24 +21,21 @@ export function registerCopilotCliTools() {
     return;
   }
 
-  registerTools('copilot-cli', [
-    {
-      name: copilotDispatchHandler.schema.name,
-      description: copilotDispatchHandler.schema.description || '',
-      parameters: copilotDispatchHandler.schema.parameters,
-      origin: 'local',
-      tags: ['copilot-cli', 'base-default'],
-      handler: wrapHandler(copilotDispatchHandler),
-    },
-    {
-      name: copilotGetResultHandler.schema.name,
-      description: copilotGetResultHandler.schema.description || '',
-      parameters: copilotGetResultHandler.schema.parameters,
-      origin: 'local',
-      tags: ['copilot-cli', 'base-default'],
-      handler: wrapHandler(copilotGetResultHandler),
-    },
-  ]);
+  const handlers = [
+    copilotDispatchHandler,
+    copilotGetResultHandler,
+    copilotContinueHandler,
+    copilotTaskStatusHandler,
+  ];
 
-  console.log('[copilot-cli] registered copilot_dispatch + copilot_status tools');
+  registerTools('copilot-cli', handlers.map(h => ({
+    name: h.schema.name,
+    description: h.schema.description || '',
+    parameters: h.schema.parameters,
+    origin: 'local',
+    tags: ['copilot-cli', 'base-default'],
+    handler: wrapHandler(h),
+  })));
+
+  console.log(`[copilot-cli] registered ${handlers.map(h => h.schema.name).join(', ')}`);
 }

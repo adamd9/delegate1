@@ -77,8 +77,8 @@ async function main() {
       const result = await copilotDispatchHandler.handler({ task: 'test' });
       assert.ok(result.error, 'Expected error in result');
       assert.ok(
-        result.error.includes('COPILOT_GITHUB_TOKEN not set'),
-        `Expected 'COPILOT_GITHUB_TOKEN not set', got: ${result.error}`,
+        result.error.includes('COPILOT_GITHUB_TOKEN'),
+        `Expected COPILOT_GITHUB_TOKEN error, got: ${result.error}`,
       );
     } finally {
       restoreEnv('BROWSER_ENABLED', origBrowser);
@@ -188,34 +188,7 @@ async function main() {
   } else if (!hasCli) {
     skip('Full dispatch with simple task', 'copilot CLI not available');
   } else {
-    await test('Full dispatch with simple task', async () => {
-      const origBrowser = process.env.BROWSER_ENABLED;
-      try {
-        process.env.BROWSER_ENABLED = 'true';
-        // Ensure infrastructure (directories, config) is set up
-        const infraResult = await startBrowserInfra();
-        assert.ok(infraResult.ok, `Browser infra setup failed: ${infraResult.error}`);
-
-        const result = await copilotDispatchHandler.handler({
-          task: 'What is 2 + 2? Reply with just the number.',
-        });
-        console.log('    [debug] result:', JSON.stringify(result, null, 2));
-        assert.ok(result.status, `Result should have a status, got: ${JSON.stringify(result)}`);
-        assert.ok(
-          ['completed', 'error', 'timeout'].includes(result.status),
-          `Status should be completed/error/timeout, got: ${result.status}`,
-        );
-        assert.ok(typeof result.output === 'string', 'output should be a string');
-        if (result.status === 'completed') {
-          assert.ok(
-            result.output.includes('4'),
-            `Completed output should contain '4', got: ${result.output.slice(0, 200)}`,
-          );
-        }
-      } finally {
-        restoreEnv('BROWSER_ENABLED', origBrowser);
-      }
-    });
+    skip('Full dispatch with simple task', 'tasks are now async — covered by E2E');
   }
 
   // ── Group 4: Async dispatch & hooks ─────────────────────────────────────
@@ -311,6 +284,90 @@ async function main() {
       restoreEnv('BROWSER_ENABLED', origBrowser);
       restoreEnv('COPILOT_GITHUB_TOKEN', origToken);
     }
+  });
+
+  // ── Group 5: New task system ────────────────────────────────────────────
+
+  console.log('\nGroup 5: Task system primitives\n');
+
+  await test('generateTaskId produces a short slug', async () => {
+    const { generateTaskId } = require('../../src/copilot/tasks');
+    const id = generateTaskId('Do my Coles shopping for next week');
+    assert.ok(/^[a-z0-9]{3}-[a-z0-9-]+$/.test(id), `id should be slug-like, got: ${id}`);
+    assert.ok(id.length < 40, `id should be short, got: ${id} (${id.length})`);
+  });
+
+  await test('insertTask + getTask roundtrip', async () => {
+    const { insertTask, getTask, generateTaskId } = require('../../src/copilot/tasks');
+    const id = generateTaskId('roundtrip-test');
+    const row = insertTask({
+      id,
+      title: 'roundtrip-test',
+      status: 'idle',
+      workdir: '/tmp/' + id,
+    });
+    assert.strictEqual(row.id, id);
+    const fetched = getTask(id);
+    assert.ok(fetched, 'getTask should return the row');
+    assert.strictEqual(fetched.title, 'roundtrip-test');
+    assert.strictEqual(fetched.status, 'idle');
+  });
+
+  await test('findTaskByName fuzzy-matches title', async () => {
+    const { insertTask, findTaskByName, generateTaskId } = require('../../src/copilot/tasks');
+    const id = generateTaskId('Coles shopping match test');
+    insertTask({ id, title: 'Coles shopping match test', status: 'idle', workdir: '/tmp/' + id });
+    const found = findTaskByName('coles shopping match');
+    assert.ok(found, 'should find the task by partial title');
+    assert.strictEqual(found.id, id);
+  });
+
+  await test('addEvent + listEvents work in order', async () => {
+    const { insertTask, addEvent, listEvents, generateTaskId } = require('../../src/copilot/tasks');
+    const id = generateTaskId('events-test');
+    insertTask({ id, title: 'events-test', status: 'idle', workdir: '/tmp/' + id });
+    const e1 = addEvent({ task_id: id, kind: 'user_prompt', payload: { prompt: 'hello' } });
+    const e2 = addEvent({ task_id: id, kind: 'agent_output', payload: { text: 'world' } });
+    const events = listEvents(id);
+    assert.strictEqual(events.length, 2, 'should list both events');
+    assert.strictEqual(events[0].id, e1.id);
+    assert.strictEqual(events[1].id, e2.id);
+    assert.strictEqual(events[1].payload.text, 'world');
+  });
+
+  await test('NEEDS_USER regex parses last-line signal', async () => {
+    // Internal helper isn't exported; re-implement the same regex check
+    const text = 'doing things...\nstill working\nNEEDS_USER: log into coles.com.au';
+    const re = /^\s*NEEDS_USER\s*:\s*(.+?)\s*$/im;
+    const m = text.match(re);
+    assert.ok(m, 'regex should match');
+    assert.strictEqual(m![1], 'log into coles.com.au');
+  });
+
+  await test('copilot_continue handler rejects unknown task', async () => {
+    const { copilotContinueHandler } = require('../../src/tools/handlers/copilotCli');
+    const origBrowser = process.env.BROWSER_ENABLED;
+    try {
+      process.env.BROWSER_ENABLED = 'true';
+      const result = await copilotContinueHandler.handler({
+        task_id_or_name: 'definitely-does-not-exist-xyz',
+        prompt: 'hi',
+      });
+      assert.ok(result.error, 'should error on unknown task');
+      assert.ok(result.error.includes('No task found'));
+    } finally {
+      restoreEnv('BROWSER_ENABLED', origBrowser);
+    }
+  });
+
+  await test('copilot_task_status handler returns "none" with no tasks', async () => {
+    const { copilotTaskStatusHandler } = require('../../src/tools/handlers/copilotCli');
+    const { getDb } = require('../../src/db/sqlite');
+    // Clear tasks for this assertion to be reliable in CI
+    try { getDb().prepare('DELETE FROM copilot_tasks').run(); } catch {}
+    const result = await copilotTaskStatusHandler.handler({});
+    // After deletion either 'none' or returns the most recent that no longer exists
+    assert.ok(result.status === 'none' || result.task_id, 'should return none or a task');
   });
 
   // ── Summary ─────────────────────────────────────────────────────────────

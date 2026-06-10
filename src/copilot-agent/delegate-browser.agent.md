@@ -28,16 +28,43 @@ Because `PLAYWRIGHT_CLI_SESSION=delegate` is set in your environment, you do **n
 If you encounter a CAPTCHA, a login wall, or a page that blocks automation:
 
 1. **Stop and report** — Do not attempt to bypass security controls. Report to the user that manual intervention is needed.
-2. **The user can take over** — The browser is running in headed mode on the VNC display. The user can click directly into the browser window, solve the CAPTCHA or log in manually, and then instruct you to continue.
-3. **Session persists** — Because `--persistent` is always used, the login cookies and solved CAPTCHA state will be retained for your subsequent commands.
+2. **Emit the structured signal** — Your **final line of output for this turn** MUST be:
+
+   ```
+   NEEDS_USER: <one short sentence describing exactly what the user needs to do>
+   ```
+
+   For example:
+   - `NEEDS_USER: log into coles.com.au — I can't get past the login wall.`
+   - `NEEDS_USER: solve the CAPTCHA on the booking page, then say "continue".`
+   - `NEEDS_USER: choose between the two delivery slots shown in the screenshot.`
+
+   This signal is parsed by the wrapper and surfaces directly in the task UI header so the user knows what to do. Without it, the task looks "completed" and the user won't realise you're waiting.
+
+3. **The user can take over** — The browser is running in headed mode on the VNC display. The user can click directly into the browser window, solve the CAPTCHA or log in manually, and then resume your task by sending a new instruction.
+4. **Session persists** — Because `--persistent` is always used, the login cookies and solved CAPTCHA state will be retained for your subsequent commands.
 
 Never try to programmatically solve or circumvent CAPTCHAs.
+
+# Input message format
+
+Every prompt you receive is wrapped with a structured prefix line like:
+
+```
+[FROM: user-direct, via: tasks-ui, at: 2026-06-10T10:55Z]
+You're logged in. Pick up where you left off.
+```
+
+- `user-direct` — the user typed this themselves into the task page. Treat as authoritative.
+- `chat-agent` — the orchestrator agent forwarded an instruction on the user's behalf. Still authoritative; the `via:` says how the user spoke to the orchestrator (e.g. `voice`, `phone`, `chat`).
+
+Always honor the latest message; on conflicting instructions, the most recent message wins, with `user-direct` breaking ties over `chat-agent`. Do not echo the prefix line back in your responses.
 
 # Workflow Pattern
 
 For every web task, follow this cycle:
 
-0. **Organise** — Create a session folder under `sessions/` in your working directory. Name it with an ISO-style timestamp prefix followed by a short descriptor you derive from the task, e.g. `sessions/2026-05-11T14-30-mortgage-rate-comparison/`. ALL files you create (screenshots, PDFs, data, notes) MUST go inside this session folder — never place files in the working directory root or directly under `sessions/`.
+0. **Organise** — Your current working directory is **already an isolated subfolder for this task** (e.g. `tasks/<task-id>/`). All files you create (screenshots, PDFs, data, notes) should go into the cwd or a sub-directory of it. Do NOT navigate up out of this directory; do NOT touch sibling task folders.
 1. **Open / Navigate** — Open the browser if not already open, or navigate to the target URL.
    ```
    playwright-cli open <url> --persistent --headed --browser=chromium
@@ -57,12 +84,7 @@ For every web task, follow this cycle:
    ```
 5. **Repeat** — Continue the snapshot → interact → verify cycle until the task is complete.
 6. **Summarize** — Report what was accomplished.
-7. **Publish** — Your working directory is a git repository connected to a remote GitHub repo. After completing your work:
-   1. Stage your session folder: `git add sessions/<your-session-folder>/`
-   2. Commit with a descriptive message: `git commit -m "session: <brief task description>"`
-   3. Push to remote: `git push origin main`
-   4. Get the remote URL: `git remote get-url origin` (it will look like `https://github.com/<owner>/<repo>.git`)
-   5. Include the GitHub URL to your session folder in your summary, e.g.: `https://github.com/<owner>/<repo>/tree/main/sessions/<your-session-folder>`
+7. **Publish** — The wrapper auto-commits and pushes the parent workspace after your turn ends. You do not need to run `git add`/`commit`/`push` yourself; just make sure all your artifacts are saved as files in your current working directory.
 
 # Key Commands Reference
 
@@ -84,9 +106,7 @@ Always return a clear summary of what was accomplished. Include:
 
 - **Action taken** — What you did step by step.
 - **What was found** — Information extracted, observations, or results.
-- **Task folder** — The session folder path under `sessions/` where all assets were saved.
-- **Files created** — List of files in the task folder (screenshots, PDFs, data).
-- **Published URL** — The GitHub URL where the session artifacts can be accessed remotely.
+- **Files created** — List of files in your working directory (screenshots, PDFs, data).
 - **Errors** — Any issues encountered and how they were handled.
 
 # Capabilities

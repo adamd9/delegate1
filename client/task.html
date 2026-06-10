@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/vendor/theme-manager.js"></script>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Task · HK</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #1b1d27; --surface: #22253a; --surface2: #2a2d42; --surface3: #181a26;
+      --border: #2e3150; --border2: #383b5e; --accent: #818cf8; --green: #34d399;
+      --amber: #fbbf24; --red: #f87171; --blue: #60a5fa;
+      --text: #e2e4f0; --text-mid: #6b7194; --text-dim: #3d4268;
+      --font: 'SF Mono','Cascadia Code','Fira Code',monospace;
+      --font-ui: 'Inter',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+    }
+    html, body { height: 100%; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font-ui); font-size: 13px; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── Header strip ── */
+    header {
+      flex-shrink: 0; padding: 10px 16px; background: var(--surface3);
+      border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px;
+    }
+    .hdr-row { display: flex; align-items: center; gap: 10px; }
+    .back-btn, .hdr-btn {
+      padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border2);
+      background: transparent; color: var(--text-mid); font-size: 11px;
+      font-family: var(--font); cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .back-btn:hover, .hdr-btn:hover { color: var(--text); }
+    .hdr-btn.danger { color: var(--red); border-color: var(--red); }
+    .hdr-btn.danger:hover { background: var(--red); color: var(--bg); }
+    .hdr-id { font-family: var(--font); color: var(--text-mid); font-size: 12px; }
+    .hdr-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+    .hdr-title { font-size: 14px; font-weight: 600; color: var(--text); }
+    .hdr-meta { font-size: 11px; color: var(--text-mid); font-family: var(--font); display: flex; align-items: center; gap: 10px; }
+    .hdr-needs {
+      margin-top: 4px; padding: 6px 10px; border-radius: 6px;
+      background: rgba(251,191,36,0.08); border: 1px solid var(--amber);
+      color: var(--amber); font-size: 12px; display: none; align-items: center; gap: 8px;
+    }
+    .hdr-needs.show { display: flex; }
+    .hdr-needs.error { background: rgba(248,113,113,0.08); border-color: var(--red); color: var(--red); }
+
+    .pill {
+      font-size: 10px; font-family: var(--font); padding: 2px 8px; border-radius: 999px;
+      border: 1px solid; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+    }
+    .pill::before { content: '●'; }
+    .pill.running         { color: var(--blue);  border-color: var(--blue); animation: pulse 1.4s ease-in-out infinite; }
+    .pill.awaiting_user   { color: var(--amber); border-color: var(--amber); }
+    .pill.completed       { color: var(--green); border-color: var(--green); }
+    .pill.failed          { color: var(--red);   border-color: var(--red); }
+    .pill.idle            { color: var(--text-mid); border-color: var(--border2); }
+    .pill.archived        { color: var(--text-dim); border-color: var(--border2); }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    /* ── Main layout ── */
+    .main { flex: 1; display: flex; flex-direction: row; overflow: hidden; min-height: 0; }
+    .log-pane {
+      flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+      border-right: 1px solid var(--border);
+    }
+    .side-pane {
+      width: 360px; min-width: 280px; max-width: 50%;
+      display: flex; flex-direction: column; background: var(--surface3); overflow: hidden;
+    }
+
+    /* ── Activity log ── */
+    #log { flex: 1; overflow-y: auto; padding: 14px 18px; font-family: var(--font); font-size: 12px; line-height: 1.55; }
+    #log::-webkit-scrollbar { width: 4px; }
+    #log::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    .stream { color: var(--text); white-space: pre-wrap; word-break: break-word; }
+    .stream.stderr { color: var(--amber); }
+    .system-line { color: var(--text-dim); font-size: 11px; border-top: 1px dashed var(--border); padding-top: 6px; margin-top: 8px; }
+
+    .turn-divider {
+      margin: 14px 0 4px; color: var(--text-dim); font-size: 11px; display: flex; align-items: center; gap: 8px;
+    }
+    .turn-divider::before, .turn-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    .turn-card {
+      background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px;
+      padding: 10px 12px; margin: 8px 0 10px; display: flex; flex-direction: column; gap: 6px;
+    }
+    .turn-card.queued { opacity: 0.55; }
+    .turn-card-header {
+      display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-mid);
+    }
+    .turn-card-prompt { color: var(--text); font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+    .turn-badge {
+      margin-left: auto; font-family: var(--font); font-size: 10px;
+      padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border2); color: var(--text-mid);
+    }
+    .turn-badge.sending { color: var(--blue); border-color: var(--blue); }
+    .turn-badge.running { color: var(--blue); border-color: var(--blue); }
+    .turn-badge.done    { color: var(--green); border-color: var(--green); }
+    .turn-badge.failed  { color: var(--red); border-color: var(--red); }
+
+    .needs-card {
+      background: rgba(251,191,36,0.08); border: 1px solid var(--amber);
+      color: var(--amber); border-radius: 8px; padding: 8px 12px; margin: 8px 0; font-size: 12px;
+    }
+
+    .jump-pill {
+      position: absolute; left: 50%; transform: translateX(-50%); bottom: 200px;
+      padding: 6px 14px; border-radius: 999px; background: var(--accent); color: #0b0d18;
+      font-size: 11px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      display: none;
+    }
+    .jump-pill.show { display: block; }
+
+    .empty-log { text-align: center; color: var(--text-dim); font-size: 11px; padding: 40px; }
+
+    /* ── Side pane sections ── */
+    .pane-section { display: flex; flex-direction: column; min-height: 0; }
+    .pane-section + .pane-section { border-top: 1px solid var(--border); }
+    .pane-header {
+      flex-shrink: 0; padding: 8px 12px; background: var(--surface);
+      font-size: 11px; color: var(--text-mid); font-family: var(--font); text-transform: uppercase; letter-spacing: 0.05em;
+      display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
+    }
+    .pane-header .twirl { font-size: 9px; }
+    .pane-header .pane-action { margin-left: auto; font-size: 10px; font-family: var(--font); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border2); cursor: pointer; color: var(--text-mid); background: transparent; }
+    .pane-header .pane-action:hover { color: var(--text); }
+    .pane-body { overflow: hidden; transition: max-height 0.2s; }
+    .pane-section.collapsed .pane-body { max-height: 0 !important; }
+    .pane-section.collapsed .pane-header .twirl { transform: rotate(-90deg); }
+
+    /* Files */
+    #files-section .pane-body { flex: 1; min-height: 120px; max-height: 100%; overflow: auto; padding: 6px 0; }
+    .file-entry { padding: 4px 12px 4px 24px; font-family: var(--font); font-size: 11px; color: var(--text); cursor: pointer; display: flex; align-items: center; gap: 6px; }
+    .file-entry:hover { background: var(--surface2); }
+    .file-entry.dir { color: var(--text-mid); }
+    .file-entry .file-meta { margin-left: auto; color: var(--text-dim); font-size: 10px; }
+    .files-crumb { padding: 4px 12px; font-family: var(--font); font-size: 10px; color: var(--text-dim); cursor: pointer; }
+    .files-crumb:hover { color: var(--text); }
+    .files-empty { padding: 12px; color: var(--text-dim); font-size: 11px; font-family: var(--font); text-align: center; }
+
+    /* VNC */
+    #vnc-section { flex: 1; min-height: 0; }
+    #vnc-section .pane-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .vnc-login {
+      padding: 16px; display: flex; flex-direction: column; gap: 8px;
+    }
+    .vnc-login input { padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border2); background: var(--surface2); color: var(--text); font-size: 12px; font-family: var(--font); outline: none; }
+    .vnc-login input:focus { border-color: var(--accent); }
+    .vnc-login button { padding: 6px 10px; border-radius: 4px; border: 1px solid var(--accent); background: var(--accent); color: #0b0d18; font-weight: 600; cursor: pointer; }
+    .vnc-error { color: var(--red); font-size: 11px; font-family: var(--font); min-height: 14px; }
+    #vnc-display { flex: 1; background: #000; position: relative; min-height: 200px; }
+    .vnc-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; color: var(--text-mid); font-family: var(--font); font-size: 11px; padding: 12px; text-align: center; }
+
+    /* ── Composer ── */
+    .composer {
+      flex-shrink: 0; border-top: 1px solid var(--border); background: var(--surface3);
+      padding: 10px 16px; display: flex; flex-direction: column; gap: 6px;
+    }
+    .composer-status { font-size: 11px; color: var(--text-mid); font-family: var(--font); display: flex; align-items: center; gap: 6px; }
+    .composer-status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
+    .composer-status.ready .dot { background: var(--green); }
+    .composer-status.busy .dot { background: var(--blue); animation: pulse 1.4s ease-in-out infinite; }
+    .composer-status.locked .dot { background: var(--amber); }
+    #composer-input {
+      width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border2);
+      background: var(--surface2); color: var(--text); font-size: 13px; font-family: var(--font-ui);
+      outline: none; resize: vertical; min-height: 60px; max-height: 200px;
+    }
+    #composer-input:focus { border-color: var(--accent); }
+    .composer-actions { display: flex; align-items: center; gap: 8px; }
+    .composer-help { font-size: 10px; color: var(--text-dim); font-family: var(--font); flex: 1; }
+    .send-btn, .ask-btn {
+      padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600;
+      font-family: var(--font); cursor: pointer; border: 1px solid;
+    }
+    .send-btn { background: var(--accent); color: #0b0d18; border-color: var(--accent); }
+    .send-btn:hover { filter: brightness(1.1); }
+    .send-btn:disabled, .ask-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ask-btn { background: transparent; color: var(--text); border-color: var(--border2); }
+    .ask-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+
+    .ask-bubble {
+      margin: 0 16px; padding: 10px 14px; background: var(--surface2);
+      border: 1px solid var(--border2); border-radius: 8px; display: none;
+      font-size: 13px; line-height: 1.5; color: var(--text); position: relative;
+    }
+    .ask-bubble.show { display: block; }
+    .ask-bubble.loading { color: var(--text-mid); font-style: italic; }
+    .ask-bubble-header { font-size: 11px; color: var(--text-mid); font-family: var(--font); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+    .ask-bubble-actions { margin-top: 8px; display: flex; gap: 6px; }
+    .ask-bubble-actions button {
+      font-size: 10px; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border2);
+      background: transparent; color: var(--text-mid); font-family: var(--font); cursor: pointer;
+    }
+    .ask-bubble-actions button:hover { color: var(--text); }
+
+    /* File viewer modal */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.6); align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-panel {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+      width: 90vw; max-width: 900px; height: 80vh; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .modal-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .modal-title { flex: 1; font-weight: 600; font-size: 13px; font-family: var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .modal-body { flex: 1; overflow: auto; padding: 14px 16px; font-family: var(--font); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+    .modal-body img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+  </style>
+  <script src="/auth-guard.js"></script>
+</head>
+<body>
+  <header>
+    <div class="hdr-row">
+      <a class="back-btn" href="/tasks">← tasks</a>
+      <span class="hdr-id" id="hdr-id">#…</span>
+      <span class="pill idle" id="hdr-pill">idle</span>
+      <div class="hdr-actions">
+        <button class="hdr-btn" id="archive-btn" title="Archive this task">⨯ archive</button>
+        <button class="hdr-btn danger" id="cancel-btn" style="display:none;" title="Cancel the running turn">■ cancel</button>
+      </div>
+    </div>
+    <div class="hdr-title" id="hdr-title">Loading…</div>
+    <div class="hdr-meta">
+      <span id="hdr-meta-text">—</span>
+    </div>
+    <div class="hdr-needs" id="hdr-needs"></div>
+  </header>
+
+  <div class="main">
+    <div class="log-pane" style="position:relative;">
+      <div id="log"><div class="empty-log">Loading activity…</div></div>
+      <div class="jump-pill" id="jump-pill">↓ jump to live</div>
+    </div>
+
+    <div class="side-pane">
+      <div class="pane-section" id="files-section">
+        <div class="pane-header">
+          <span class="twirl">▼</span> Files
+          <button class="pane-action" id="files-refresh">↺</button>
+        </div>
+        <div class="pane-body" id="files-body">
+          <div class="files-empty">loading…</div>
+        </div>
+      </div>
+      <div class="pane-section collapsed" id="vnc-section">
+        <div class="pane-header">
+          <span class="twirl">▼</span> Live browser (VNC)
+        </div>
+        <div class="pane-body">
+          <div class="vnc-login" id="vnc-login">
+            <input type="password" id="vnc-password" placeholder="VNC password"/>
+            <button id="vnc-connect-btn">connect</button>
+            <div class="vnc-error" id="vnc-error"></div>
+          </div>
+          <div id="vnc-display" style="display:none;">
+            <div class="vnc-msg" id="vnc-msg">connecting…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ask-bubble" id="ask-bubble">
+    <div class="ask-bubble-header"><span>🧠 Assistant</span><span id="ask-bubble-meta"></span></div>
+    <div id="ask-bubble-body"></div>
+    <div class="ask-bubble-actions" id="ask-bubble-actions" style="display:none;">
+      <button id="ask-dismiss">dismiss</button>
+      <button id="ask-as-steer">send as steer instead</button>
+      <button id="ask-copy">copy</button>
+    </div>
+  </div>
+
+  <div class="composer">
+    <div class="composer-status ready" id="composer-status">
+      <span class="dot"></span><span id="composer-status-text">Ready</span>
+    </div>
+    <textarea id="composer-input" placeholder="Type a message…"></textarea>
+    <div class="composer-actions">
+      <span class="composer-help">Send adds a turn the agent will respond to · Ask just answers from what's happened so far</span>
+      <button class="ask-btn" id="ask-btn" title="Ask the chat agent about this task (⌥↵)">ask (⌥↵)</button>
+      <button class="send-btn" id="send-btn" title="Enqueue a new turn for this task (⌘↵)">send to task (⌘↵)</button>
+    </div>
+  </div>
+
+  <!-- File viewer modal -->
+  <div class="modal-overlay" id="file-modal">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <span class="modal-title" id="file-modal-title">file</span>
+        <a class="hdr-btn" id="file-modal-download" target="_blank">↓ download</a>
+        <button class="hdr-btn" id="file-modal-close">close</button>
+      </div>
+      <div class="modal-body" id="file-modal-body">loading…</div>
+    </div>
+  </div>
+
+<script type="module">
+  // ── Resolve task id from /tasks/<id> or ?id=<id> ──
+  function resolveTaskId() {
+    const m = location.pathname.match(/^\/tasks\/([^\/?#]+)/);
+    if (m) return decodeURIComponent(m[1]);
+    const q = new URLSearchParams(location.search).get('id');
+    return q || '';
+  }
+  const TASK_ID = resolveTaskId();
+  if (!TASK_ID) {
+    document.getElementById('hdr-title').textContent = 'No task id';
+    document.getElementById('log').innerHTML = '<div class="empty-log">No task id in URL.</div>';
+    throw new Error('no task id');
+  }
+
+  // ── Utils ──
+  function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+  function fmtTime(ms) { if (!ms) return ''; const d = new Date(typeof ms === 'number' ? ms : new Date(ms).getTime()); return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  function timeAgo(ts) {
+    if (!ts) return '';
+    const ms = typeof ts === 'number' ? ts : new Date(ts).getTime();
+    const diff = Date.now() - ms;
+    if (diff < 60000) return 'just now';
+    const m = Math.floor(diff / 60000);
+    if (m < 60) return m + 'm ago';
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + 'h ago';
+    return Math.floor(h / 24) + 'd ago';
+  }
+  function pillLabel(status) {
+    return { running: 'running', awaiting_user: 'awaiting you', completed: 'done', failed: 'failed', idle: 'idle', archived: 'archived' }[status] || status;
+  }
+  const ANSI_RE = /\x1b\[[0-9;]*m/g;
+  function stripAnsi(s) { return (s || '').replace(ANSI_RE, ''); }
+
+  // ── State ──
+  const log = document.getElementById('log');
+  const jumpPill = document.getElementById('jump-pill');
+  let autoScroll = true;
+  let currentTurnNumber = 0;
+  let currentTurnStreamEl = null; // div.stream for active turn's stdout
+  let currentTurnStderrEl = null;
+  let currentTurnCardEl = null;
+  let task = null;
+  let seenEventIds = new Set();
+  let firstLoad = true;
+
+  log.parentElement.addEventListener('scroll', () => {});
+  log.addEventListener('scroll', () => {
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+    autoScroll = atBottom;
+    jumpPill.classList.toggle('show', !atBottom && task && task.status === 'running');
+  });
+  jumpPill.addEventListener('click', () => {
+    autoScroll = true;
+    log.scrollTop = log.scrollHeight;
+    jumpPill.classList.remove('show');
+  });
+
+  function maybeScroll() {
+    if (autoScroll) log.scrollTop = log.scrollHeight;
+  }
+
+  function clearLog() { log.innerHTML = ''; }
+
+  function appendNode(node) {
+    if (log.querySelector('.empty-log')) log.innerHTML = '';
+    log.appendChild(node);
+    maybeScroll();
+  }
+
+  function appendStream(text, kind) {
+    if (!text) return;
+    const targetIsStderr = kind === 'agent_stderr';
+    let target = targetIsStderr ? currentTurnStderrEl : currentTurnStreamEl;
+    if (!target) {
+      target = document.createElement('div');
+      target.className = 'stream' + (targetIsStderr ? ' stderr' : '');
+      appendNode(target);
+      if (targetIsStderr) currentTurnStderrEl = target; else currentTurnStreamEl = target;
+    }
+    target.appendChild(document.createTextNode(stripAnsi(text)));
+    maybeScroll();
+  }
+
+  function appendTurnDivider(turnNum) {
+    const div = document.createElement('div');
+    div.className = 'turn-divider';
+    div.textContent = 'Turn ' + turnNum;
+    appendNode(div);
+  }
+
+  function renderTurnCard(ev) {
+    const p = ev.payload || {};
+    const card = document.createElement('div');
+    card.className = 'turn-card';
+    card.dataset.eventId = ev.id;
+    card.innerHTML =
+      '<div class="turn-card-header">' +
+        '<span>👤</span>' +
+        '<span>[via ' + esc(p.via || 'unknown') + ' · ' + esc(fmtTime(ev.created_at_ms)) + ']</span>' +
+        '<span class="turn-badge sending" data-role="badge">→ sending…</span>' +
+      '</div>' +
+      '<div class="turn-card-prompt">' + esc(p.prompt || '') + '</div>';
+    appendNode(card);
+    return card;
+  }
+
+  function findOrCreateTurnCardForEvent(promptEventId) {
+    return log.querySelector('.turn-card[data-event-id="' + promptEventId + '"]');
+  }
+
+  function setBadge(card, label, cls) {
+    if (!card) return;
+    const badge = card.querySelector('[data-role="badge"]');
+    if (!badge) return;
+    badge.textContent = label;
+    badge.className = 'turn-badge ' + cls;
+  }
+
+  function renderNeedsCard(ev) {
+    const reason = (ev.payload && ev.payload.reason) || 'manual action required';
+    const div = document.createElement('div');
+    div.className = 'needs-card';
+    div.textContent = '⚠ NEEDS_USER: ' + reason;
+    appendNode(div);
+  }
+
+  function renderSystemLine(text) {
+    const div = document.createElement('div');
+    div.className = 'system-line';
+    div.textContent = text;
+    appendNode(div);
+  }
+
+  // ── Event ingestion ──
+  function ingestEvent(ev) {
+    if (seenEventIds.has(ev.id)) return;
+    seenEventIds.add(ev.id);
+
+    switch (ev.kind) {
+      case 'user_prompt':
+        renderTurnCard(ev);
+        break;
+      case 'turn_start': {
+        currentTurnNumber++;
+        appendTurnDivider(currentTurnNumber);
+        const card = findOrCreateTurnCardForEvent((ev.payload || {}).promptEventId);
+        setBadge(card, '▶ running', 'running');
+        currentTurnCardEl = card;
+        currentTurnStreamEl = null;
+        currentTurnStderrEl = null;
+        break;
+      }
+      case 'agent_output':
+        appendStream((ev.payload || {}).text || '', 'agent_output');
+        break;
+      case 'agent_stderr':
+        appendStream((ev.payload || {}).text || '', 'agent_stderr');
+        break;
+      case 'needs_user':
+        renderNeedsCard(ev);
+        setBadge(currentTurnCardEl, '⚠ needs you', 'failed');
+        break;
+      case 'cancelled':
+        renderSystemLine('── Turn ' + currentTurnNumber + ' cancelled · ' + ((ev.payload && ev.payload.reason) || 'cancelled') + ' ──');
+        setBadge(currentTurnCardEl, '✕ cancelled', 'failed');
+        break;
+      case 'turn_end': {
+        const p = ev.payload || {};
+        const elapsed = p.elapsed_ms ? ' · ' + Math.round(p.elapsed_ms / 1000) + 's' : '';
+        if (p.status === 'completed') setBadge(currentTurnCardEl, '✓ done' + elapsed, 'done');
+        else if (p.status === 'awaiting_user') setBadge(currentTurnCardEl, '⚠ needs you' + elapsed, 'failed');
+        else if (p.status === 'failed') setBadge(currentTurnCardEl, '✕ failed' + elapsed, 'failed');
+        currentTurnStreamEl = null;
+        currentTurnStderrEl = null;
+        currentTurnCardEl = null;
+        break;
+      }
+      case 'system':
+        renderSystemLine((ev.payload && ev.payload.text) || '');
+        break;
+      case 'git_sync':
+        // quiet — don't clutter the log
+        break;
+    }
+  }
+
+  // ── Task header rendering ──
+  function renderTask(t) {
+    task = t;
+    document.getElementById('hdr-id').textContent = '#' + t.id;
+    document.getElementById('hdr-title').textContent = t.title || '(untitled)';
+    const pill = document.getElementById('hdr-pill');
+    pill.className = 'pill ' + t.status;
+    pill.textContent = pillLabel(t.status);
+    const turnTxt = (t.turn_count || 0) + ' turn' + ((t.turn_count || 0) === 1 ? '' : 's');
+    document.getElementById('hdr-meta-text').textContent =
+      'last active ' + timeAgo(t.last_active_at) + ' · ' + turnTxt +
+      (t.copilot_session_id ? ' · session ' + t.copilot_session_id.slice(0, 8) : '');
+    const needs = document.getElementById('hdr-needs');
+    if (t.status === 'awaiting_user' && t.needs_user_reason) {
+      needs.classList.add('show');
+      needs.classList.remove('error');
+      needs.innerHTML = '⚠ Needs you to: ' + esc(t.needs_user_reason);
+    } else if (t.status === 'failed') {
+      needs.classList.add('show');
+      needs.classList.add('error');
+      needs.innerHTML = '✕ Failed: ' + esc(t.last_summary || t.needs_user_reason || 'error');
+    } else {
+      needs.classList.remove('show');
+    }
+    document.getElementById('cancel-btn').style.display = t.status === 'running' ? '' : 'none';
+    updateComposerStatus();
+  }
+
+  // ── Composer ──
+  const composer = document.getElementById('composer-input');
+  const sendBtn = document.getElementById('send-btn');
+  const askBtn = document.getElementById('ask-btn');
+  const composerStatus = document.getElementById('composer-status');
+  const composerStatusText = document.getElementById('composer-status-text');
+
+  function updateComposerStatus() {
+    if (!task) return;
+    composerStatus.classList.remove('ready', 'busy', 'locked');
+    if (task.status === 'running') {
+      composerStatus.classList.add('busy');
+      composerStatusText.textContent = 'Working on your last message…';
+      sendBtn.textContent = 'queue after (⌘↵)';
+    } else {
+      composerStatus.classList.add('ready');
+      composerStatusText.textContent = 'Ready · last active ' + timeAgo(task.last_active_at);
+      sendBtn.textContent = 'send to task (⌘↵)';
+    }
+    sendBtn.disabled = false;
+    askBtn.disabled = false;
+  }
+
+  composer.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); sendBtn.click(); }
+    else if (e.altKey && e.key === 'Enter') { e.preventDefault(); askBtn.click(); }
+  });
+
+  sendBtn.addEventListener('click', async () => {
+    const text = composer.value.trim();
+    if (!text) return;
+    sendBtn.disabled = true; askBtn.disabled = true;
+    try {
+      const res = await fetch('/api/copilot/tasks/' + encodeURIComponent(TASK_ID) + '/continue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ prompt: text, source: 'user-direct', via: 'tasks-ui' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+      composer.value = '';
+    } catch (err) {
+      alert('Failed to send: ' + (err.message || err));
+    } finally {
+      sendBtn.disabled = false; askBtn.disabled = false;
+    }
+  });
+
+  // ── Ask bubble ──
+  const askBubble = document.getElementById('ask-bubble');
+  const askBubbleBody = document.getElementById('ask-bubble-body');
+  const askBubbleMeta = document.getElementById('ask-bubble-meta');
+  const askBubbleActions = document.getElementById('ask-bubble-actions');
+  let lastAskedQuestion = '';
+
+  askBtn.addEventListener('click', async () => {
+    const text = composer.value.trim();
+    if (!text) return;
+    lastAskedQuestion = text;
+    askBubble.classList.add('show', 'loading');
+    askBubbleBody.textContent = 'Thinking…';
+    askBubbleMeta.textContent = '';
+    askBubbleActions.style.display = 'none';
+    askBtn.disabled = true;
+    try {
+      const res = await fetch('/api/copilot/tasks/' + encodeURIComponent(TASK_ID) + '/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ prompt: text }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+      askBubble.classList.remove('loading');
+      askBubbleBody.textContent = data.answer || '(no answer)';
+      askBubbleMeta.textContent = '· read-only · ' + fmtTime(Date.now());
+      askBubbleActions.style.display = '';
+      composer.value = '';
+    } catch (err) {
+      askBubble.classList.remove('loading');
+      askBubbleBody.textContent = 'Failed: ' + (err.message || err);
+      askBubbleActions.style.display = '';
+    } finally {
+      askBtn.disabled = false;
+    }
+  });
+
+  document.getElementById('ask-dismiss').addEventListener('click', () => askBubble.classList.remove('show'));
+  document.getElementById('ask-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(askBubbleBody.textContent || ''); } catch {}
+  });
+  document.getElementById('ask-as-steer').addEventListener('click', () => {
+    composer.value = lastAskedQuestion;
+    askBubble.classList.remove('show');
+    composer.focus();
+  });
+
+  // ── Header buttons ──
+  document.getElementById('cancel-btn').addEventListener('click', async () => {
+    if (!confirm('Cancel the current turn? The agent will stop after its current tool call. Queued prompts will remain queued.')) return;
+    try {
+      const res = await fetch('/api/copilot/tasks/' + encodeURIComponent(TASK_ID) + '/cancel', { method: 'POST', credentials: 'include' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+    } catch (err) { alert('Cancel failed: ' + (err.message || err)); }
+  });
+
+  document.getElementById('archive-btn').addEventListener('click', async () => {
+    const isArchived = task && task.archived;
+    if (!isArchived && !confirm('Archive this task? You can restore it later from the show-archived filter.')) return;
+    try {
+      const res = await fetch('/api/copilot/tasks/' + encodeURIComponent(TASK_ID) + '/archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ archived: !isArchived }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (!isArchived) location.href = '/tasks';
+    } catch (err) { alert('Archive failed: ' + (err.message || err)); }
+  });
+
+  // ── Files pane ──
+  const filesBody = document.getElementById('files-body');
+  let filesPath = '';
+
+  async function loadFiles(p) {
+    filesPath = p || '';
+    filesBody.innerHTML = '<div class="files-empty">loading…</div>';
+    try {
+      const res = await fetch('/api/copilot/tasks/' + encodeURIComponent(TASK_ID) + '/files?path=' + encodeURIComponent(filesPath), { credentials: 'include' });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        filesBody.innerHTML = '<div class="files-empty">' + esc(j.error || ('HTTP ' + res.status)) + '</div>';
+        return;
+      }
+      const data = await res.json();
+      renderFiles(data);
+    } catch (err) {
+      filesBody.innerHTML = '<div class="files-empty">' + esc(err.message || err) + '</div>';
+    }
+  }
+
+  function renderFiles(data) {
+    filesBody.innerHTML = '';
+    if (filesPath) {
+      const crumb = document.createElement('div');
+      crumb.className = 'files-crumb';
+      crumb.textContent = '↑ ' + (filesPath || '/');
+      const parent = filesPath.split('/').slice(0, -1).join('/');
+      crumb.addEventListener('click', () => loadFiles(parent));
+      filesBody.appendChild(crumb);
+    }
+    if (!data.entries || data.entries.length === 0) {
+      const e = document.createElement('div');
+      e.className = 'files-empty';
+      e.textContent = '(empty)';
+      filesBody.appendChild(e);
+      return;
+    }
+    for (const ent of data.entries) {
+      if (ent.name.startsWith('.')) continue; // hide dotfiles
+      const row = document.createElement('div');
+      row.className = 'file-entry ' + (ent.kind === 'dir' ? 'dir' : 'file');
+      row.innerHTML = (ent.kind === 'dir' ? '📁 ' : '📄 ') + esc(ent.name) +
+        '<span class="file-meta">' + (ent.size != null ? fmtSize(ent.size) : '') + '</span>';
+      row.addEventListener('click', () => {
+        if (ent.kind === 'dir') loadFiles(ent.path);
+        else openFile(ent.path);
+      });
+      filesBody.appendChild(row);
+    }
+  }
+
+  function fmtSize(n) {
+    if (n < 1024) return n + 'B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + 'K';
+    return (n / 1024 / 1024).toFixed(1) + 'M';
+  }
+
+  document.getElementById('files-refresh').addEventListener('click', (e) => { e.stopPropagation(); loadFiles(filesPath); });
+
+  // ── File viewer modal ──
+  const fileModal = document.getElementById('file-modal');
+  const fileModalTitle = document.getElementById('file-modal-title');
+  const fileModalBody = document.getElementById('file-modal-body');
+  const fileModalDownload = document.getElementById('file-modal-download');
+
+  async function openFile(p) {
+    fileModalTitle.textContent = p;
+    fileModalBody.textContent = 'loading…';
+    fileModalDownload.href = '/api/copilot/tasks/' + encodeURIComponent(TASK_ID) + '/file?path=' + encodeURIComponent(p) + '&download=1';
+    fileModal.classList.add('open');
+    try {
+      const url = '/api/copilot/tasks/' + encodeURIComponent(TASK_ID) + '/file?path=' + encodeURIComponent(p);
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        fileModalBody.textContent = 'Failed: ' + (j.error || ('HTTP ' + res.status));
+        return;
+      }
+      const ct = res.headers.get('content-type') || '';
+      if (ct.startsWith('image/')) {
+        const blob = await res.blob();
+        const url2 = URL.createObjectURL(blob);
+        fileModalBody.innerHTML = '<img src="' + url2 + '"/>';
+      } else {
+        const text = await res.text();
+        fileModalBody.textContent = text;
+      }
+    } catch (err) {
+      fileModalBody.textContent = 'Failed: ' + (err.message || err);
+    }
+  }
+  document.getElementById('file-modal-close').addEventListener('click', () => fileModal.classList.remove('open'));
+  fileModal.addEventListener('click', (e) => { if (e.target === fileModal) fileModal.classList.remove('open'); });
+
+  // ── Pane section toggles ──
+  document.querySelectorAll('.pane-section .pane-header').forEach(h => {
+    h.addEventListener('click', () => {
+      const section = h.parentElement;
+      const wasCollapsed = section.classList.contains('collapsed');
+      section.classList.toggle('collapsed');
+      if (wasCollapsed && section.id === 'vnc-section') initVncIfNeeded();
+    });
+  });
+
+  // ── VNC ──
+  let rfb = null;
+  let vncToken = sessionStorage.getItem('vnc_token');
+  const vncLogin = document.getElementById('vnc-login');
+  const vncDisplay = document.getElementById('vnc-display');
+  const vncMsg = document.getElementById('vnc-msg');
+  const vncPassword = document.getElementById('vnc-password');
+  const vncError = document.getElementById('vnc-error');
+
+  function buildVncWsUrl() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return proto + '//' + location.host + '/vnc-ws?token=' + encodeURIComponent(vncToken);
+  }
+
+  async function connectVnc(password) {
+    vncError.textContent = '';
+    if (!vncToken) {
+      try {
+        const res = await fetch('/api/vnc/auth', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          credentials: 'include', body: JSON.stringify({ password }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          vncError.textContent = j.error || 'auth failed';
+          return;
+        }
+        const data = await res.json();
+        vncToken = data.token;
+        sessionStorage.setItem('vnc_token', vncToken);
+      } catch (err) {
+        vncError.textContent = 'network error: ' + err.message;
+        return;
+      }
+    }
+    vncLogin.style.display = 'none';
+    vncDisplay.style.display = '';
+    vncMsg.textContent = 'connecting…';
+    try {
+      const { default: RFB } = await import('/vendor/novnc/rfb.js');
+      rfb = new RFB(vncDisplay, buildVncWsUrl(), { credentials: { password: password || '' } });
+      rfb.scaleViewport = true; rfb.resizeSession = false; rfb.showDotCursor = true;
+      rfb.addEventListener('connect', () => { vncMsg.style.display = 'none'; });
+      rfb.addEventListener('disconnect', (ev) => {
+        vncMsg.style.display = '';
+        vncMsg.textContent = ev.detail && ev.detail.clean ? 'disconnected' : 'connection lost';
+        rfb = null;
+      });
+      rfb.addEventListener('securityfailure', (ev) => {
+        sessionStorage.removeItem('vnc_token'); vncToken = null;
+        vncMsg.style.display = '';
+        vncMsg.textContent = 'auth failed — refresh and try again';
+        rfb = null;
+      });
+    } catch (err) {
+      vncMsg.style.display = '';
+      vncMsg.textContent = 'failed: ' + err.message;
+    }
+  }
+
+  function initVncIfNeeded() {
+    if (rfb) return;
+    if (vncToken) connectVnc('');
+  }
+
+  document.getElementById('vnc-connect-btn').addEventListener('click', () => connectVnc(vncPassword.value));
+  vncPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') connectVnc(vncPassword.value); });
+
+  // ── SSE event stream ──
+  let es = null;
+  let lastEventId = 0;
+  function startStream() {
+    if (es) try { es.close(); } catch {}
+    const url = '/api/copilot/tasks/' + encodeURIComponent(TASK_ID) + '/events/stream' + (lastEventId ? '?after_id=' + lastEventId : '');
+    es = new EventSource(url, { withCredentials: true });
+    es.addEventListener('task_event', (e) => {
+      try {
+        const ev = JSON.parse(e.data);
+        if (ev.id > lastEventId) lastEventId = ev.id;
+        ingestEvent(ev);
+      } catch {}
+    });
+    es.addEventListener('task_snapshot', (e) => {
+      try { renderTask(JSON.parse(e.data)); } catch {}
+    });
+    es.onerror = () => {
+      // EventSource auto-reconnects. If it doesn't, retry manually after 3s.
+      setTimeout(() => { if (es && es.readyState === EventSource.CLOSED) startStream(); }, 3000);
+    };
+  }
+
+  // ── Initial load ──
+  (async () => {
+    try {
+      const res = await fetch('/api/copilot/tasks/' + encodeURIComponent(TASK_ID), { credentials: 'include' });
+      if (!res.ok) {
+        document.getElementById('hdr-title').textContent = 'Task not found';
+        log.innerHTML = '<div class="empty-log">Task <code>' + esc(TASK_ID) + '</code> not found.</div>';
+        return;
+      }
+      const data = await res.json();
+      renderTask(data.task);
+      clearLog();
+      startStream();
+      loadFiles('');
+    } catch (err) {
+      log.innerHTML = '<div class="empty-log">Failed to load: ' + esc(err.message || err) + '</div>';
+    }
+  })();
+</script>
+</body>
+</html>
