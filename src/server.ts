@@ -330,6 +330,11 @@ registerVncRoutes(app);
 registerDevWalkieRoutes(app);
 registerDevWalkieVoiceRoutes(app);
 
+// Pretty URL for task detail: /tasks/<id> → client/task.html (resolved client-side from path)
+app.get('/tasks/:id', (_req, res) => {
+  res.sendFile(join(vanillaClientDir, 'task.html'));
+});
+
 // Serve the vanilla JS client (after all API routes so they take priority)
 app.use(express.static(vanillaClientDir, { extensions: ['html'] }));
 
