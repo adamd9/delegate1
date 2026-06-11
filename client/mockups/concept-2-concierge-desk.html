@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Concept 2 - Concierge Desk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Asap:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #eef2f5;
+      --panel: #ffffff;
+      --ink: #12161d;
+      --subtle: #596273;
+      --line: #d2dae4;
+      --line-strong: #b4c2d1;
+      --accent: #215aa5;
+      --accent-soft: #e7eefb;
+      --ok-soft: #e8f4f0;
+      --ok: #1f6b4a;
+      --warn-soft: #f9f1e3;
+      --warn: #8a5b14;
+      --task-soft: #edeffc;
+      --task: #4a4fa9;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Asap", sans-serif;
+      color: var(--ink);
+      background:
+        linear-gradient(150deg, #f8fbff 0%, #f1f5fb 42%, #e9eef5 100%);
+      padding: 30px 18px;
+    }
+
+    .frame {
+      max-width: 1240px;
+      margin: 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 30px;
+      overflow: hidden;
+      background: #fbfdff;
+      box-shadow: 0 20px 55px rgba(20, 36, 56, 0.1);
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      min-height: 760px;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      border-right: 1px solid var(--line);
+    }
+
+    .top {
+      padding: 24px 30px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #f8fbff;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+    }
+
+    .hero-copy {
+      display: grid;
+      gap: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: "Space Grotesk", sans-serif;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      font-size: 34px;
+      line-height: 1.1;
+    }
+
+    .sub {
+      margin-top: 7px;
+      font-size: 15px;
+      color: var(--subtle);
+    }
+
+    .quick {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      align-self: start;
+    }
+
+    .main-nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .main-nav a {
+      text-decoration: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      color: var(--subtle);
+      background: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+
+    .main-nav a.active {
+      border-color: #c6d5ea;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .quick button {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font: inherit;
+      font-size: 12px;
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    .quick button.primary {
+      border-color: #b7d0e4;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .log {
+      padding: 26px 30px;
+      overflow-y: auto;
+      display: grid;
+      gap: 14px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+
+    .entry {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 16px;
+      padding: 14px 16px;
+      max-width: 760px;
+      line-height: 1.55;
+      font-size: 15px;
+    }
+
+    .entry.user {
+      margin-left: auto;
+      background: #edf3fb;
+      border-color: #cedbec;
+    }
+
+    .meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .meta span {
+      font-size: 11px;
+      border-radius: 999px;
+      padding: 5px 10px;
+      border: 1px solid transparent;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .meta .tool {
+      background: var(--warn-soft);
+      color: var(--warn);
+      border-color: #e3d1b9;
+    }
+
+    .meta .memory {
+      background: var(--ok-soft);
+      color: var(--ok);
+      border-color: #c8ddce;
+    }
+
+    .composer {
+      border-top: 1px solid var(--line);
+      padding: 16px 22px 22px;
+      background: #fcfcfb;
+    }
+
+    .composer-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: flex-end;
+      border: 1px solid var(--line-strong);
+      border-radius: 16px;
+      background: #fff;
+      padding: 8px;
+    }
+
+    textarea {
+      border: 0;
+      outline: none;
+      background: transparent;
+      font: inherit;
+      font-size: 15px;
+      min-height: 48px;
+      resize: none;
+      width: 100%;
+      padding: 10px 6px;
+      color: var(--ink);
+    }
+
+    .send {
+      border: 0;
+      border-radius: 10px;
+      background: #1e4a89;
+      color: #fff;
+      padding: 12px 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .panel {
+      padding: 24px 18px;
+      display: grid;
+      align-content: start;
+      gap: 14px;
+      background: linear-gradient(180deg, #f1f6fc 0%, #edf3fa 100%);
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      background: #fff;
+    }
+
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--subtle);
+      font-weight: 600;
+    }
+
+    .agent {
+      display: grid;
+      gap: 8px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .agent strong {
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 27px;
+      font-weight: 700;
+      color: var(--ink);
+      line-height: 1;
+    }
+
+    .task-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+
+    .task-list li {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: #fafdff;
+      display: grid;
+      gap: 6px;
+    }
+
+    .task-title {
+      font-size: 13px;
+      color: var(--ink);
+      font-weight: 600;
+      line-height: 1.45;
+    }
+
+    .task-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--subtle);
+    }
+
+    .task-status {
+      border-radius: 999px;
+      padding: 4px 8px;
+      border: 1px solid transparent;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 600;
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .task-status.active {
+      background: var(--task-soft);
+      color: var(--task);
+      border-color: #ced2f7;
+    }
+
+    .task-status.done {
+      background: var(--ok-soft);
+      color: var(--ok);
+      border-color: #c7e0d6;
+    }
+
+    .list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--subtle);
+      display: grid;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .kpi {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: #fafbf8;
+      display: grid;
+      gap: 4px;
+    }
+
+    .kpi span {
+      font-size: 11px;
+      color: var(--subtle);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .kpi strong {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    @media (max-width: 1020px) {
+      .frame { grid-template-columns: 1fr; }
+      .workspace { border-right: 0; }
+      .top { padding: 20px; grid-template-columns: 1fr; }
+      .quick { justify-content: flex-start; }
+      .log { padding: 18px 20px; }
+      .panel { border-top: 1px solid var(--line); }
+      .entry { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <section class="workspace">
+      <header class="top">
+        <div class="hero-copy">
+          <nav class="main-nav" aria-label="Main menu">
+            <a class="active" href="#">Chat</a>
+            <a href="#">Tasks</a>
+            <a href="#">Notes</a>
+            <a href="#">Voice</a>
+            <a href="#">Settings</a>
+          </nav>
+
+          <div>
+          <h1>Concierge chat with a distinct identity</h1>
+          <p class="sub">Cleaner consumer-chat ergonomics, with your single personal agent and active task context front and center.</p>
+          </div>
+        </div>
+        <div class="quick">
+          <button>Open voice mode</button>
+          <button>Recent tasks</button>
+          <button class="primary">Open thoughtflow</button>
+        </div>
+      </header>
+
+      <div class="log">
+        <article class="entry user">Please call me in 20 minutes and share a summary by SMS if I miss it.</article>
+
+        <article class="entry">
+          <div class="meta">
+            <span class="tool">Tool: schedule outbound call</span>
+            <span class="tool">Tool: queue sms fallback</span>
+          </div>
+          I can do that. I set a call for 4:20 PM and prepared an SMS fallback with your summary.
+        </article>
+
+        <article class="entry user">Remember that this week, I only want evening calls.</article>
+
+        <article class="entry">
+          <div class="meta">
+            <span class="memory">Memory update</span>
+          </div>
+          Saved. I will prioritize evening call windows through Friday unless you change it.
+        </article>
+      </div>
+
+      <footer class="composer">
+        <div class="composer-row">
+          <textarea placeholder="Message your agent"></textarea>
+          <button class="send">Send</button>
+        </div>
+      </footer>
+    </section>
+
+    <aside class="panel">
+      <section class="card agent">
+        <h2>Agent Identity</h2>
+        <strong>Northstar</strong>
+        <div>Phone: +1 (415) 555-0178</div>
+        <div>Email: northstar@delegate.local</div>
+        <div>Role: personal operations delegate</div>
+      </section>
+
+      <section class="card">
+        <h2>Active and Recent Tasks</h2>
+        <ul class="task-list">
+          <li>
+            <div class="task-title">Compile renewal notes and draft a 5pm call recap</div>
+            <div class="task-meta"><span>Updated 1m ago</span><span class="task-status active">Active</span></div>
+          </li>
+          <li>
+            <div class="task-title">Follow up with Sam via SMS about Friday reschedule</div>
+            <div class="task-meta"><span>Updated 12m ago</span><span class="task-status active">Queued</span></div>
+          </li>
+          <li>
+            <div class="task-title">Create note: evening-call preference this week</div>
+            <div class="task-meta"><span>Completed 3m ago</span><span class="task-status done">Done</span></div>
+          </li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Memory and Notes</h2>
+        <div class="kpis">
+          <div class="kpi"><span>Memories</span><strong>148</strong></div>
+          <div class="kpi"><span>Notes</span><strong>23</strong></div>
+          <div class="kpi"><span>Last Save</span><strong>2m</strong></div>
+          <div class="kpi"><span>Confidence</span><strong>High</strong></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Main Menu</h2>
+        <ul class="list">
+          <li>Chat for the main conversation</li>
+          <li>Tasks to inspect active or recent Copilot jobs</li>
+          <li>Notes for saved documents and outputs</li>
+          <li>Voice for realtime direct voice mode</li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+</body>
+</html>

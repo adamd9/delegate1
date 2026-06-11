@@ -104,6 +104,19 @@
     .modal-panel textarea { min-height: 120px; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
     .modal-error { color: var(--red); font-size: 11px; font-family: var(--font); min-height: 14px; }
+    .vnc-modal-panel { width: 90vw; max-width: 900px; max-height: 85vh; display: flex; flex-direction: column; }
+    .vnc-modal-header { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .vnc-modal-header h2 { font-size: 14px; font-weight: 600; margin: 0; }
+    .vnc-modal-close { background: transparent; border: none; color: var(--text-mid); font-size: 18px; cursor: pointer; }
+    .vnc-modal-close:hover { color: var(--text); }
+    .vnc-modal-body { flex: 1; min-height: 400px; display: flex; flex-direction: column; overflow: hidden; }
+    .vnc-login-modal { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .vnc-login-modal input { padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border2); background: var(--surface2); color: var(--text); font-size: 12px; outline: none; }
+    .vnc-login-modal input:focus { border-color: var(--accent); }
+    .vnc-login-modal button { padding: 8px 12px; border-radius: 4px; border: 1px solid var(--accent); background: var(--accent); color: #0b0d18; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .vnc-login-modal button:hover { filter: brightness(1.1); }
+    .vnc-error-modal { color: var(--red); font-size: 11px; min-height: 14px; }
+    .vnc-display-modal { flex: 1; background: #000; display: none; }
   </style>
   <script src="/auth-guard.js"></script>
 </head>
@@ -115,6 +128,7 @@
       <span class="count-badge" id="count-badge"></span>
     </div>
     <div class="hdr-right">
+      <button class="hdr-btn" id="vnc-btn-header" title="Open VNC browser control">🖥 browser</button>
       <label class="filter-toggle"><input type="checkbox" id="show-archived"/> show archived</label>
       <button class="hdr-btn" id="refresh-btn">↺ refresh</button>
       <button class="primary-btn" id="new-task-btn">＋ new task</button>
@@ -141,6 +155,24 @@
       <div class="modal-actions">
         <button class="hdr-btn" id="modal-cancel">cancel</button>
         <button class="primary-btn" id="modal-create">create task</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VNC Modal -->
+  <div class="modal-overlay" id="vnc-modal-overlay">
+    <div class="vnc-modal-panel">
+      <div class="vnc-modal-header">
+        <h2>🖥 VNC Browser</h2>
+        <button class="vnc-modal-close" id="vnc-modal-close">✕</button>
+      </div>
+      <div class="vnc-modal-body">
+        <div class="vnc-login-modal" id="vnc-login-modal">
+          <input type="password" id="vnc-password-modal" placeholder="VNC password"/>
+          <button id="vnc-connect-btn-modal">connect</button>
+          <div class="vnc-error-modal" id="vnc-error-modal"></div>
+        </div>
+        <div class="vnc-display-modal" id="vnc-display-modal"></div>
       </div>
     </div>
   </div>

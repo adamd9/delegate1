@@ -14,7 +14,6 @@ Delegate 1 is a single-session, multi-channel AI assistant (text, voice, phone) 
 - Install deps: `npm install`
 - Dev: `npm run dev`
 - Build: `npm run build`
-- Note: never start or restart dev servers here; ask the user to do it.
 
 ## Deployment (GitHub Actions)
 - Trigger: pushes to any branch; main targets prod domains, other branches target dev domains.

@@ -221,6 +221,7 @@
       <span class="hdr-id" id="hdr-id">#…</span>
       <span class="pill idle" id="hdr-pill">idle</span>
       <div class="hdr-actions">
+        <button class="hdr-btn" id="vnc-btn" title="Open VNC browser control">🖥 browser</button>
         <button class="hdr-btn" id="archive-btn" title="Archive this task">⨯ archive</button>
         <button class="hdr-btn danger" id="cancel-btn" style="display:none;" title="Cancel the running turn">■ cancel</button>
       </div>
@@ -807,6 +808,12 @@
     if (rfb) return;
     if (vncToken) connectVnc('');
   }
+
+  document.getElementById('vnc-btn').addEventListener('click', () => {
+    const section = document.getElementById('vnc-section');
+    section.classList.toggle('collapsed');
+    if (!section.classList.contains('collapsed')) initVncIfNeeded();
+  });
 
   document.getElementById('vnc-connect-btn').addEventListener('click', () => connectVnc(vncPassword.value));
   vncPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') connectVnc(vncPassword.value); });

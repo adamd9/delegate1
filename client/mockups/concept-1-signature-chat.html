@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Concept 1 - Signature Chat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f4f4f2;
+      --surface: #ffffff;
+      --surface-muted: #f8f8f6;
+      --text: #1a1b19;
+      --muted: #62665f;
+      --line: #dddfd7;
+      --strong-line: #c8cbc0;
+      --brand: #214f41;
+      --brand-soft: #e8f2ee;
+      --alert: #7a3414;
+      --shadow: 0 24px 60px rgba(10, 20, 15, 0.08);
+      --radius-xl: 24px;
+      --radius-md: 14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 4% 2%, #fdfdfc 0%, rgba(253, 253, 252, 0) 34%),
+        radial-gradient(circle at 100% 0%, #ecece7 0%, rgba(236, 236, 231, 0) 36%),
+        var(--bg);
+      color: var(--text);
+      font-family: "Plus Jakarta Sans", sans-serif;
+      display: grid;
+      place-items: center;
+      padding: 36px 18px;
+    }
+
+    .shell {
+      width: min(1220px, 100%);
+      background: rgba(255, 255, 255, 0.8);
+      border: 1px solid var(--line);
+      border-radius: 30px;
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      overflow: hidden;
+      backdrop-filter: blur(6px);
+    }
+
+    .sidebar {
+      padding: 24px 18px;
+      border-right: 1px solid var(--line);
+      background: linear-gradient(180deg, #f7f8f4 0%, #f0f2ec 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .agent-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+    }
+
+    .agent-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .agent-name {
+      font-family: "Fraunces", serif;
+      font-size: 31px;
+      line-height: 1;
+      margin: 0;
+    }
+
+    .agent-tagline {
+      margin: 6px 0 16px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .agent-contact {
+      display: grid;
+      gap: 8px;
+      font-size: 14px;
+    }
+
+    .agent-contact strong {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .menu {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .menu button {
+      border: 1px solid transparent;
+      background: transparent;
+      border-radius: 10px;
+      padding: 10px;
+      text-align: left;
+      font: inherit;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .menu button.active {
+      background: var(--brand-soft);
+      border-color: #c9e3d9;
+      color: var(--brand);
+      font-weight: 600;
+    }
+
+    .memory {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .memory p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .main {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 720px;
+      background: var(--surface);
+    }
+
+    .hero {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 26px 34px 18px;
+      border-bottom: 1px solid var(--line);
+      gap: 18px;
+    }
+
+    .hero h2 {
+      margin: 0;
+      font-family: "Fraunces", serif;
+      font-size: 34px;
+      line-height: 1.1;
+      font-weight: 500;
+    }
+
+    .hero p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      max-width: 560px;
+    }
+
+    .status {
+      border: 1px solid var(--strong-line);
+      border-radius: 999px;
+      background: var(--surface-muted);
+      padding: 8px 14px;
+      font-size: 12px;
+      white-space: nowrap;
+      color: var(--muted);
+    }
+
+    .chat {
+      padding: 30px 34px;
+      overflow-y: auto;
+      display: grid;
+      gap: 18px;
+      background:
+        linear-gradient(180deg, #fefefc 0%, #f9faf7 100%);
+    }
+
+    .bubble {
+      border-radius: var(--radius-xl);
+      padding: 16px 18px;
+      max-width: 78%;
+      line-height: 1.6;
+      font-size: 15px;
+      border: 1px solid var(--line);
+      animation: rise 320ms ease;
+    }
+
+    .bubble.user {
+      margin-left: auto;
+      background: #f2f6f4;
+    }
+
+    .bubble.agent {
+      background: #ffffff;
+      box-shadow: 0 8px 24px rgba(30, 40, 32, 0.06);
+    }
+
+    .tool-ribbon {
+      border: 1px dashed #cfd5ca;
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+      color: var(--muted);
+      font-size: 13px;
+      background: #fafbf8;
+      width: fit-content;
+    }
+
+    .composer {
+      border-top: 1px solid var(--line);
+      padding: 16px 24px 24px;
+      background: var(--surface);
+      display: grid;
+      gap: 12px;
+    }
+
+    .chips {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      background: #fbfbf9;
+    }
+
+    .chip strong { color: var(--text); }
+
+    .prompt {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      border: 1px solid var(--strong-line);
+      background: #fff;
+      border-radius: 18px;
+      padding: 10px;
+    }
+
+    textarea {
+      border: 0;
+      resize: none;
+      width: 100%;
+      min-height: 48px;
+      max-height: 130px;
+      font: inherit;
+      font-size: 15px;
+      color: var(--text);
+      background: transparent;
+      outline: none;
+      padding: 6px;
+    }
+
+    .send {
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-weight: 600;
+      background: var(--brand);
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .send:hover { filter: brightness(0.95); }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 980px) {
+      .shell { grid-template-columns: 1fr; }
+      .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
+      .main { min-height: auto; }
+      .hero { padding: 22px; }
+      .chat { padding: 20px 22px; }
+      .composer { padding: 14px 18px 18px; }
+      .bubble { max-width: 92%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <section class="agent-card">
+        <div class="agent-label">Your Delegate</div>
+        <h1 class="agent-name">Harbor</h1>
+        <p class="agent-tagline">A calm operations agent with memory and reach.</p>
+        <div class="agent-contact">
+          <div><strong>Phone</strong><br />+1 (415) 555-0147</div>
+          <div><strong>Email</strong><br />harbor@delegate.local</div>
+        </div>
+      </section>
+
+      <nav class="menu">
+        <button class="active">Chat</button>
+        <button>Phone Calls</button>
+        <button>SMS</button>
+        <button>Notes</button>
+        <button>Thoughtflow</button>
+      </nav>
+
+      <section class="memory">
+        <div class="agent-label">Memory Snapshot</div>
+        <p>Prefers concise updates and weekdays after 9am for calls.</p>
+        <p>Active thread context: travel planning + meeting follow-ups.</p>
+      </section>
+    </aside>
+
+    <main class="main">
+      <header class="hero">
+        <div>
+          <h2>Conversation with your named agent</h2>
+          <p>This keeps the friendly ChatGPT-style focus, but makes agent identity and capabilities visible without looking technical.</p>
+        </div>
+        <div class="status">Live tools: web search, notes, sms</div>
+      </header>
+
+      <section class="chat">
+        <article class="bubble user">Can you text Sam and ask whether we can move Friday's call to 2pm?</article>
+        <div class="tool-ribbon">Tool run: send_sms to Sam (+1 xxx) with draft preview and delivery confirmation.</div>
+        <article class="bubble agent">Done. I sent the message and saved this as a follow-up note. I will notify you the moment Sam replies.</article>
+        <article class="bubble user">Also remember that I prefer afternoon calls next week.</article>
+        <div class="tool-ribbon">Memory write: preference reinforced (afternoon calls next week).</div>
+      </section>
+
+      <footer class="composer">
+        <div class="chips">
+          <span class="chip"><strong>Phone:</strong> reachable now</span>
+          <span class="chip"><strong>Memory:</strong> adaptive and local</span>
+          <span class="chip"><strong>Session:</strong> one delegate, all channels</span>
+        </div>
+        <div class="prompt">
+          <textarea placeholder="Message Harbor"></textarea>
+          <button class="send">Send</button>
+        </div>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

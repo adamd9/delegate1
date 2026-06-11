@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent UI Concepts</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&family=Libre+Baskerville:wght@700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f3f4ef;
+      --card: #ffffff;
+      --ink: #151714;
+      --muted: #596057;
+      --line: #d4d8cf;
+      --line-strong: #c0c8bb;
+      --accent: #24406a;
+      --accent-soft: #e7edf8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Manrope", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 0% 0%, #fcfdf9 0%, rgba(252, 253, 249, 0) 45%),
+        radial-gradient(circle at 100% 0%, #e8ece3 0%, rgba(232, 236, 227, 0) 50%),
+        var(--bg);
+      padding: 30px 18px 50px;
+    }
+
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: "Libre Baskerville", serif;
+      font-size: 38px;
+      line-height: 1.2;
+    }
+
+    .lead {
+      margin: 10px 0 24px;
+      color: var(--muted);
+      font-size: 17px;
+      max-width: 780px;
+      line-height: 1.6;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .card h2 {
+      margin: 0 0 6px;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+      max-width: 620px;
+    }
+
+    .links {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    a {
+      text-decoration: none;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      padding: 8px 12px;
+      color: var(--ink);
+      font-weight: 600;
+      font-size: 14px;
+      background: #fff;
+    }
+
+    a.primary {
+      border-color: #bfd0eb;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    @media (max-width: 760px) {
+      .card { grid-template-columns: 1fr; }
+      .links { justify-content: flex-start; }
+      h1 { font-size: 31px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>Delegate Consumer UI Concepts</h1>
+    <p class="lead">Three front-end concept mock-ups balancing a ChatGPT-like clean chat experience with a stronger agent identity: named presence, phone reachability, memory, tools, and channel awareness.</p>
+
+    <section class="grid">
+      <article class="card">
+        <div>
+          <h2>Concept 1 - Signature Chat</h2>
+          <p>Closest to modern consumer chat products. Spacious, minimal, and soft. Agent identity and contact details stay visible in a restrained left rail.</p>
+        </div>
+        <div class="links">
+          <a class="primary" href="concept-1-signature-chat.html">Open concept</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <div>
+          <h2>Concept 2 - Concierge Desk</h2>
+          <p>Friendly concierge tone with a practical right-side intelligence panel focused on active/recent tasks, memory, and transparency while chatting.</p>
+        </div>
+        <div class="links">
+          <a class="primary" href="concept-2-concierge-desk.html">Open concept</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <div>
+          <h2>Concept 3 - Presence Feed</h2>
+          <p>Conversation-first interface plus a live presence feed showing tools, memory writes, and timeline events, emphasizing that this is an active agent system.</p>
+        </div>
+        <div class="links">
+          <a class="primary" href="concept-3-presence-feed.html">Open concept</a>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
