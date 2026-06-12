@@ -788,7 +788,7 @@
     <div class="rail-card">
       <div class="secondary-grid">
         <a class="secondary-link" href="/logs">Logs</a>
-        <a class="secondary-link" href="/copilot.html">Legacy Copilot</a>
+        <a class="secondary-link" href="/tasks?vnc=1">Live Browser</a>
         <a class="secondary-link" id="nav-twilio-voice" href="/voice" target="_blank" rel="noopener noreferrer">Twilio Voice</a>
         <a class="secondary-link" href="/miniapps/wakeword_direct_voice/index.html" target="_blank" rel="noopener noreferrer">Wakeword Voice</a>
         <a class="secondary-link" href="/miniapps/client_side_wake_word/index.html" target="_blank" rel="noopener noreferrer">Wakeword</a>
@@ -1814,6 +1814,9 @@ document.querySelectorAll('.lp-navitem').forEach(a =>
 );
 
 document.getElementById('btn-copy').addEventListener('click', copyTranscript);
+document.getElementById('vnc-btn-sidebar').addEventListener('click', () => {
+  window.location.href = '/tasks?vnc=1';
+});
 
 document.getElementById('note-close').addEventListener('click', () => {
   document.getElementById('note-overlay').classList.remove('open');

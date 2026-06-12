@@ -2,6 +2,24 @@ import { Router } from 'express';
 import type { Application } from 'express';
 import { generateVncToken } from '../../browser/vncProxy';
 import { configService } from '../../config';
+import { getBrowserStatus, reinitBrowserInfra } from '../../browser';
+import net from 'net';
+
+function canConnectToVncPort(timeoutMs = 500): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: '127.0.0.1', port: 5900 });
+
+    const finish = (ok: boolean) => {
+      try { socket.destroy(); } catch (_) {}
+      resolve(ok);
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
+}
 
 export function registerVncRoutes(app: Application): void {
   if (configService.get('BROWSER_ENABLED') !== 'true') {
@@ -10,18 +28,36 @@ export function registerVncRoutes(app: Application): void {
 
   const router = Router();
 
-  // Password authentication — issues a short-lived token
-  router.post('/api/vnc/auth', (req, res) => {
-    const { password } = req.body || {};
-    const expected = configService.get('VNC_PASSWORD') || 'delegate';
+  // Session-authenticated route — issues a short-lived token and VNC credential.
+  // The app-level auth middleware already protects this route.
+  router.post('/api/vnc/auth', async (_req, res) => {
+    // Guard against stale or local-dev states where VNC token auth succeeds
+    // but the VNC proxy has no upstream x11vnc to connect to.
+    let vncReachable = await canConnectToVncPort();
+    if (!vncReachable) {
+      await reinitBrowserInfra();
+      vncReachable = await canConnectToVncPort();
+    }
 
-    if (!password || password !== expected) {
-      res.status(401).json({ error: 'Invalid password' });
+    if (!vncReachable) {
+      const status = getBrowserStatus();
+      const localHint = !status.dockerMode
+        ? 'Local dev mode does not provide VNC display services by default. Use Docker/browser runtime for VNC.'
+        : 'VNC display services are not reachable on port 5900.';
+      res.status(503).json({
+        error: localHint,
+        details: {
+          enabled: status.enabled,
+          running: status.running,
+          dockerMode: status.dockerMode,
+        },
+      });
       return;
     }
 
     const token = generateVncToken();
-    res.json({ token });
+    const password = configService.get('VNC_PASSWORD') || 'delegate';
+    res.json({ token, password });
   });
 
   app.use(router);

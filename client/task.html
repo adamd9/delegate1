@@ -147,6 +147,7 @@
     .vnc-login {
       padding: 16px; display: flex; flex-direction: column; gap: 8px;
     }
+    .vnc-login-note { color: var(--text-mid); font-size: 12px; }
     .vnc-login input { padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border2); background: var(--surface2); color: var(--text); font-size: 12px; font-family: var(--font); outline: none; }
     .vnc-login input:focus { border-color: var(--accent); }
     .vnc-login button { padding: 6px 10px; border-radius: 4px; border: 1px solid var(--accent); background: var(--accent); color: #0b0d18; font-weight: 600; cursor: pointer; }
@@ -255,8 +256,7 @@
         </div>
         <div class="pane-body">
           <div class="vnc-login" id="vnc-login">
-            <input type="password" id="vnc-password" placeholder="VNC password"/>
-            <button id="vnc-connect-btn">connect</button>
+            <div class="vnc-login-note" id="vnc-login-msg">authorizing session…</div>
             <div class="vnc-error" id="vnc-error"></div>
           </div>
           <div id="vnc-display" style="display:none;">
@@ -746,11 +746,11 @@
 
   // ── VNC ──
   let rfb = null;
-  let vncToken = sessionStorage.getItem('vnc_token');
+  let vncToken = null;
+  let vncRuntimePassword = '';
   const vncLogin = document.getElementById('vnc-login');
   const vncDisplay = document.getElementById('vnc-display');
   const vncMsg = document.getElementById('vnc-msg');
-  const vncPassword = document.getElementById('vnc-password');
   const vncError = document.getElementById('vnc-error');
 
   function buildVncWsUrl() {
@@ -758,24 +758,28 @@
     return proto + '//' + location.host + '/vnc-ws?token=' + encodeURIComponent(vncToken);
   }
 
-  async function connectVnc(password) {
+  async function connectVnc() {
     vncError.textContent = '';
     if (!vncToken) {
       try {
         const res = await fetch('/api/vnc/auth', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          credentials: 'include', body: JSON.stringify({ password }),
+          method: 'POST',
+          credentials: 'include',
         });
         if (!res.ok) {
           const j = await res.json().catch(() => ({}));
-          vncError.textContent = j.error || 'auth failed';
+          vncError.textContent = j.error || ('HTTP ' + res.status);
+          vncLogin.style.display = '';
+          vncDisplay.style.display = 'none';
           return;
         }
         const data = await res.json();
         vncToken = data.token;
-        sessionStorage.setItem('vnc_token', vncToken);
+        vncRuntimePassword = data.password || '';
       } catch (err) {
         vncError.textContent = 'network error: ' + err.message;
+        vncLogin.style.display = '';
+        vncDisplay.style.display = 'none';
         return;
       }
     }
@@ -784,7 +788,7 @@
     vncMsg.textContent = 'connecting…';
     try {
       const { default: RFB } = await import('/vendor/novnc/rfb.js');
-      rfb = new RFB(vncDisplay, buildVncWsUrl(), { credentials: { password: password || '' } });
+      rfb = new RFB(vncDisplay, buildVncWsUrl(), { credentials: { password: vncRuntimePassword } });
       rfb.scaleViewport = true; rfb.resizeSession = false; rfb.showDotCursor = true;
       rfb.addEventListener('connect', () => { vncMsg.style.display = 'none'; });
       rfb.addEventListener('disconnect', (ev) => {
@@ -793,7 +797,8 @@
         rfb = null;
       });
       rfb.addEventListener('securityfailure', (ev) => {
-        sessionStorage.removeItem('vnc_token'); vncToken = null;
+        vncToken = null;
+        vncRuntimePassword = '';
         vncMsg.style.display = '';
         vncMsg.textContent = 'auth failed — refresh and try again';
         rfb = null;
@@ -806,7 +811,7 @@
 
   function initVncIfNeeded() {
     if (rfb) return;
-    if (vncToken) connectVnc('');
+    connectVnc();
   }
 
   document.getElementById('vnc-btn').addEventListener('click', () => {
@@ -814,9 +819,6 @@
     section.classList.toggle('collapsed');
     if (!section.classList.contains('collapsed')) initVncIfNeeded();
   });
-
-  document.getElementById('vnc-connect-btn').addEventListener('click', () => connectVnc(vncPassword.value));
-  vncPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') connectVnc(vncPassword.value); });
 
   // ── SSE event stream ──
   let es = null;

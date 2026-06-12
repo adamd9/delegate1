@@ -111,10 +111,7 @@
     .vnc-modal-close:hover { color: var(--text); }
     .vnc-modal-body { flex: 1; min-height: 400px; display: flex; flex-direction: column; overflow: hidden; }
     .vnc-login-modal { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
-    .vnc-login-modal input { padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border2); background: var(--surface2); color: var(--text); font-size: 12px; outline: none; }
-    .vnc-login-modal input:focus { border-color: var(--accent); }
-    .vnc-login-modal button { padding: 8px 12px; border-radius: 4px; border: 1px solid var(--accent); background: var(--accent); color: #0b0d18; font-size: 12px; font-weight: 600; cursor: pointer; }
-    .vnc-login-modal button:hover { filter: brightness(1.1); }
+    .vnc-login-msg { color: var(--text-mid); font-size: 12px; }
     .vnc-error-modal { color: var(--red); font-size: 11px; min-height: 14px; }
     .vnc-display-modal { flex: 1; background: #000; display: none; }
   </style>
@@ -168,8 +165,7 @@
       </div>
       <div class="vnc-modal-body">
         <div class="vnc-login-modal" id="vnc-login-modal">
-          <input type="password" id="vnc-password-modal" placeholder="VNC password"/>
-          <button id="vnc-connect-btn-modal">connect</button>
+          <div class="vnc-login-msg">authorizing session…</div>
           <div class="vnc-error-modal" id="vnc-error-modal"></div>
         </div>
         <div class="vnc-display-modal" id="vnc-display-modal"></div>
@@ -182,6 +178,15 @@ const content = document.getElementById('content');
 const emptyMsg = document.getElementById('empty-msg');
 const countBadge = document.getElementById('count-badge');
 const showArchived = document.getElementById('show-archived');
+const vncModal = document.getElementById('vnc-modal-overlay');
+const vncOpenBtn = document.getElementById('vnc-btn-header');
+const vncCloseBtn = document.getElementById('vnc-modal-close');
+const vncLogin = document.getElementById('vnc-login-modal');
+const vncDisplay = document.getElementById('vnc-display-modal');
+const vncError = document.getElementById('vnc-error-modal');
+let vncRfb = null;
+let vncToken = null;
+let vncRuntimePassword = '';
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 
@@ -210,6 +215,74 @@ function pillLabel(status) {
     case 'idle': return 'idle';
     case 'archived': return 'archived';
     default: return status || '';
+  }
+}
+
+function buildVncWsUrl() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return proto + '//' + location.host + '/vnc-ws?token=' + encodeURIComponent(vncToken);
+}
+
+function openVncModal() {
+  vncModal.classList.add('open');
+  connectVnc();
+}
+
+function closeVncModal() {
+  vncModal.classList.remove('open');
+}
+
+async function connectVnc() {
+  if (vncRfb) {
+    vncLogin.style.display = 'none';
+    vncDisplay.style.display = '';
+    return;
+  }
+
+  vncError.textContent = '';
+  if (!vncToken) {
+    try {
+      const res = await fetch('/api/vnc/auth', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        vncError.textContent = j.error || ('HTTP ' + res.status);
+        vncLogin.style.display = '';
+        vncDisplay.style.display = 'none';
+        return;
+      }
+      const data = await res.json();
+      vncToken = data.token;
+      vncRuntimePassword = data.password || '';
+    } catch (err) {
+      vncError.textContent = 'network error: ' + err.message;
+      vncLogin.style.display = '';
+      vncDisplay.style.display = 'none';
+      return;
+    }
+  }
+
+  vncLogin.style.display = 'none';
+  vncDisplay.style.display = '';
+  vncDisplay.innerHTML = '';
+  try {
+    const { default: RFB } = await import('/vendor/novnc/rfb.js');
+    vncRfb = new RFB(vncDisplay, buildVncWsUrl(), { credentials: { password: vncRuntimePassword } });
+    vncRfb.scaleViewport = true;
+    vncRfb.resizeSession = false;
+    vncRfb.showDotCursor = true;
+    vncRfb.addEventListener('disconnect', () => { vncRfb = null; });
+    vncRfb.addEventListener('securityfailure', () => {
+      vncToken = null;
+      vncRuntimePassword = '';
+      vncRfb = null;
+    });
+  } catch (err) {
+    vncError.textContent = 'failed: ' + err.message;
+    vncLogin.style.display = '';
+    vncDisplay.style.display = 'none';
   }
 }
 
@@ -293,6 +366,9 @@ function closeModal() { modal.classList.remove('open'); }
 document.getElementById('new-task-btn').addEventListener('click', openModal);
 document.getElementById('modal-cancel').addEventListener('click', closeModal);
 modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+vncOpenBtn.addEventListener('click', openVncModal);
+vncCloseBtn.addEventListener('click', closeVncModal);
+vncModal.addEventListener('click', (e) => { if (e.target === vncModal) closeVncModal(); });
 
 modalPrompt.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); modalCreate.click(); }
@@ -323,6 +399,8 @@ modalCreate.addEventListener('click', async () => {
 
 document.getElementById('refresh-btn').addEventListener('click', loadTasks);
 showArchived.addEventListener('change', loadTasks);
+
+if (new URLSearchParams(location.search).get('vnc') === '1') openVncModal();
 
 // Periodic refresh so pills update without manual reload
 setInterval(loadTasks, 5000);
