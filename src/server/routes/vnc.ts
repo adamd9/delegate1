@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import type { Application } from 'express';
 import { generateVncToken } from '../../browser/vncProxy';
-import { configService } from '../../config';
 import { getBrowserStatus, reinitBrowserInfra } from '../../browser';
+import { isBrowserStackEnabled, getInternalVncPassword } from '../../browser/enabled';
 import net from 'net';
 
 function canConnectToVncPort(timeoutMs = 500): Promise<boolean> {
@@ -27,12 +27,10 @@ export function registerVncRoutes(app: Application): void {
   // Session-authenticated route — issues a short-lived token and VNC credential.
   // The app-level auth middleware already protects this route.
   router.post('/api/vnc/auth', async (_req, res) => {
-    // If the browser stack is disabled entirely, return a clear 503 instead of
-    // letting the client see a 404 and guess. Keep this branch registered always
-    // so the UI can show a meaningful message in any environment.
-    if (configService.get('BROWSER_ENABLED') !== 'true') {
+    // If Copilot isn't configured at all, surface a clear, actionable error.
+    if (!isBrowserStackEnabled()) {
       res.status(503).json({
-        error: 'VNC is not available: BROWSER_ENABLED is not set. Enable the browser agent in Settings → Browser to use the live browser pane.',
+        error: 'VNC is not available: Copilot is not configured. Add your COPILOT_GITHUB_TOKEN in Settings → Browser / Copilot to enable the live browser pane.',
         details: { enabled: false, running: false, dockerMode: false },
       });
       return;
@@ -63,7 +61,7 @@ export function registerVncRoutes(app: Application): void {
     }
 
     const token = generateVncToken();
-    const password = configService.get('VNC_PASSWORD') || 'delegate';
+    const password = getInternalVncPassword();
     res.json({ token, password });
   });
 

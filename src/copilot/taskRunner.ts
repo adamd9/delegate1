@@ -25,6 +25,7 @@ import {
   GitSyncResult,
 } from '../browser';
 import { configService } from '../config';
+import { isBrowserStackEnabled } from '../browser/enabled';
 import { getPort } from '../server/config/env';
 import {
   CopilotTaskRow,
@@ -325,8 +326,8 @@ export function cancelActiveTurn(taskId: string): { cancelled: boolean; reason?:
 // ---------------------------------------------------------------------------
 
 function preflightChecks(): { error?: string } {
-  if (configService.get('BROWSER_ENABLED') !== 'true') {
-    return { error: 'Browser agent not enabled. Set BROWSER_ENABLED=true to use this tool.' };
+  if (!isBrowserStackEnabled()) {
+    return { error: 'Copilot is not configured. Open Settings → Browser / Copilot and add your COPILOT_GITHUB_TOKEN.' };
   }
   if (!configService.get('COPILOT_GITHUB_TOKEN')) {
     return { error: 'Copilot Sign-In Token is not configured. Open Settings → Browser, enter your Copilot Sign-In Token, and save.' };

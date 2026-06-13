@@ -16,6 +16,7 @@
 
 import { FunctionHandler } from '../../agentConfigs/types';
 import { configService } from '../../config';
+import { isBrowserStackEnabled } from '../../browser/enabled';
 import {
   createTaskWithFirstTurn,
   enqueueInput,
@@ -140,12 +141,12 @@ export const copilotDispatchHandler: FunctionHandler = {
     const task = String(args?.task || '').trim();
     if (!task) return { error: 'task is required' };
 
-    // Preflight: same checks as before (browser enabled, token present, no live turn)
-    if (configService.get('BROWSER_ENABLED') !== 'true') {
-      return { error: 'Browser agent not enabled. Set BROWSER_ENABLED=true to use this tool.' };
+    // Preflight: Copilot token presence is the gate (browser stack follows).
+    if (!isBrowserStackEnabled()) {
+      return { error: 'Copilot is not configured. Open Settings → Browser / Copilot and add your COPILOT_GITHUB_TOKEN.' };
     }
     if (!configService.get('COPILOT_GITHUB_TOKEN')) {
-      return { error: 'COPILOT_GITHUB_TOKEN not set. Open Settings -> Browser and add your Copilot Sign-In Token.' };
+      return { error: 'COPILOT_GITHUB_TOKEN not set. Open Settings → Browser and add your Copilot Sign-In Token.' };
     }
 
     const active = getActiveTurn();
@@ -271,8 +272,8 @@ export const copilotContinueHandler: FunctionHandler = {
     if (!query) return { error: 'task_id_or_name is required' };
     if (!prompt) return { error: 'prompt is required' };
 
-    if (configService.get('BROWSER_ENABLED') !== 'true') {
-      return { error: 'Browser agent not enabled.' };
+    if (!isBrowserStackEnabled()) {
+      return { error: 'Copilot is not configured.' };
     }
 
     const task = findTaskByName(query);

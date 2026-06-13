@@ -5,7 +5,6 @@ import {
   copilotContinueHandler,
   copilotTaskStatusHandler,
 } from "../handlers/copilotCli";
-import { configService } from '../../config';
 
 function wrapHandler(h: typeof copilotDispatchHandler) {
   return async (args: any) => {
@@ -16,11 +15,9 @@ function wrapHandler(h: typeof copilotDispatchHandler) {
 }
 
 export function registerCopilotCliTools() {
-  if (configService.get('BROWSER_ENABLED') !== 'true') {
-    console.log('[copilot-cli] BROWSER_ENABLED not set, skipping copilot tool registration');
-    return;
-  }
-
+  // Always register the tools; handlers themselves report a clean error when
+  // Copilot isn't yet configured. This avoids the "added the token but tools
+  // are missing until I restart" footgun.
   const handlers = [
     copilotDispatchHandler,
     copilotGetResultHandler,

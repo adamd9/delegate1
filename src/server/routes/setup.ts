@@ -82,13 +82,11 @@ const SETUP_GROUPS: SetupGroupDefinition[] = [
   {
     id: 'browser-copilot',
     name: 'Browser / Copilot',
-    description: 'Browser automation and Copilot integration settings',
+    description: 'Copilot CLI + browser automation. Enabled automatically when a Copilot Sign-In Token is configured.',
     required: false,
     items: [
-      { key: 'BROWSER_ENABLED', label: 'Browser Enabled' },
       { key: 'COPILOT_GITHUB_TOKEN', label: 'Copilot GitHub Token' },
       { key: 'COPILOT_REMOTE_REPO', label: 'Copilot Remote Repo' },
-      { key: 'VNC_PASSWORD', label: 'VNC Password' },
     ],
   },
   {

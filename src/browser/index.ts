@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { homedir } from 'os';
 import { configService } from '../config';
+import { isBrowserStackEnabled, getInternalVncPassword } from './enabled';
 
 // ---------------------------------------------------------------------------
 // Config: resolve paths based on Docker vs local-dev environment
@@ -539,7 +540,7 @@ export interface StartBrowserResult {
 }
 
 export async function startBrowserInfra(): Promise<StartBrowserResult> {
-  if (configService.get('BROWSER_ENABLED') !== 'true') {
+  if (!isBrowserStackEnabled()) {
     return { ok: true, disabled: true };
   }
 
@@ -594,7 +595,7 @@ export async function startBrowserInfra(): Promise<StartBrowserResult> {
     });
     console.log(`[browser] fluxbox started (pid ${fluxboxProc.pid})`);
 
-    const vncPassword = configService.get('VNC_PASSWORD') || 'delegate';
+    const vncPassword = getInternalVncPassword();
     x11vncProc = spawn(
       'x11vnc',
       ['-display', BROWSER_DISPLAY, '-passwd', vncPassword, '-forever', '-shared', '-rfbport', '5900'],
@@ -680,7 +681,7 @@ export function stopBrowserInfra(): void {
 export function getBrowserStatus(): BrowserStatus {
   const docker = isDocker();
   const status: BrowserStatus = {
-    enabled: configService.get('BROWSER_ENABLED') === 'true',
+    enabled: isBrowserStackEnabled(),
     running,
     dockerMode: docker,
     profileDir: BROWSER_PROFILE_DIR,

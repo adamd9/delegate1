@@ -171,7 +171,7 @@ startEmailPolling(chatClients, logsClients);
 
 registerReinit(
   'Copilot + Browser Control',
-  ['BROWSER_ENABLED', 'COPILOT_GITHUB_TOKEN', 'COPILOT_REMOTE_REPO', 'VNC_PASSWORD'],
+  ['BROWSER_ENABLED', 'COPILOT_GITHUB_TOKEN', 'COPILOT_REMOTE_REPO'],
   async () => {
     const result = await reinitBrowserInfra();
     if (!result.ok) {
@@ -247,6 +247,7 @@ const sessionMiddleware = session({
     httpOnly: true,
     sameSite: 'lax',
     secure: false,
+    maxAge: 30 * 24 * 60 * 60 * 1000,
   },
 });
 
