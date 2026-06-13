@@ -22,15 +22,22 @@ function canConnectToVncPort(timeoutMs = 500): Promise<boolean> {
 }
 
 export function registerVncRoutes(app: Application): void {
-  if (configService.get('BROWSER_ENABLED') !== 'true') {
-    return;
-  }
-
   const router = Router();
 
   // Session-authenticated route — issues a short-lived token and VNC credential.
   // The app-level auth middleware already protects this route.
   router.post('/api/vnc/auth', async (_req, res) => {
+    // If the browser stack is disabled entirely, return a clear 503 instead of
+    // letting the client see a 404 and guess. Keep this branch registered always
+    // so the UI can show a meaningful message in any environment.
+    if (configService.get('BROWSER_ENABLED') !== 'true') {
+      res.status(503).json({
+        error: 'VNC is not available: BROWSER_ENABLED is not set. Enable the browser agent in Settings → Browser to use the live browser pane.',
+        details: { enabled: false, running: false, dockerMode: false },
+      });
+      return;
+    }
+
     // Guard against stale or local-dev states where VNC token auth succeeds
     // but the VNC proxy has no upstream x11vnc to connect to.
     let vncReachable = await canConnectToVncPort();

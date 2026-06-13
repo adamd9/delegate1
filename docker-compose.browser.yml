@@ -6,11 +6,15 @@ services:
     ports:
       - "8081:8081"   # App (includes VNC web viewer)
     volumes:
-      - ./local-volumes/runtime-data:/app/runtime-data
-      - ./local-volumes/gh-copilot-data:/root/.local/share/gh
+      - delegate1-runtime-data:/app/runtime-data
+      - delegate1-gh-copilot-data:/root/.local/share/gh
     env_file:
       - .env
     environment:
       - BROWSER_ENABLED=true
       - DOCKER=true
     restart: unless-stopped
+
+volumes:
+  delegate1-runtime-data:
+  delegate1-gh-copilot-data:
