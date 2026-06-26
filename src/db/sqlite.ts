@@ -292,6 +292,43 @@ export function listConversationEvents(conversation_id: string) {
   return db.prepare('SELECT id, conversation_id, seq, kind, payload_json, created_at_ms FROM conversation_events WHERE conversation_id = ? ORDER BY seq ASC').all(conversation_id);
 }
 
+export function listRecentMemoryEvents(limit: number = 100): Array<{
+  id: string;
+  conversation_id: string;
+  session_id: string | null;
+  kind: string;
+  payload: any;
+  created_at_ms: number;
+}> {
+  const db = getDb();
+  const safeLimit = Math.max(1, Math.min(1000, Math.floor(limit || 100)));
+  const rows = db.prepare(`
+    SELECT
+      e.id,
+      e.conversation_id,
+      c.session_id,
+      e.kind,
+      e.payload_json,
+      e.created_at_ms
+    FROM conversation_events e
+    LEFT JOIN conversations c ON c.id = e.conversation_id
+    WHERE e.kind IN ('memory_stored', 'memory_dedup', 'memory_arbitrator', 'memory_retrieved', 'memory_pending', 'memory_miss')
+    ORDER BY e.created_at_ms DESC
+    LIMIT ?
+  `).all(safeLimit) as Array<any>;
+
+  return rows.map(r => ({
+    id: r.id,
+    conversation_id: r.conversation_id,
+    session_id: r.session_id ?? null,
+    kind: r.kind,
+    payload: (() => {
+      try { return JSON.parse(r.payload_json || '{}'); } catch { return {}; }
+    })(),
+    created_at_ms: r.created_at_ms,
+  }));
+}
+
 export function getLastEventTimestampForConversation(conversation_id: string): number | null {
   const db = getDb();
   const row = db.prepare('SELECT created_at_ms FROM conversation_events WHERE conversation_id = ? ORDER BY seq DESC LIMIT 1').get(conversation_id);

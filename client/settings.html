@@ -1737,6 +1737,13 @@ function renderMemory() {
   });
   content.appendChild(mc);
   loadMemoriesList(mc.querySelector('.card-body'));
+
+  const insightsCard = card('Memory Insights', body => {
+    body.id = 'memory-insights-body';
+    body.innerHTML = '<div class="loading">Loading\u2026</div>';
+  });
+  content.appendChild(insightsCard);
+  loadMemoryInsights(insightsCard.querySelector('.card-body'));
 }
 
 function buildMemoryForm(data) {
@@ -1973,8 +1980,13 @@ function buildMemoryRow(mem, containerBody) {
   const meta = el('div', {style: 'display:flex;gap:12px;margin-top:4px;font-size:10px;color:var(--text-dim);font-family:var(--font)'});
   meta.appendChild(el('span', {}, 'strength: ' + mem.strength.toFixed(1)));
   meta.appendChild(el('span', {}, 'retrieved: ' + mem.retrievalCount + '\u00d7'));
+  meta.appendChild(el('span', {}, 'deltas: ' + (mem.deltaCount ?? 0)));
   const date = new Date(mem.createdAt);
   meta.appendChild(el('span', {}, date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})));
+  if (mem.lastConsolidatedAt) {
+    const consolidatedAt = new Date(mem.lastConsolidatedAt);
+    meta.appendChild(el('span', {}, 'last consolidated: ' + consolidatedAt.toLocaleDateString() + ' ' + consolidatedAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})));
+  }
   info.appendChild(meta);
   row.appendChild(info);
 
@@ -2002,6 +2014,114 @@ function buildMemoryRow(mem, containerBody) {
   row.appendChild(delBtn);
 
   return row;
+}
+
+function statTile(label, value, subtitle) {
+  const tile = el('div', {style: 'padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px'});
+  tile.appendChild(el('div', {style: 'font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em'}, label));
+  tile.appendChild(el('div', {style: 'font-size:16px;font-weight:700;margin-top:2px'}, value));
+  if (subtitle) tile.appendChild(el('div', {style: 'font-size:10px;color:var(--text-mid);margin-top:3px'}, subtitle));
+  return tile;
+}
+
+function formatTs(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function loadMemoryInsights(body) {
+  fetch('/api/memories/insights?limit=120')
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(data => {
+      body.innerHTML = '';
+      if (!data.supported) {
+        body.appendChild(el('p', {style: 'font-size:12px;color:var(--text-mid)'}, data.message || 'Insights unavailable for current memory backend.'));
+        return;
+      }
+      body.appendChild(buildMemoryInsightsPanel(data, body));
+    })
+    .catch(err => {
+      body.innerHTML = '';
+      body.appendChild(el('div', {class: 'error-msg'}, 'Failed to load insights: ' + err.message));
+    });
+}
+
+function buildMemoryInsightsPanel(data, body) {
+  const frag = document.createDocumentFragment();
+
+  const topRow = el('div', {style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap'});
+  topRow.appendChild(el('span', {style: 'font-size:12px;color:var(--text-mid)'}, 'Generated: ' + formatTs(data.generated_at_ms)));
+  const refreshBtn = el('button', {class: 'btn', style: 'font-size:11px;padding:3px 10px'}, '\u21bb Refresh');
+  refreshBtn.addEventListener('click', () => {
+    body.innerHTML = '<div class="loading">Loading\u2026</div>';
+    loadMemoryInsights(body);
+  });
+  topRow.appendChild(refreshBtn);
+  frag.appendChild(topRow);
+
+  const store = data.store || {};
+  const dedup = data.dedup || {};
+  const runtimeStats = data.runtime?.stats || {};
+  const counters = runtimeStats.counters || {};
+
+  const statsGrid = el('div', {style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:12px'});
+  statsGrid.appendChild(statTile('Stored', String(store.totalMemories ?? 0), 'adaptive memories'));
+  statsGrid.appendChild(statTile('Avg Strength', Number(store.avgStrength || 0).toFixed(2), 'max ' + Number(store.maxStrength || 0).toFixed(2)));
+  statsGrid.appendChild(statTile('Total Retrievals', String(store.totalRetrievals ?? 0), 'all-time hits'));
+  statsGrid.appendChild(statTile('Consolidated', String(store.consolidatedMemories ?? 0), (store.memoriesWithDeltas ?? 0) + ' with deltas'));
+  statsGrid.appendChild(statTile('Delta Entries', String(store.totalDeltas ?? 0), 'consolidated updates'));
+  statsGrid.appendChild(statTile('Dedup Lookups', String(dedup.lookupCount ?? 0), 'suppressed ' + (dedup.totalSuppressed ?? 0)));
+  statsGrid.appendChild(statTile('Runtime Events', String(runtimeStats.buffer_size ?? 0), 'last event ' + formatTs(runtimeStats.last_event_at)));
+  statsGrid.appendChild(statTile('Reflections Stored', String(counters['extract.stored'] ?? 0), 'none ' + (counters['extract.none'] ?? 0)));
+  frag.appendChild(statsGrid);
+
+  const eventCols = el('div', {style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px'});
+
+  const runtimeCol = el('div', {style: 'min-width:0'});
+  runtimeCol.appendChild(el('div', {style: 'font-size:12px;font-weight:600;margin-bottom:6px'}, 'Runtime Reflection & Consolidation Events'));
+  const runtimeList = el('div', {style: 'display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto'});
+  const runtimeEvents = Array.isArray(data.runtime?.events) ? data.runtime.events : [];
+  if (runtimeEvents.length === 0) {
+    runtimeList.appendChild(el('div', {style: 'font-size:12px;color:var(--text-dim);padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2)'}, 'No runtime events yet.'));
+  } else {
+    for (const evt of runtimeEvents.slice(0, 80)) {
+      const row = el('div', {style: 'padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);font-size:11px'});
+      row.appendChild(el('div', {style: 'display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap'},
+        el('span', {style: 'font-family:var(--font);color:var(--accent)'}, evt.type || 'event'),
+        el('span', {style: 'color:var(--text-dim)'}, formatTs(evt.timestamp))
+      ));
+      if (evt.conversationId) row.appendChild(el('div', {style: 'margin-top:4px;color:var(--text-mid);font-family:var(--font)'}, 'conv: ' + evt.conversationId));
+      if (evt.details) row.appendChild(el('pre', {style: 'margin-top:6px;font-size:10px;white-space:pre-wrap;word-break:break-word;color:var(--text-mid);background:var(--surface3);border:1px solid var(--border);border-radius:4px;padding:6px'}, JSON.stringify(evt.details, null, 2)));
+      runtimeList.appendChild(row);
+    }
+  }
+  runtimeCol.appendChild(runtimeList);
+  eventCols.appendChild(runtimeCol);
+
+  const ledgerCol = el('div', {style: 'min-width:0'});
+  ledgerCol.appendChild(el('div', {style: 'font-size:12px;font-weight:600;margin-bottom:6px'}, 'Recent Memory Ledger Events'));
+  const ledgerList = el('div', {style: 'display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto'});
+  const ledgerEvents = Array.isArray(data.ledger?.recent_events) ? data.ledger.recent_events : [];
+  if (ledgerEvents.length === 0) {
+    ledgerList.appendChild(el('div', {style: 'font-size:12px;color:var(--text-dim);padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2)'}, 'No memory ledger events yet.'));
+  } else {
+    for (const evt of ledgerEvents.slice(0, 80)) {
+      const row = el('div', {style: 'padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);font-size:11px'});
+      row.appendChild(el('div', {style: 'display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap'},
+        el('span', {style: 'font-family:var(--font);color:var(--blue)'}, evt.kind || 'event'),
+        el('span', {style: 'color:var(--text-dim)'}, formatTs(evt.created_at_ms))
+      ));
+      row.appendChild(el('div', {style: 'margin-top:4px;color:var(--text-mid);font-family:var(--font)'}, 'conv: ' + (evt.conversation_id || '—')));
+      if (evt.payload) row.appendChild(el('pre', {style: 'margin-top:6px;font-size:10px;white-space:pre-wrap;word-break:break-word;color:var(--text-mid);background:var(--surface3);border:1px solid var(--border);border-radius:4px;padding:6px'}, JSON.stringify(evt.payload, null, 2)));
+      ledgerList.appendChild(row);
+    }
+  }
+  ledgerCol.appendChild(ledgerList);
+  eventCols.appendChild(ledgerCol);
+
+  frag.appendChild(eventCols);
+  return frag;
 }
 
 // ──────────────────────────────────────────────

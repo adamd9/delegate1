@@ -190,15 +190,86 @@ export function deleteMemory(id: string): void {
 }
 
 /** List all memories (for admin/debug), returns without embeddings for efficiency */
-export function listMemoriesSummary(): Array<{ id: string; content: string; strength: number; retrievalCount: number; createdAt: number }> {
+export function listMemoriesSummary(): Array<{
+  id: string;
+  content: string;
+  strength: number;
+  retrievalCount: number;
+  createdAt: number;
+  lastRetrievedAt: number | null;
+  lastConsolidatedAt: number | null;
+  deltaCount: number;
+}> {
   ensureTable();
   const db = getDb();
-  const rows = db.prepare('SELECT id, content, strength, retrieval_count, created_at FROM adaptive_memories ORDER BY strength DESC').all() as any[];
+  const rows = db.prepare('SELECT id, content, strength, retrieval_count, created_at, last_retrieved_at, last_consolidated_at, deltas_json FROM adaptive_memories ORDER BY strength DESC').all() as any[];
   return rows.map(r => ({
     id: r.id,
     content: r.content,
     strength: r.strength,
     retrievalCount: r.retrieval_count,
     createdAt: r.created_at,
+    lastRetrievedAt: r.last_retrieved_at ?? null,
+    lastConsolidatedAt: r.last_consolidated_at ?? null,
+    deltaCount: (() => {
+      try {
+        const arr = JSON.parse(r.deltas_json || '[]');
+        return Array.isArray(arr) ? arr.length : 0;
+      } catch {
+        return 0;
+      }
+    })(),
   }));
+}
+
+export function getMemoryStoreStats(): {
+  totalMemories: number;
+  avgStrength: number;
+  maxStrength: number;
+  totalRetrievals: number;
+  consolidatedMemories: number;
+  memoriesWithDeltas: number;
+  totalDeltas: number;
+  newestMemoryAt: number | null;
+  oldestMemoryAt: number | null;
+} {
+  ensureTable();
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      COALESCE(AVG(strength), 0) AS avg_strength,
+      COALESCE(MAX(strength), 0) AS max_strength,
+      COALESCE(SUM(retrieval_count), 0) AS total_retrievals,
+      COALESCE(SUM(CASE WHEN last_consolidated_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS consolidated,
+      COALESCE(MAX(created_at), NULL) AS newest_at,
+      COALESCE(MIN(created_at), NULL) AS oldest_at
+    FROM adaptive_memories
+  `).get() as any;
+
+  const rows = db.prepare('SELECT deltas_json FROM adaptive_memories').all() as any[];
+  let memoriesWithDeltas = 0;
+  let totalDeltas = 0;
+  for (const r of rows) {
+    try {
+      const arr = JSON.parse(r.deltas_json || '[]');
+      const count = Array.isArray(arr) ? arr.length : 0;
+      if (count > 0) memoriesWithDeltas++;
+      totalDeltas += count;
+    } catch {
+      // ignore malformed rows in stats
+    }
+  }
+
+  return {
+    totalMemories: row?.total ?? 0,
+    avgStrength: Number(row?.avg_strength ?? 0),
+    maxStrength: Number(row?.max_strength ?? 0),
+    totalRetrievals: Number(row?.total_retrievals ?? 0),
+    consolidatedMemories: Number(row?.consolidated ?? 0),
+    memoriesWithDeltas,
+    totalDeltas,
+    newestMemoryAt: row?.newest_at ?? null,
+    oldestMemoryAt: row?.oldest_at ?? null,
+  };
 }

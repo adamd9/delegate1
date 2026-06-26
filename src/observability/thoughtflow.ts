@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { join, sep } from 'path';
 import { session } from '../session/state';
 import { configService } from '../config';
-import { upsertSession, finalizeSession, upsertConversation, updateConversationStatus, addConversationEvent, getLastEventTimestampForConversation, upsertThoughtflowArtifact } from '../db/sqlite';
+import { upsertSession, finalizeSession, upsertConversation, completeConversation, updateConversationStatus, addConversationEvent, getLastEventTimestampForConversation, upsertThoughtflowArtifact } from '../db/sqlite';
 import { getEffectivePublicUrl } from '../server/config/env';
 
 // Explicit step types for ThoughtFlow events
@@ -68,10 +68,13 @@ function scheduleInactivityTimer(targetSessionId: string) {
     try {
       const conversationId = (session as any).currentConversationId as string | undefined;
       if (conversationId) {
+        const endedAt = new Date().toISOString();
+        // Mirror manual finalization path so memory extraction/consolidation runs on timeout too.
+        completeConversation({ id: conversationId, status: 'timeout', ended_at: endedAt });
         appendEvent({
           type: 'conversation.completed',
           conversation_id: conversationId,
-          ended_at: new Date().toISOString(),
+          ended_at: endedAt,
           status: 'timeout',
         });
       }

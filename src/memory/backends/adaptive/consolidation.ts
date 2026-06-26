@@ -3,6 +3,7 @@ import { generateEmbedding } from './embeddings';
 import { findConsolidationCandidates, insertMemory, updateMemoryConsolidation, reinforceMemory } from './vectorStore';
 import type { ConsolidationResult, ConflictNotice, DeltaEntry } from './types';
 import { getMemoryConfig } from '../../memoryConfig';
+import { recordMemoryRuntimeEvent } from '../../observability';
 
 const CONSOLIDATION_THRESHOLD = 0.85;
 const STRENGTH_BOOST_ON_CONSOLIDATION = 0.2;
@@ -50,6 +51,12 @@ export async function storeWithConsolidation(
   if (candidates.length === 0) {
     console.log('[adaptive] consolidation — no similar memories, storing as new');
     const id = insertMemory({ content, embedding, metadata });
+    recordMemoryRuntimeEvent({
+      type: 'consolidation.new',
+      conversationId: typeof metadata?.conversation_id === 'string' ? metadata.conversation_id : undefined,
+      channel: typeof metadata?.channel === 'string' ? metadata.channel : undefined,
+      details: { memory_id: id },
+    });
     return { type: 'new', memoryId: id };
   }
 
@@ -63,6 +70,12 @@ export async function storeWithConsolidation(
 
   if (analysis.relationship === 'conflicting' && !override) {
     console.log(`[adaptive] consolidation — CONFLICT detected: "${analysis.delta}"`);
+    recordMemoryRuntimeEvent({
+      type: 'consolidation.conflict',
+      conversationId: typeof metadata?.conversation_id === 'string' ? metadata.conversation_id : undefined,
+      channel: typeof metadata?.channel === 'string' ? metadata.channel : undefined,
+      details: { memory_id: existing.id, delta: analysis.delta },
+    });
     const conflict: ConflictNotice = {
       existingMemory: existing.content,
       existingStrength: existing.strength,
@@ -79,6 +92,12 @@ export async function storeWithConsolidation(
     db.prepare('UPDATE adaptive_memories SET content = ?, embedding = ?, strength = strength + ?, last_consolidated_at = ? WHERE id = ?')
       .run(content, embeddingToBuffer(embedding), STRENGTH_BOOST_ON_CONSOLIDATION, Date.now(), existing.id);
     console.log(`[adaptive] consolidation — CONFLICT overridden, replaced canonical content for ${existing.id}`);
+    recordMemoryRuntimeEvent({
+      type: 'consolidation.override',
+      conversationId: typeof metadata?.conversation_id === 'string' ? metadata.conversation_id : undefined,
+      channel: typeof metadata?.channel === 'string' ? metadata.channel : undefined,
+      details: { memory_id: existing.id },
+    });
     return { type: 'consolidated', memoryId: existing.id };
   }
 
@@ -96,10 +115,22 @@ export async function storeWithConsolidation(
       lastConsolidatedAt: Date.now(),
     });
     console.log(`[adaptive] consolidation — merged delta into memory ${existing.id}: "${analysis.delta}"`);
+    recordMemoryRuntimeEvent({
+      type: 'consolidation.consolidated',
+      conversationId: typeof metadata?.conversation_id === 'string' ? metadata.conversation_id : undefined,
+      channel: typeof metadata?.channel === 'string' ? metadata.channel : undefined,
+      details: { memory_id: existing.id, mode: 'delta', delta: analysis.delta },
+    });
   } else {
     // Pure duplicate — just boost strength
     reinforceMemory(existing.id, STRENGTH_BOOST_ON_CONSOLIDATION);
     console.log(`[adaptive] consolidation — duplicate, boosted strength for ${existing.id}`);
+    recordMemoryRuntimeEvent({
+      type: 'consolidation.consolidated',
+      conversationId: typeof metadata?.conversation_id === 'string' ? metadata.conversation_id : undefined,
+      channel: typeof metadata?.channel === 'string' ? metadata.channel : undefined,
+      details: { memory_id: existing.id, mode: 'duplicate' },
+    });
   }
 
   return { type: 'consolidated', memoryId: existing.id };

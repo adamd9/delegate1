@@ -2,7 +2,10 @@ import type { Application, Request, Response } from 'express';
 import { getMemoryConfig } from '../../memory/memoryConfig';
 import { getMemoryBackend } from '../../memory/backends';
 import { AdaptiveMemoryBackend } from '../../memory/backends/adaptive';
-import { listMemoriesSummary, deleteMemory, countMemories } from '../../memory/backends/adaptive/vectorStore';
+import { listMemoriesSummary, deleteMemory, getMemoryStoreStats } from '../../memory/backends/adaptive/vectorStore';
+import { listRecentMemoryEvents } from '../../db/sqlite';
+import { memoryModule } from '../../memory';
+import { getMemoryRuntimeEvents, getMemoryRuntimeStats } from '../../memory/observability';
 
 export function registerMemoriesRoutes(app: Application) {
   /**
@@ -57,6 +60,50 @@ export function registerMemoriesRoutes(app: Application) {
     } catch (err: any) {
       console.error('[memories] DELETE error', err);
       res.status(500).json({ error: err?.message || 'Failed to delete memory' });
+    }
+  });
+
+  /**
+   * GET /api/memories/insights
+   * Runtime memory diagnostics for Settings UI.
+   */
+  app.get('/api/memories/insights', (req: Request, res: Response) => {
+    try {
+      const config = getMemoryConfig();
+      const backend = getMemoryBackend();
+      const eventLimit = Math.max(10, Math.min(500, Number(req.query.limit) || 100));
+
+      if (config.backend !== 'adaptive' || !(backend instanceof AdaptiveMemoryBackend)) {
+        return res.json({
+          supported: false,
+          backend: config.backend,
+          message: 'Memory insights are only available with the Adaptive backend.',
+        });
+      }
+
+      const storeStats = getMemoryStoreStats();
+      const dedupMetrics = memoryModule.getDedupMetrics();
+      const runtimeStats = getMemoryRuntimeStats();
+      const runtimeEvents = getMemoryRuntimeEvents(eventLimit);
+      const recentEvents = listRecentMemoryEvents(eventLimit);
+
+      return res.json({
+        supported: true,
+        backend: 'adaptive',
+        generated_at_ms: Date.now(),
+        store: storeStats,
+        dedup: dedupMetrics,
+        runtime: {
+          stats: runtimeStats,
+          events: runtimeEvents,
+        },
+        ledger: {
+          recent_events: recentEvents,
+        },
+      });
+    } catch (err: any) {
+      console.error('[memories] insights error', err);
+      res.status(500).json({ error: err?.message || 'Failed to build memory insights' });
     }
   });
 }
