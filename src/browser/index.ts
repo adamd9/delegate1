@@ -140,6 +140,30 @@ function authedUrl(remoteUrl: string, token: string): string {
   return remoteUrl;
 }
 
+function normalizeGitHubRemote(input: string): string {
+  const raw = (input || '').trim();
+  if (!raw) return raw;
+
+  // owner/repo
+  if (/^[^\s/]+\/[^\s/]+$/.test(raw)) {
+    return `https://github.com/${raw}.git`;
+  }
+
+  // https://github.com/owner/repo[.git][/]
+  const httpsMatch = raw.match(/^https?:\/\/github\.com\/([^/]+\/[^/]+?)(?:\.git)?\/?$/i);
+  if (httpsMatch) {
+    return `https://github.com/${httpsMatch[1]}.git`;
+  }
+
+  // git@github.com:owner/repo[.git]
+  const sshMatch = raw.match(/^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?$/i);
+  if (sshMatch) {
+    return `https://github.com/${sshMatch[1]}.git`;
+  }
+
+  return raw;
+}
+
 /**
  * Set up the local working directory from a remote repo.
  * If the local dir has stale content, blow it away and do a fresh clone.
@@ -266,7 +290,7 @@ function scaffoldWorkDir(): ScaffoldResult {
   }
 
   if (remoteRepo && token) {
-    setupWorkDirFromRemote(remoteRepo, token);
+    setupWorkDirFromRemote(normalizeGitHubRemote(remoteRepo), token);
   } else {
     // No remote — just ensure local git init for copilot CLI
     const gitDir = path.join(COPILOT_WORK_DIR, '.git');
