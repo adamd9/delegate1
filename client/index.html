@@ -1601,7 +1601,7 @@ function renderTaskPreview(tasks) {
   }
 
   list.innerHTML = tasks.slice(0, 3).map((task) => `
-    <a class="task-item" href="/tasks">
+    <a class="task-item" href="${task && task.id ? '/tasks/' + encodeURIComponent(task.id) : '/tasks'}">
       <div class="task-title">${escapeHtml(task.title || task.last_summary || task.last_prompt || task.id)}</div>
       <div class="task-meta"><span>Updated ${escapeHtml(formatRelativeTime(task.last_active_at))}</span><span class="${statusClass(task.status)}">${escapeHtml(statusLabel(task.status))}</span></div>
     </a>
