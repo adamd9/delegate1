@@ -26,6 +26,7 @@ Your delegate has a lot of capabilities. This section has a page for each one �
 - **[Tools](tools/)** — the capabilities your delegate can use (web search, send SMS, manage notes, and more)
 - **[MCP servers](mcp-servers/)** — connect external services like calendars and task managers
 - **[Browser agent](browser-agent/)** — your delegate can browse the web and complete tasks that require clicking around
+- **[Copilot Tasks](copilot-tasks/)** — durable, resumable browser tasks with live progress, file browsing, and handoff back to chat
 
 ## Transparency & customisation
 

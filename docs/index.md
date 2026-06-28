@@ -54,7 +54,7 @@ Memory isn't something you trigger — it runs continuously in the background. W
 Every agent run produces a **ThoughtFlow** — a visual D2 diagram that maps every input, model call, tool invocation, and output in that turn. When you want to understand *why* the delegate did what it did, ThoughtFlow shows you the full decision path.
 
 ### Higher-order processing modes
-Not every task fits in a single real-time turn. When a request needs fresh facts from the internet, the delegate calls its `web_search` tool. When a task needs a browser — filling a form, logging into a service, scraping a page — it dispatches a **Copilot** agent that runs with full browser access. You can observe or take over the browser session at any time.
+Not every task fits in a single real-time turn. When a request needs fresh facts from the internet, the delegate calls its `web_search` tool. When a task needs a browser — filling a form, logging into a service, scraping a page — it dispatches durable **Copilot Tasks** that can run, pause for user input, resume later, and keep a full event/file trail. You can observe or take over browser state while the task is in progress.
 
 ---
 
@@ -64,5 +64,6 @@ Not every task fits in a single real-time turn. When a request needs fresh facts
 |---|---|
 | **[Getting Started](getting-started/)** | Prerequisites, install, configuration, first run |
 | **[Features](features/)** | Deep dives — phone, email, voice, memory, notes, MCP, thoughtflow, adaptations, browser agent |
+| **[Copilot Tasks](features/copilot-tasks/)** | Durable/resumable browser task lifecycle and task UI |
 | **[Operations](operations/)** | Deployment, runtime data, testing, logging |
 | **[Reference](reference/)** | Env vars, HTTP/WS endpoints, architecture |

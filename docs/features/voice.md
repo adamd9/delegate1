@@ -16,7 +16,7 @@ Talk to your delegate out loud — right in your browser. No phone needed, no ex
 
 ## How to use it
 
-1. Click **Twilio Voice** in the sidebar menu.
+1. Click **Voice (browser)** in the sidebar menu.
 2. Click the **microphone button** to start a session.
 3. Start talking. Your delegate will listen and respond with speech.
 4. Click the button again to end the session.
@@ -52,7 +52,7 @@ Both options give you the same delegate and the same conversation — it's just 
 ## Technical details
 
 - Audio path: browser mic → PCM16 24 kHz → `/browser-call` WebSocket → OpenAI Realtime API → PCM16 frames back → Web Audio API playback.
-- Barge-in: the server calls `response.cancel` and truncates the audio buffer when new mic audio arrives mid-response. The cancel is guarded by `isResponseActivelyStreaming()` to avoid racing the Realtime API. Implementation: `src/session/browserCall.ts`, shared pipeline in `src/voice/`.
-- Voice presets stored in `runtime-data/voice-presets/`; defaults from `DELEGATE_TTS_MODEL` and `DELEGATE_CHAT_VOICE_SPEED` config values.
+- Barge-in: interruption is handled natively by Realtime API turn detection (`interrupt_response: true`). The server flushes downstream buffers and suppresses stale deltas during interruption handling. Implementation: `src/session/browserCall.ts`, shared pipeline in `src/voice/`.
+- Voice presets stored in `runtime-data/voice-presets/`; defaults from `REALTIME_VOICE`, `DELEGATE_VOICE_SPEED`, and base agent voice config.
 - Voice pipeline tests: `npm run test:voice` (`src/voice/voicePipeline.test.ts`). End-to-end flows covered by `npm run test:e2e`.
 - See also: [Phone (Twilio)](../phone/) — same Realtime API plumbing, different audio codec (G.711 µ-law).

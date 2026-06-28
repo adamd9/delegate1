@@ -27,10 +27,10 @@ CALL_MY_PHONE_ENDPOINT=https://your-notify-endpoint.example.com/notify
 CALL_MY_PHONE_SECRET=your-secret-api-key-here
 
 # Browser agent (Copilot CLI + Playwright) — optional
-# Enable and configure this in Settings -> Browser
+# Configure this in Settings -> Copilot + Browser Control
 # (including the Copilot Sign-In Token)
-# BROWSER_ENABLED=true
-# VNC_PASSWORD=delegate
+# Optional hard off switch if a token is present:
+# BROWSER_ENABLED=false
 
 FRONTEND_URL=http://localhost:8081
 STARTUP_NOTIFY_MESSAGE="Servers started successfully"
@@ -68,10 +68,10 @@ See the full table in **[Reference → Env Vars](../../reference/env-vars/)**.
 
 Use the Settings pages for GitHub tokens:
 
-1. For browser/Copilot tasks: **Settings -> Browser -> Copilot Sign-In Token**.
+1. For browser/Copilot tasks: **Settings -> Copilot + Browser Control -> Copilot Sign-In Token**.
 2. For GitHub API tools (repo listing/issues): **Settings -> GitHub -> GitHub Personal Access Token**.
 
-For **Settings -> Browser -> Copilot Sign-In Token**, use this simple flow:
+For **Settings -> Copilot + Browser Control -> Copilot Sign-In Token**, use this simple flow:
 
 1. Create a **fine-grained** PAT in GitHub.
 2. Set **Resource owner** to your personal account.
@@ -102,6 +102,6 @@ If fine-grained tokens are blocked by org policy, use **Tokens (classic)** -> **
 | `PORT` | `.env` only | Read once on startup |
 | `RUNTIME_DATA_DIR` | `.env` only | Determines where the in-app store lives |
 | `ADMIN_PASSWORD` | `.env` *or* install flow | Either works |
-| `OPENAI_API_KEY`, `TWILIO_*`, `EMAIL_*`, `DEEPGRAM_API_KEY`, `PUBLIC_URL`, `BROWSER_ENABLED`, etc. | Settings UI *or* `.env` | UI is preferred for prod (encrypted at rest). For GitHub tokens, use the Settings pages (Browser and GitHub). |
+| `OPENAI_API_KEY`, `TWILIO_*`, `EMAIL_*`, `DEEPGRAM_API_KEY`, `PUBLIC_URL`, `COPILOT_*`, etc. | Settings UI *or* `.env` | UI is preferred for prod (encrypted at rest). For GitHub tokens, use the Settings pages (Copilot + Browser Control and GitHub). |
 
 Next: [First run](../first-run/).

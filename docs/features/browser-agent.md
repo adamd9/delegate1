@@ -9,7 +9,7 @@ nav_order: 11
 {: .warning }
 > **Requires a GitHub Copilot subscription.** The browser agent uses GitHub Copilot as its reasoning layer — you'll need a [GitHub account with Copilot access](https://github.com/features/copilot) (paid plan) and a Personal Access Token to use this feature.
 
-Your delegate can browse the web on your behalf — not just search, but actually open a browser, navigate to sites, fill in forms, log in with your credentials, and complete tasks that normally require a human clicking around.
+Your delegate can browse the web on your behalf: open pages, navigate multi-step flows, complete forms, and report back with results.
 
 **Examples of things you can ask:**
 - "Book me a table on OpenTable for Saturday at 7pm"
@@ -18,10 +18,9 @@ Your delegate can browse the web on your behalf — not just search, but actuall
 
 ## How to turn it on
 
-Go to **Settings** and enable the browser agent. You'll need two things:
+Go to **Settings -> Copilot + Browser Control** and set your **Copilot Sign-In Token**.
 
-1. **Browser agent toggle** — turns the feature on (`BROWSER_ENABLED=true`)
-2. **GitHub Personal Access Token** — the browser agent uses GitHub Copilot as its "brain" to understand your instructions and decide what to click. A GitHub token is how it accesses that capability.
+The browser stack is enabled automatically when a valid Copilot token is present. You can still force-disable it with `BROWSER_ENABLED=false` as an explicit kill switch.
 
 ### Create the GitHub token (exact clicks)
 
@@ -41,7 +40,7 @@ Go to **Settings** and enable the browser agent. You'll need two things:
 9. Under **Permissions -> Repository**, grant what you need for your workflow. For coding tasks, **Contents: Read and write** is a common minimum.
 10. Click **Generate token**.
 11. Copy the token immediately (GitHub only shows the full value once).
-12. In Delegate settings, open **Browser**, paste it into **Copilot Sign-In Token**, then click **Save All Settings**.
+12. In Delegate settings, open **Copilot + Browser Control**, paste it into **Copilot Sign-In Token**, then click **Save All Settings**.
 
 Important: set Resource owner to your personal account. If you use GitHub repo/issue tools as well, configure their token separately in **Settings -> GitHub**.
 
@@ -52,13 +51,17 @@ Once enabled, a browser session will be available in the background ready to tak
 
 ## Using the browser agent
 
-Click **Copilot Session** in the sidebar menu and type your task in plain English, just like chatting normally.
+Open **Tasks** in the sidebar and create a task in plain English.
 
-![Copilot agent page](../assets/screenshots/copilot.png)
+![Copilot task workspace](../assets/screenshots/copilot.png)
+
+Each task is durable and resumable: you can continue it, inspect generated files, stream events, and return later.
 
 ## Watching it work
 
-The delegate opens a real browser in the background. You can watch exactly what it's doing — every click, every page load — via the **live browser view at [/vnc.html](/vnc.html)**. If something goes wrong or you want to step in, you can take over from there.
+The delegate opens a real browser in the background. When display services are available, you can watch live browser state through the Tasks UI live view.
+
+If browser display services are unavailable (for example local non-Docker dev), the UI now returns a clear `503` explanation instead of a generic failure.
 
 ## A note on security
 
@@ -71,6 +74,8 @@ The browser agent can access any website the browser can reach, including sites 
 - The browser agent is powered by **GitHub Copilot CLI**, which acts as the reasoning layer that turns natural-language instructions into browser actions.
 - The browser itself is a **Chromium** instance controlled by **Playwright**, running with a persistent profile stored under `runtime-data/browser-profile/`.
 - Copilot CLI runs inside `runtime-data/copilot-workdir/`. A dispatch layer in `src/copilot-agent/` passes tasks between the model and the CLI.
-- The live view at `/vnc.html` streams the browser desktop over VNC; the password is set by `VNC_PASSWORD` in your environment.
+- The VNC credential is internal and issued via `/api/vnc/auth` as part of the app session flow.
 - For self-hosted deployments, the browser agent runs best inside the `Dockerfile.browser` / `docker-compose.browser.yml` Docker setup, which bundles Chromium and a VNC server.
 - Run browser agent tests with `npm run test:copilot`.
+
+For task lifecycle details, see [Copilot Tasks](../copilot-tasks/).

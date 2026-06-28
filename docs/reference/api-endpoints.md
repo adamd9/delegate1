@@ -61,6 +61,23 @@ Selected REST surface. Most paths require an authenticated session; the **public
 | GET | `/tools`, `/catalog/tools` |
 | GET | `/agents` |
 | GET | `/agents/:id/tools` |
+| GET | `/api/agent-prompts/defaults` |
+
+## Copilot tasks
+
+| Method | Path |
+|---|---|
+| GET | `/api/copilot/tasks` |
+| POST | `/api/copilot/tasks` |
+| GET | `/api/copilot/tasks/:id` |
+| POST | `/api/copilot/tasks/:id/continue` |
+| POST | `/api/copilot/tasks/:id/cancel` |
+| POST | `/api/copilot/tasks/:id/archive` |
+| GET | `/api/copilot/tasks/:id/events` |
+| GET | `/api/copilot/tasks/:id/events/stream` |
+| GET | `/api/copilot/tasks/:id/files` |
+| GET | `/api/copilot/tasks/:id/file` |
+| POST | `/api/copilot/tasks/:id/ask` |
 
 ## MCP
 
@@ -75,8 +92,17 @@ Selected REST surface. Most paths require an authenticated session; the **public
 |---|---|
 | GET | `/api/memories` |
 | DELETE | `/api/memories/:id` |
+| GET | `/api/memories/insights` |
 | GET | `/memory-config` |
 | PUT | `/memory-config` |
+
+## Voice config
+
+| Method | Path |
+|---|---|
+| GET | `/voice-defaults` |
+| PUT | `/voice-defaults` |
+| POST | `/voice-defaults/reset` |
 
 ## Notes
 
@@ -111,5 +137,12 @@ Selected REST surface. Most paths require an authenticated session; the **public
 | GET | `/_dev/walkie/logs/stream` |
 | POST | `/_dev/walkie/voice` |
 | POST | `/deepgram/token` |
+
+## Browser / realtime helpers
+
+| Method | Path |
+|---|---|
+| POST | `/api/vnc/auth` |
+| GET | `/api/session` |
 
 For WebSocket endpoints see [WebSocket endpoints](../websocket-endpoints/).

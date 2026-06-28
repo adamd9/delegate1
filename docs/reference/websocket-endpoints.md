@@ -41,7 +41,7 @@ Key control messages:
 - `input_audio_buffer.append` (client) — incoming mic chunk
 - `response.audio.delta` (server) — outbound speech chunk
 - `response.audio.done` (server) — assistant finished speaking
-- `response.cancel` (server) — emitted on barge-in
+- `input_audio_buffer.speech_started` (model event) — realtime VAD interruption trigger
 
 ## `/call`
 
@@ -49,4 +49,4 @@ Twilio-specific framing: each frame is `{ event: "media", media: { payload: <bas
 
 ## Barge-in invariant
 
-In both voice paths, `response.cancel` must only be sent while `isResponseActivelyStreaming()` is true. The internal `responseStartTimestamp` flag is set on the first audio delta and cleared on `response.audio.done` or truncation. Skipping this check race-conditions the Realtime API.
+In both voice paths, barge-in is handled natively by the Realtime API (`interrupt_response: true`). The server no longer drives interruption by proactively sending `response.cancel` as primary behavior; instead it flushes downstream playback buffers and suppresses stale deltas while the model auto-cancels in-flight output.

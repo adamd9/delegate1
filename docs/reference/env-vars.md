@@ -29,9 +29,12 @@ Almost every key here can be set in `.env` **or** in the in-app config store (vi
 |---|---|
 | `OPENAI_API_KEY` | Required for all model calls |
 | `DELEGATE_TTS_MODEL` | Override TTS model |
-| `DELEGATE_CHAT_VOICE_SPEED` | Voice speed multiplier |
+| `DELEGATE_VOICE_SPEED` | Unified voice speed multiplier for realtime voice + walkie TTS |
+| `REALTIME_MODEL` | Override realtime voice model |
+| `REALTIME_VOICE` | Override realtime voice |
 | `DELEGATE_MAX_AUDIO_BYTES` | Cap on per-message audio size |
 | `SESSION_HISTORY_LIMIT` | Max turns retained in the session |
+| `SESSION_IDLE_TIMEOUT_MINUTES` | Auto-finalize session after idle period (0 disables) |
 | `TIMEZONE` | Timezone string used in agent prompts |
 
 ### Twilio
@@ -67,12 +70,18 @@ Adaptive memory is configured through the in-app Memory settings and `runtime-da
 
 | Key | Purpose |
 |---|---|
-| `BROWSER_ENABLED` | `true` to register browser tools |
-| `COPILOT_GITHUB_TOKEN` / `GITHUB_PAT` | Token keys used internally. Configure these through Settings -> Browser (Copilot Sign-In Token) and Settings -> GitHub (GitHub Personal Access Token). |
+| `COPILOT_GITHUB_TOKEN` | Primary token used for Copilot browser tasks (set via Settings -> Copilot + Browser Control) |
+| `BROWSER_ENABLED` | Optional explicit override; `false` force-disables browser stack even if token is present |
 | `COPILOT_REMOTE_REPO` | Remote repo Copilot CLI should operate on |
 | `COPILOT_TIMEOUT_MS` | Per-task timeout |
 | `CODEX_CLI` | Path or flag for Codex CLI integration |
-| `VNC_PASSWORD` | VNC viewer password |
+| `VNC_PASSWORD` | Optional legacy override for internal VNC credential (normally generated in-process) |
+
+### GitHub tools
+
+| Key | Purpose |
+|---|---|
+| `GITHUB_PAT` | Token for GitHub repo/issue tools (separate from Copilot token) |
 
 ### Misc
 

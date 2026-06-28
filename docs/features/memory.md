@@ -45,3 +45,4 @@ You can see what your delegate remembers about you at any time:
 |---|---|
 | `GET /api/memories` | List stored memories |
 | `DELETE /api/memories/:id` | Remove a specific memory |
+| `GET /api/memories/insights` | Runtime diagnostics (dedup, store stats, recent memory runtime events) |

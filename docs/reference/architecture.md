@@ -42,6 +42,17 @@ user turn ──▶ base agent ──▶ answer
 
 Per-agent access is enforced by policies in `runtime-data/agent-policies.json` (tag + name allowlists).
 
+## Durable Copilot tasks
+
+Browser/Copilot execution is exposed as a durable task subsystem:
+
+- REST + SSE task API in `src/server/routes/copilotTasks.ts`
+- Runner/orchestration in `src/copilot/taskRunner.ts`
+- Persistent task/event store in `src/copilot/tasks.ts`
+- Task workdirs under `runtime-data/copilot-workdir/tasks/`
+
+This is intentionally separate from the single-turn chat path so long-running browser jobs can pause/resume without blocking the main conversation loop.
+
 ## Memory
 
 Two layers, plus a deduplicator and a real-time conversation bus that extracts memorable facts after each turn. See [Memory](../../features/memory/).

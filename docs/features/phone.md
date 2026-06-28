@@ -126,7 +126,7 @@ Caller ──▶ Twilio PSTN ──▶ GET/POST /twiml (TwiML response)
 
 - Handler: `src/session/call.ts`
 - TwiML template: `src/twiml.xml`
-- Barge-in guard: checks `isResponseActivelyStreaming()` before issuing `response.cancel`; see `[call] response.cancel` log lines if investigating cut-off issues
+- Barge-in: Realtime API handles interruption natively (`interrupt_response: true`); server-side logic focuses on playback buffer flush/suppression of stale deltas
 - Auth: `/twiml` is on the public path list (`INSTALL_PUBLIC_PATHS`) — no auth token required for Twilio to reach it
 
 Additional Twilio helper scripts:
