@@ -17,6 +17,7 @@
 import type { Application, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
+import { applySafeHtmlHeaders, renderMarkdownHtmlPage } from '../markdown';
 import {
   getTask,
   listTasks,
@@ -278,6 +279,21 @@ export function registerCopilotTasksRoutes(app: Application) {
       return res.status(413).json({ error: `file too large (${stat.size} bytes); use ?download=1` });
     }
     const ext = path.extname(abs).toLowerCase();
+    const renderMarkdown = String(req.query.render || '') === '1';
+    if (renderMarkdown && ext === '.md' && !req.query.download) {
+      try {
+        const content = fs.readFileSync(abs, 'utf8');
+        applySafeHtmlHeaders(res);
+        res.send(renderMarkdownHtmlPage({
+          title: path.basename(rel),
+          content,
+          timestamp: stat.mtimeMs || Date.now(),
+        }));
+        return;
+      } catch (err: any) {
+        return res.status(500).json({ error: err?.message || 'failed to render markdown' });
+      }
+    }
     const typeMap: Record<string, string> = {
       '.txt': 'text/plain; charset=utf-8',
       '.md': 'text/markdown; charset=utf-8',
