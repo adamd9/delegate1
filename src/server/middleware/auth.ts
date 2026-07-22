@@ -28,6 +28,16 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
+  // Preserve the originally-requested URL (GET navigations only) so /login can
+  // send the user back to their deep link after signing in. Only a same-origin
+  // relative path is carried; login.html re-validates it before redirecting
+  // (open-redirect guard).
+  const target = req.method === 'GET' ? req.originalUrl : '';
+  if (target && target !== '/' && !target.startsWith('/login')) {
+    res.redirect('/login?returnTo=' + encodeURIComponent(target));
+    return;
+  }
+
   res.redirect('/login');
 }
 

@@ -191,6 +191,16 @@
       errorMsg.style.display = 'none';
     }
 
+    // Only allow same-origin relative paths (single leading slash). Rejects
+    // protocol-relative (//host) and backslash tricks to prevent open redirects.
+    function safeReturnTo() {
+      try {
+        const rt = new URLSearchParams(window.location.search).get('returnTo') || '';
+        if (/^\/(?![\/\\])/.test(rt)) return rt;
+      } catch (e) {}
+      return '/';
+    }
+
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       clearError();
@@ -204,7 +214,7 @@
         });
 
         if (response.ok) {
-          window.location.href = '/';
+          window.location.href = safeReturnTo();
           return;
         }
 

@@ -32,6 +32,13 @@ import {
   CopilotTaskRow,
 } from '../../copilot/tasks';
 import type { GitSyncResult } from '../../browser';
+import { getEffectivePublicUrl } from '../../server/config/env';
+
+/** Build the public deep link to a task's detail page (live progress + outputs). */
+export function buildTaskUrl(taskId: string): string {
+  const base = getEffectivePublicUrl().replace(/\/$/, '');
+  return `${base}/tasks/${taskId}`;
+}
 
 // ---------------------------------------------------------------------------
 // Broadcast bridge: route legacy copilot.* and new copilot.task.* through a
@@ -128,6 +135,10 @@ export const copilotDispatchHandler: FunctionHandler = {
           type: 'string',
           description: 'Natural language description of the task to perform. Be specific about what you want accomplished. Becomes the task title.',
         },
+        notify: {
+          type: 'string',
+          description: "How the user wants the result delivered when the task finishes, e.g. 'sms', 'email', 'chat', or a specific address. Defaults to SMS if the user didn't state a preference. Recorded on the task so the completion notification can honor it — you no longer need to create a note for this.",
+        },
       },
       required: ['task'],
       additionalProperties: false,
@@ -135,11 +146,12 @@ export const copilotDispatchHandler: FunctionHandler = {
   },
 
   handler: async (
-    args: { task: string },
+    args: { task: string; notify?: string },
     addBreadcrumb?: (title: string, data?: any) => void,
   ): Promise<any> => {
     const task = String(args?.task || '').trim();
     if (!task) return { error: 'task is required' };
+    const notify = typeof args?.notify === 'string' && args.notify.trim() ? args.notify.trim() : null;
 
     // Preflight: Copilot token presence is the gate (browser stack follows).
     if (!isBrowserStackEnabled()) {
@@ -171,14 +183,18 @@ export const copilotDispatchHandler: FunctionHandler = {
       source: 'chat-agent',
       via: 'chat',
       originatingConversationId,
+      notify,
     });
     if (result.error) return { error: result.error };
 
+    const taskUrl = buildTaskUrl(result.task.id);
     return {
       status: 'dispatched',
       task_id: result.task.id,
       title: result.task.title,
-      message: `Task ${result.task.id} ("${result.task.title}") started. Use copilot_task_status with that id to check progress, or copilot_continue to add a follow-up instruction.`,
+      task_url: taskUrl,
+      notify,
+      message: `Task ${result.task.id} ("${result.task.title}") started. Share this link with the user so they can watch progress and read the outputs: ${taskUrl}. When it finishes you'll get a notification — deliver the result via the recorded preference (${notify || 'SMS by default'}) and include the link. Do NOT create a note for task tracking.`,
     };
   },
 };
@@ -214,6 +230,7 @@ export const copilotGetResultHandler: FunctionHandler = {
         status: 'running',
         task_id: active.taskId,
         task: t?.title || 'unknown',
+        task_url: buildTaskUrl(active.taskId),
         elapsedSeconds: elapsed,
         outputTail: (t?.last_summary || '').slice(-1200),
       };
@@ -229,6 +246,7 @@ export const copilotGetResultHandler: FunctionHandler = {
       status: t.status,
       task_id: t.id,
       task: t.title,
+      task_url: buildTaskUrl(t.id),
       needs_user_reason: t.needs_user_reason || undefined,
       completedAt: t.ended_at_ms ? new Date(t.ended_at_ms).toISOString() : undefined,
       output: t.last_summary || '',
@@ -340,10 +358,14 @@ export const copilotTaskStatusHandler: FunctionHandler = {
     }
     addBreadcrumb?.('copilot_task_status', { id: task.id, status: task.status });
     const summary = summarizeTask(task.id);
+    let notify: string | null = null;
+    try { const m = task.meta_json ? JSON.parse(task.meta_json) : {}; notify = m?.notify ?? null; } catch { /* ignore */ }
     return {
       task_id: task.id,
       title: task.title,
       status: task.status,
+      task_url: buildTaskUrl(task.id),
+      notify,
       copilot_session_id: task.copilot_session_id,
       turn_count: task.turn_count,
       created_at: new Date(task.created_at_ms).toISOString(),

@@ -1,15 +1,43 @@
 import type { Application, Request, Response } from 'express';
-import { getLastCompletedSession, getSessionOutput, markHookDelivered, setFallbackInjector } from '../../tools/handlers/copilotCli';
+import { getLastCompletedSession, getSessionOutput, markHookDelivered, setFallbackInjector, buildTaskUrl } from '../../tools/handlers/copilotCli';
+import { listTasks } from '../../copilot/tasks';
 import type { GitSyncResult } from '../../browser';
 import { injectMessage } from '../../services/agentBridge';
 
-function formatNotification(task: string, status: string, conversationId?: string, gitResult?: GitSyncResult): string {
+/**
+ * Resolve the most-recent task. Because the copilot runner holds a single-task
+ * lock, the latest row is the one that just finished — giving us its deep link
+ * and the delivery preference recorded at dispatch time.
+ */
+function resolveLatestTask(): { taskId?: string; taskUrl?: string; notifyPref?: string | null } {
+  try {
+    const recent = listTasks({ limit: 1 });
+    if (!recent.length) return {};
+    const t = recent[0];
+    let notifyPref: string | null = null;
+    try { const m = t.meta_json ? JSON.parse(t.meta_json) : {}; notifyPref = m?.notify ?? null; } catch { /* ignore */ }
+    return { taskId: t.id, taskUrl: buildTaskUrl(t.id), notifyPref };
+  } catch {
+    return {};
+  }
+}
+
+function formatNotification(opts: {
+  task: string;
+  status: string;
+  conversationId?: string;
+  gitResult?: GitSyncResult;
+  taskUrl?: string;
+  notifyPref?: string | null;
+}): string {
+  const { task, status, conversationId, gitResult, taskUrl, notifyPref } = opts;
   const statusLine = status === 'complete' ? 'completed successfully'
     : status === 'error' ? 'encountered an error'
     : status === 'timeout' ? 'timed out'
     : `finished (${status})`;
 
   const convRef = conversationId ? `\nConversation ID: ${conversationId}` : '';
+  const linkLine = taskUrl ? `\nTask link: ${taskUrl}` : '';
 
   let gitLine = '';
   if (gitResult) {
@@ -22,21 +50,22 @@ function formatNotification(task: string, status: string, conversationId?: strin
     }
   }
 
+  const pref = notifyPref && notifyPref.trim() ? notifyPref.trim() : 'none recorded — default to SMS';
+
   return (
     `[COPILOT TASK NOTIFICATION — this is NOT from the user]\n\n` +
     `A background task you dispatched has ${statusLine}.\n` +
-    `Task: "${task}"${convRef}${gitLine}\n\n` +
-    `IMPORTANT: Before responding, check if there are any notes for this conversation ID that contain task context or user preferences for how to handle the result.\n\n` +
-    `You can use the \`list_notes\` tool to search for notes with the conversation ID or task summary, and the \`get_note\` tool to read them.\n\n` +
-      `Once you\'ve checked the task context (if any), use the \`copilot_status\` tool to retrieve the full output, including any published GitHub URL reported by the agent.\n` +
-    `If the note has a preference (email, Slack, etc.), honor it. If no preference is recorded, default to SMS. After retrieving the output, complete any originally requested follow-up action instead of only acknowledging completion.`
+    `Task: "${task}"${convRef}${linkLine}${gitLine}\n\n` +
+    `Delivery preference: ${pref}.\n\n` +
+    `Use the \`copilot_status\` tool to retrieve the full output. Then deliver the result to the user via the recorded preference (default SMS if none), and INCLUDE the task link so they can open live progress and read any output files. Complete any originally requested follow-up action — don't just acknowledge completion.`
   );
 }
 
 export function registerCopilotRoutes(app: Application) {
   // Wire the fallback injector so the close handler can inject a notification if hooks don't fire
   setFallbackInjector((task, status, _stdout, _stderr, gitResult) => {
-    const message = formatNotification(task, status, undefined, gitResult);
+    const { taskUrl, notifyPref } = resolveLatestTask();
+    const message = formatNotification({ task, status, gitResult, taskUrl, notifyPref });
     console.log(`[copilot-callback] Fallback notification (status=${status}, git=${gitResult?.status || 'n/a'})`);
     injectMessage({ message, channel: 'copilot' }).catch((err) => {
       console.error('[copilot-callback] Fallback notification failed:', err);
@@ -71,8 +100,8 @@ export function registerCopilotRoutes(app: Application) {
             const sess = require('../../session/state').session;
             conversationId = (sess as any).currentConversationId as string | undefined;
           } catch {}
-
-          const message = formatNotification(task, reason, conversationId, gitResult);
+          const { taskUrl, notifyPref } = resolveLatestTask();
+          const message = formatNotification({ task, status: reason, conversationId, gitResult, taskUrl, notifyPref });
           await injectMessage({ message, channel: 'copilot' });
 
           console.log(`[copilot-callback] sessionEnd notification sent (reason=${reason})`);
@@ -93,14 +122,16 @@ export function registerCopilotRoutes(app: Application) {
             conversationId = (sess as any).currentConversationId as string | undefined;
           } catch {}
 
+          const { taskUrl, notifyPref } = resolveLatestTask();
           const convRef = conversationId ? `\nConversation ID: ${conversationId}` : '';
+          const linkLine = taskUrl ? `\nTask link: ${taskUrl}` : '';
+          const pref = notifyPref && notifyPref.trim() ? notifyPref.trim() : 'none recorded — default to SMS';
           const message =
             `[COPILOT TASK NOTIFICATION — this is NOT from the user]\n\n` +
             `A background task encountered an error: ${errorName}: ${errorMsg}\n` +
-            `Task: "${task}"${convRef}\n\n` +
-            `IMPORTANT: Before responding, check if there are any notes for this conversation ID that contain task context or user preferences.\n\n` +
-            `You can use the \`list_notes\` tool to search by conversation ID, and \`get_note\` to read task details.\n\n` +
-            `Once checked, use \`copilot_status\` to see any available output. If the note has a preference, honor it; default to SMS if no preference is recorded. Inform the user about the error and, if appropriate, retry or complete any originally requested follow-up actions with whatever results are available.`;
+            `Task: "${task}"${convRef}${linkLine}\n\n` +
+            `Delivery preference: ${pref}.\n\n` +
+            `Use \`copilot_status\` to see any available output. Inform the user about the error via the recorded preference (default SMS), include the task link, and if appropriate retry or complete any originally requested follow-up actions with whatever results are available.`;
 
           await injectMessage({ message, channel: 'copilot' });
 

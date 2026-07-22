@@ -208,6 +208,15 @@
       background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
       width: 90vw; max-width: 900px; height: 80vh; display: flex; flex-direction: column; overflow: hidden;
     }
+    /* Full-screen reader mode — fills the viewport (mobile-friendly; dvh accounts for browser chrome). */
+    .modal-panel.fullscreen {
+      width: 100vw; max-width: none; height: 100vh; height: 100dvh; border-radius: 0; border: 0;
+    }
+    .modal-panel.fullscreen .modal-body { font-size: 14px; padding: 16px 18px; }
+    /* On phones the modal behaves like a bottom sheet filling most of the screen. */
+    @media (max-width: 640px) {
+      .modal-panel { width: 100vw; max-width: none; height: 92vh; height: 92dvh; border-radius: 12px 12px 0 0; }
+    }
     .modal-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
     .modal-title { flex: 1; font-weight: 600; font-size: 13px; font-family: var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .modal-body { flex: 1; overflow: auto; padding: 14px 16px; font-family: var(--font); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
@@ -296,6 +305,7 @@
     <div class="modal-panel">
       <div class="modal-header">
         <span class="modal-title" id="file-modal-title">file</span>
+        <button class="hdr-btn" id="file-modal-fs" title="Toggle full screen">⤢ full screen</button>
         <a class="hdr-btn" id="file-modal-download" target="_blank">↓ download</a>
         <button class="hdr-btn" id="file-modal-close">close</button>
       </div>
@@ -706,6 +716,19 @@
   const fileModalTitle = document.getElementById('file-modal-title');
   const fileModalBody = document.getElementById('file-modal-body');
   const fileModalDownload = document.getElementById('file-modal-download');
+  const fileModalPanel = fileModal.querySelector('.modal-panel');
+  const fileModalFs = document.getElementById('file-modal-fs');
+
+  // Full-screen reader for any output file (results are non-deterministic, so this
+  // works for markdown, images, or plain text). State persists across opens so a
+  // user reading on mobile stays full-screen when they open the next file.
+  function setFileModalFullscreen(on) {
+    fileModalPanel.classList.toggle('fullscreen', on);
+    fileModalFs.textContent = on ? '⤡ exit full screen' : '⤢ full screen';
+  }
+  fileModalFs.addEventListener('click', () => {
+    setFileModalFullscreen(!fileModalPanel.classList.contains('fullscreen'));
+  });
 
   async function openFile(p) {
     fileModalTitle.textContent = p;
@@ -743,6 +766,9 @@
   }
   document.getElementById('file-modal-close').addEventListener('click', () => fileModal.classList.remove('open'));
   fileModal.addEventListener('click', (e) => { if (e.target === fileModal) fileModal.classList.remove('open'); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && fileModal.classList.contains('open')) fileModal.classList.remove('open');
+  });
 
   // ── Pane section toggles ──
   document.querySelectorAll('.pane-section .pane-header').forEach(h => {

@@ -227,6 +227,7 @@ export async function createTaskWithFirstTurn(opts: {
   source?: string;
   via?: string;
   originatingConversationId?: string | null;
+  notify?: string | null;
 }): Promise<{ task: CopilotTaskRow; error?: string }> {
   const preflight = preflightChecks();
   if (preflight.error) return { task: null as any, error: preflight.error };
@@ -241,7 +242,7 @@ export async function createTaskWithFirstTurn(opts: {
     status: 'running',
     workdir,
     originating_conversation_id: opts.originatingConversationId ?? null,
-    meta: { source: opts.source || 'chat-agent', via: opts.via || 'chat' },
+    meta: { source: opts.source || 'chat-agent', via: opts.via || 'chat', notify: opts.notify ?? null },
   });
 
   emit({ type: 'copilot.task.created', taskId: id, task });

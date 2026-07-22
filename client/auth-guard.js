@@ -11,12 +11,20 @@
     return;
   }
 
+  // Redirect to login while preserving the current deep link so the user is
+  // returned here after signing in.
+  function goLogin() {
+    const here = window.location.pathname + window.location.search;
+    const q = here && here !== '/' ? '?returnTo=' + encodeURIComponent(here) : '';
+    window.location.href = LOGIN_PATH + q;
+  }
+
   // Wrap fetch to intercept 401 responses
   const originalFetch = window.fetch;
   window.fetch = async function(...args) {
     const response = await originalFetch.apply(this, args);
     if (response.status === 401) {
-      window.location.href = LOGIN_PATH;
+      goLogin();
     }
     return response;
   };
@@ -31,7 +39,7 @@
   XMLHttpRequest.prototype.send = function(...args) {
     this.addEventListener('load', function() {
       if (this.status === 401) {
-        window.location.href = LOGIN_PATH;
+        goLogin();
       }
     });
     return originalXHRSend.apply(this, args);
@@ -44,7 +52,7 @@
       if (res.ok) {
         const data = await res.json();
         if (!data.authenticated) {
-          window.location.href = LOGIN_PATH;
+          goLogin();
         }
       }
     } catch (e) {
