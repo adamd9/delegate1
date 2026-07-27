@@ -21,7 +21,7 @@ export enum ThoughtFlowStepType {
 const isDist = __dirname.includes(`${sep}dist${sep}`);
 const baseRoot = isDist ? join(__dirname, '..', '..', '..') : join(__dirname, '..', '..');
 const BASE_DIR = join(baseRoot, 'runtime-data', 'thoughtflow');
-const SESSION_IDLE_TIMEOUT_MINUTES_DEFAULT = 60;
+const SESSION_IDLE_TIMEOUT_MINUTES_DEFAULT = 30;
 
 let inactivityTimer: NodeJS.Timeout | undefined;
 let inactivityTimerSessionId: string | undefined;

@@ -1,7 +1,7 @@
 import { RawData, WebSocket } from "ws";
 import { getDefaultAgent, getAgent, FunctionHandler } from "../agentConfigs";
 import { contextInstructions, Context, getTimeContext } from "../agentConfigs/context";
-import { ensureSession, endSession, appendEvent } from "../observability/thoughtflow";
+import { ensureSession, appendEvent } from "../observability/thoughtflow";
 import { chatClients, logsClients } from "../ws/clients";
 import {
   session,
@@ -125,9 +125,6 @@ export function establishBrowserCallSocket(ws: WebSocket, openAIApiKey: string) 
     // and block the next session from initializing.
     try {
       closeAllConnections();
-    } catch {}
-    try {
-      endSession();
     } catch {}
   });
 }
@@ -273,9 +270,6 @@ export function processBrowserCallEvent(data: RawData) {
       console.info("\ud83c\udf10 Browser call closed");
       stopBrowserSessionRecycleLoop();
       closeAllConnections();
-      try {
-        endSession();
-      } catch {}
       break;
     }
   }

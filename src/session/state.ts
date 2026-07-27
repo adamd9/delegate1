@@ -114,7 +114,15 @@ export function cleanupConnection(ws?: WebSocket) {
 export function closeModel() {
   cleanupConnection(session.modelConn);
   session.modelConn = undefined;
-  if (!session.twilioConn && !session.browserConn && !session.frontendConn) session = {};
+  if (!session.twilioConn && !session.browserConn && !session.frontendConn) {
+    // Preserve session-continuity state so a voice reconnect within the inactivity
+    // window resumes the same session and conversation thread rather than starting fresh.
+    const thoughtflow = (session as any).thoughtflow;
+    const currentConversationId = (session as any).currentConversationId;
+    session = {};
+    if (thoughtflow !== undefined) (session as any).thoughtflow = thoughtflow;
+    if (currentConversationId !== undefined) (session as any).currentConversationId = currentConversationId;
+  }
 }
 
 export function closeAllConnections() {

@@ -6,7 +6,7 @@ import { contextInstructions, Context, getTimeContext, type Channel } from "../a
 import { getSchemasForAgent } from "../tools/registry";
 import { session, parseMessage, jsonSend, isOpen, closeAllConnections, closeModel, type ConversationItem } from "./state";
 import { HOLD_MUSIC_ULAW_BASE64, HOLD_MUSIC_DURATION_MS } from "../assets/holdMusic";
-import { appendEvent, ThoughtFlowStepType, ensureSession, endSession } from "../observability/thoughtflow";
+import { appendEvent, ThoughtFlowStepType, ensureSession } from "../observability/thoughtflow";
 import { addConversationEvent } from "../db/sqlite";
 import { chatClients, logsClients } from "../ws/clients";
 import { getChatVoiceConfig } from "../voice/voiceConfig";
@@ -361,24 +361,12 @@ function startHoldMusicLoop() {
   if (session.browserConn) sendBrowser();
 }
 
-function finalizeRun(status: 'error' | undefined = undefined) {
-  // For voice calls, finalize the sticky conversation when the call ends
-  try {
-    ensureSession();
-    const conversationId = (session as any).currentConversationId as string | undefined;
-    if (conversationId) {
-      const event: any = {
-        type: 'conversation.completed',
-        conversation_id: conversationId,
-        ended_at: new Date().toISOString(),
-      };
-      if (status) event.status = status;
-      appendEvent(event);
-    }
-  } catch {}
-  // Clear in-flight turn and sticky conversation id at end of call
+function finalizeRun() {
+  // Clear only in-flight turn state so the session and conversation stay open.
+  // The inactivity timer (SESSION_IDLE_TIMEOUT_MINUTES) is responsible for
+  // finalizing the conversation/session when the user doesn't reconnect in time.
+  // Preserving currentConversationId lets a reconnecting call resume the same thread.
   session.currentRequest = undefined;
-  try { (session as any).currentConversationId = undefined; } catch {}
   try { (session as any).lastAssistantStepId = undefined; } catch {}
   try { (session as any).lastUserStepId = undefined; } catch {}
 }
@@ -393,7 +381,7 @@ export function establishCallSocket(ws: WebSocket, openAIApiKey: string) {
     try {
       console.error('[ws][twilio-call] websocket error', err);
     } catch {}
-    finalizeRun('error');
+    finalizeRun();
     stopTwilioSessionRecycleLoop();
     try {
       ws.close();
@@ -413,9 +401,6 @@ export function establishCallSocket(ws: WebSocket, openAIApiKey: string) {
     // call silent. Mirror the media-stream close cleanup here for that case.
     try {
       closeAllConnections();
-    } catch {}
-    try {
-      endSession();
     } catch {}
   });
   // Cleanup handled in server.ts on close
@@ -475,7 +460,6 @@ export function processRealtimeCallEvent(data: RawData) {
       finalizeRun();
       stopTwilioSessionRecycleLoop();
       closeAllConnections();
-      try { endSession(); } catch {}
       break;
   }
 }
@@ -561,7 +545,7 @@ export function establishRealtimeModelConnection(options?: { skipGreeting?: bool
       }
       (session as any).lastModelErrorAtMs = Date.now();
     } catch {}
-    finalizeRun('error');
+    finalizeRun();
     closeModel();
   });
   session.modelConn.on("close", (code: number, reason: Buffer) => {
@@ -1140,7 +1124,7 @@ export function processRealtimeModelEvent(
     }
   } catch (err) {
     console.error('Error processing realtime model event:', err);
-    finalizeRun('error');
+    finalizeRun();
   }
 }
 
@@ -1172,7 +1156,7 @@ async function handleFunctionCall(item: { name: string; arguments: string; call_
     if (convId && stepId) {
       appendEvent({ type: 'step.completed', conversation_id: convId, step_id: stepId, payload: { error: err?.message || String(err) }, timestamp: Date.now() });
     }
-    finalizeRun('error');
+    finalizeRun();
     return JSON.stringify({ error: `Error running function ${item.name}: ${err?.message || 'unknown'}` });
   } finally {
     if (isWebSearchCall) {
