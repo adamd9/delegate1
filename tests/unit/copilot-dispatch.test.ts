@@ -297,6 +297,19 @@ async function main() {
     assert.ok(id.length < 40, `id should be short, got: ${id} (${id.length})`);
   });
 
+  await test('Copilot session names omit quote characters', async () => {
+    const { toCopilotSessionName } = require('../../src/copilot/taskRunner');
+    assert.strictEqual(
+      toCopilotSessionName(`Investigate "Southern Handyman Solutions" and Adam's notes`),
+      'Investigate Southern Handyman Solutions and Adams notes',
+    );
+    assert.strictEqual(
+      toCopilotSessionName('Review “quoted” and ‘apostrophised’ names'),
+      'Review quoted and apostrophised names',
+    );
+    assert.strictEqual(toCopilotSessionName(`"'“”‘’`, 'Task abc'), 'Task abc');
+  });
+
   await test('insertTask + getTask roundtrip', async () => {
     const { insertTask, getTask, generateTaskId } = require('../../src/copilot/tasks');
     const id = generateTaskId('roundtrip-test');

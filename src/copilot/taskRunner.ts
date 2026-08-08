@@ -217,6 +217,16 @@ function wrapPrompt(prompt: string, source: string, via?: string): string {
   return `[FROM: ${source}${viaPart}, at: ${at}]\n${prompt}`;
 }
 
+export function toCopilotSessionName(title: string, fallback = 'Untitled task'): string {
+  const sanitized = title
+    .replace(/["'“”‘’]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60)
+    .trim();
+  return sanitized || fallback.slice(0, 60);
+}
+
 // ---------------------------------------------------------------------------
 // Public API: create a task + first turn (used by copilot_dispatch)
 // ---------------------------------------------------------------------------
@@ -405,7 +415,7 @@ async function processNextTurn(): Promise<void> {
   if (task.copilot_session_id) {
     baseArgs.push('--resume', task.copilot_session_id);
   } else {
-    baseArgs.push('-n', task.title.slice(0, 60));
+    baseArgs.push('-n', toCopilotSessionName(task.title, `Task ${chosenTaskId}`));
   }
   baseArgs.push('-p', wrappedPrompt, '--no-ask-user', '--yolo', '--agent=delegate-browser');
 
