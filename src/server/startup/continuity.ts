@@ -47,6 +47,27 @@ export function resumeOpenTimelineOnStartup(): void {
         };
       });
 
+    const capsuleRow = database.prepare(`
+      SELECT payload_json
+      FROM conversation_events
+      WHERE conversation_id = ? AND kind = 'context_capsule'
+      ORDER BY seq DESC
+      LIMIT 1
+    `).get(conversation.id) as { payload_json: string } | undefined;
+    if (capsuleRow) {
+      const capsule = parsePayload(capsuleRow.payload_json);
+      if (typeof capsule.text === 'string' && capsule.text.trim()) {
+        session.contextCapsule = {
+          text: capsule.text.trim(),
+          throughTimestampMs: Number(capsule.throughTimestampMs) || 0,
+          updatedAtMs: Number(capsule.updatedAtMs) || Date.now(),
+          source: capsule.source === 'responses_compaction' || capsule.source === 'realtime_threshold'
+            ? capsule.source
+            : 'token_threshold',
+        };
+      }
+    }
+
     for (const row of rows) {
       if (row.kind === 'conversation_checkpoint') break;
       if (row.kind === 'activity_span_started') {
@@ -57,7 +78,7 @@ export function resumeOpenTimelineOnStartup(): void {
       }
     }
     database.prepare("UPDATE sessions SET status = 'open', ended_at = NULL WHERE id = ?").run(conversation.session_id);
-    console.log(`[startup] Resumed open timeline conversation=${conversation.id} session=${conversation.session_id} turns=${session.conversationHistory.length}`);
+    console.log(`[startup] Resumed open timeline conversation=${conversation.id} session=${conversation.session_id} turns=${session.conversationHistory.length} capsule=${Boolean(session.contextCapsule)}`);
   } catch (error: any) {
     console.warn('[startup] Failed to resume open timeline:', error?.message || error);
   }

@@ -16,6 +16,14 @@ import type { ContextTurn } from '../memory';
 import { getMemoryConfig } from '../memory/memoryConfig';
 import { configService } from '../config';
 import { ensureActivitySpan } from '../timeline/activity';
+import { createOpenAIClient } from '../services/openaiClient';
+import {
+  buildContinuityContext,
+  getRealtimeTruncation,
+  normalizeTokenUsage,
+  shouldRefreshContextCapsule,
+  writeContextCapsule,
+} from './contextPolicy';
 
 
 // Accumulator for assistant voice transcript text by item id (server logs only)
@@ -30,6 +38,63 @@ const HOLD_MUSIC_LOOP_INTERVAL_MS = HOLD_MUSIC_DURATION_MS + 250;
 const TWILIO_SESSION_RECYCLE_INTERVAL_MS = 90_000;
 const TWILIO_SESSION_RECYCLE_DEFER_MS = 5_000;
 const TWILIO_SESSION_RECYCLE_IDLE_GRACE_MS = 4_000;
+
+function broadcastVoiceContextActivity(event: Record<string, unknown>): void {
+  for (const ws of chatClients) {
+    if (isOpen(ws)) jsonSend(ws, { ...event, timestamp: Date.now() });
+  }
+}
+
+function maybeRefreshRealtimeCapsule(): void {
+  const usage = session.latestModelUsage?.channel === 'voice' ? session.latestModelUsage : null;
+  if (!shouldRefreshContextCapsule(session, usage, false)) return;
+  const conversationId = session.currentConversationId;
+  if (!conversationId) return;
+  const history = [...(session.conversationHistory || [])];
+  const throughTimestampMs = history.reduce((latest, item) => Math.max(latest, item.timestamp), 0);
+  session.contextCompactionInFlight = true;
+  broadcastVoiceContextActivity({
+    type: 'context.capsule', phase: 'started', conversation_id: conversationId,
+    channel: 'voice', source: 'realtime_threshold',
+  });
+  try {
+    if (!session.openaiClient) session.openaiClient = createOpenAIClient();
+  } catch (error: any) {
+    session.contextCompactionInFlight = false;
+    console.warn('[context] Could not initialize capsule writer:', error?.message || error);
+    return;
+  }
+  void writeContextCapsule({
+    createResponse: body => session.openaiClient!.responses.create(body),
+    model: getAgent('base').textModel || getAgent('base').model || 'gpt-5-mini',
+    history,
+  }).then(result => {
+    if (!result.text) return;
+    session.contextCapsule = {
+      text: result.text,
+      throughTimestampMs,
+      updatedAtMs: Date.now(),
+      source: 'realtime_threshold',
+    };
+    addConversationEvent({
+      conversation_id: conversationId,
+      kind: 'context_capsule',
+      payload: { ...session.contextCapsule, channel: 'voice', usage: result.usage },
+    });
+    broadcastVoiceContextActivity({
+      type: 'context.capsule', phase: 'completed', conversation_id: conversationId,
+      channel: 'voice', source: 'realtime_threshold', throughTimestampMs,
+    });
+  }).catch(error => {
+    console.warn('[context] Failed to refresh Realtime continuity capsule:', error?.message || error);
+    broadcastVoiceContextActivity({
+      type: 'context.capsule', phase: 'failed', conversation_id: conversationId,
+      channel: 'voice', source: 'realtime_threshold',
+    });
+  }).finally(() => {
+    session.contextCompactionInFlight = false;
+  });
+}
 
 function isServerVadPeriodicSessionRecycleEnabled(): boolean {
   const raw = String(
@@ -195,7 +260,8 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
     currentTime,
     timeZone,
   };
-  const agentInstructions = [contextInstructions(context), baseInstructions].join('\n');
+  const continuityContext = buildContinuityContext(session);
+  const agentInstructions = [continuityContext + contextInstructions(context), baseInstructions].join('\n');
   const { turnDetection: runtimeTurnDetection } = getVoiceTuningForCall();
   
   // semantic_vad only accepts { type, eagerness?, interrupt_response?, create_response? };
@@ -236,6 +302,7 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
     type: "realtime" as const,
     output_modalities: ["audio"] as const,
     instructions: agentInstructions,
+    truncation: getRealtimeTruncation(),
     tools: functionSchemas,
     audio: {
       input: {
@@ -494,6 +561,7 @@ export function establishRealtimeModelConnection(options?: { skipGreeting?: bool
   );
 
   session.modelConn.on("open", () => {
+    session.previousResponseId = undefined;
     const sessionConfig = buildRealtimeSessionConfig('voice', 'g711_ulaw');
 
     // If this is an agent-initiated outbound call, inject recent conversation as context
@@ -920,6 +988,21 @@ export function processRealtimeModelEvent(
           inboundFramesSinceResp: (session as any)._inboundAudioFramesSinceResponseStart,
         });
       } catch {}
+      const usage = normalizeTokenUsage(event.response?.usage);
+      const conversationId = session.currentConversationId;
+      if (usage && conversationId) {
+        session.latestModelUsage = { channel: 'voice', ...usage, recordedAtMs: Date.now() };
+        addConversationEvent({
+          conversation_id: conversationId,
+          kind: 'model_usage',
+          payload: { channel: 'voice', protocol: 'realtime', response_id: event.response?.id, ...usage },
+        });
+        broadcastVoiceContextActivity({
+          type: 'context.usage', conversation_id: conversationId, channel: 'voice',
+          protocol: 'realtime', response_id: event.response?.id, ...usage,
+        });
+        maybeRefreshRealtimeCapsule();
+      }
       break;
     }
     case "response.output_item.done": {

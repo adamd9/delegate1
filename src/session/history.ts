@@ -155,6 +155,21 @@ export function mapDbEventToUiEvent(row: any, convId: string, sessionId: string,
     out.push({ type: 'memory.miss', ...(replay ? { replay: true } : {}), timestamp: ts });
   } else if (kind === 'memory_stored') {
     out.push({ type: 'memory.stored', ...(replay ? { replay: true } : {}), facts: payload.facts, channel: payload.channel, timestamp: ts });
+  } else if (kind === 'model_usage') {
+    out.push({ type: 'context.usage', ...(replay ? { replay: true } : {}), conversation_id: convId, ...payload, timestamp: ts });
+  } else if (kind === 'context_compacted') {
+    out.push({ type: 'context.compacted', ...(replay ? { replay: true } : {}), conversation_id: convId, ...payload, timestamp: ts });
+  } else if (kind === 'context_capsule') {
+    out.push({
+      type: 'context.capsule',
+      phase: 'completed',
+      ...(replay ? { replay: true } : {}),
+      conversation_id: convId,
+      channel: payload.channel,
+      source: payload.source,
+      throughTimestampMs: payload.throughTimestampMs,
+      timestamp: ts,
+    });
   } else if (kind === 'conversation_checkpoint') {
     out.push({
       type: 'timeline.checkpoint',

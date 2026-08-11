@@ -58,6 +58,21 @@ export interface Session {
   openAIApiKey?: string;
   conversationHistory?: ConversationItem[];
   previousResponseId?: string; // For Responses API conversation tracking
+  contextCapsule?: {
+    text: string;
+    throughTimestampMs: number;
+    updatedAtMs: number;
+    source: 'responses_compaction' | 'token_threshold' | 'realtime_threshold';
+  };
+  contextCompactionInFlight?: boolean;
+  latestModelUsage?: {
+    channel: Channel;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    cachedTokens: number;
+    recordedAtMs: number;
+  };
   // Sticky conversation tracking for web chat: reuse an open conversation until explicitly finalized
   currentConversationId?: string;
   // Current collapsible activity burst within the long-lived conversation timeline.
@@ -126,6 +141,9 @@ export function closeModel() {
       currentActivitySpanKind: session.currentActivitySpanKind,
       conversationHistory: session.conversationHistory,
       previousResponseId: session.previousResponseId,
+      contextCapsule: session.contextCapsule,
+      contextCompactionInFlight: session.contextCompactionInFlight,
+      latestModelUsage: session.latestModelUsage,
       lastAssistantStepId: session.lastAssistantStepId,
       lastUserStepId: session.lastUserStepId,
     };

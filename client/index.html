@@ -1269,6 +1269,49 @@ function handleEvent(event) {
       break;
     }
 
+    case 'context.usage': {
+      const total = Number(event.totalTokens || 0).toLocaleString();
+      const input = Number(event.inputTokens || 0).toLocaleString();
+      const cached = Number(event.cachedTokens || 0).toLocaleString();
+      addBreadcrumb(`Context usage: ${total} tokens`, {
+        _innerPlane: true,
+        operation: 'context.usage',
+        protocol: event.protocol,
+        channel: event.channel,
+        input_tokens: input,
+        cached_tokens: cached,
+        output_tokens: Number(event.outputTokens || 0).toLocaleString(),
+      }, event.replay === true, event.timestamp);
+      break;
+    }
+
+    case 'context.compacted': {
+      addBreadcrumb('Model context compacted', {
+        _innerPlane: true,
+        operation: 'context.compact',
+        phase: 'completed',
+        protocol: event.protocol,
+        channel: event.channel,
+      }, event.replay === true, event.timestamp);
+      break;
+    }
+
+    case 'context.capsule': {
+      const labels = {
+        started: 'Continuity capsule refresh started',
+        completed: 'Continuity capsule refreshed',
+        failed: 'Continuity capsule refresh failed',
+      };
+      addBreadcrumb(labels[event.phase] || 'Continuity capsule activity', {
+        _innerPlane: true,
+        operation: 'context.capsule',
+        phase: event.phase,
+        source: event.source,
+        channel: event.channel,
+      }, event.replay === true, event.timestamp);
+      break;
+    }
+
     case 'inner.signal': {
       const signal = event.signal || {};
       addBreadcrumb(`Inner context queued: ${signal.kind || 'event'}`, {
@@ -1600,7 +1643,7 @@ function renderItem(item, prepend) {
       el.innerHTML = `
         <span class="tool-ev-icon">▸</span>
         <div class="tool-ev-body">
-          <div class="tool-ev-title">${esc(item.title)}</div>
+          <div class="tool-ev-title">${item.data?._innerPlane ? '<span class="inner-plane-tag">inner plane</span>' : ''}${esc(item.title)}</div>
           ${dataStr ? `<div class="tool-ev-data">${esc(dataStr)}</div>` : ''}
         </div>
         <span class="tool-ev-ts">${esc(item.ts)}</span>

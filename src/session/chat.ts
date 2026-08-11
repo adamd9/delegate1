@@ -23,6 +23,14 @@ import { getMemoryConfig } from '../memory/memoryConfig';
 import { formatInnerContext } from '../innerContext/format';
 import { SqliteInnerSignalStore } from '../innerContext/store';
 import { ensureActivitySpan, closeActivitySpan } from '../timeline/activity';
+import {
+  buildContinuityContext,
+  getResponsesContextManagement,
+  normalizeTokenUsage,
+  responseContainsCompaction,
+  shouldRefreshContextCapsule,
+  writeContextCapsule,
+} from './contextPolicy';
 
 const innerSignalStore = new SqliteInnerSignalStore();
 
@@ -312,6 +320,12 @@ export type ChatMetadata = {
   [key: string]: unknown;
 };
 
+function broadcastContextActivity(chatClients: Set<WebSocket>, event: Record<string, unknown>): void {
+  for (const ws of chatClients) {
+    if (isOpen(ws)) jsonSend(ws, { ...event, timestamp: Date.now() });
+  }
+}
+
 export async function handleTextChatMessage(
   content: string,
   chatClients: Set<WebSocket>,
@@ -351,6 +365,96 @@ export async function handleTextChatMessage(
     if (isNewConversation) {
       appendEvent({ type: 'conversation.started', conversation_id: conversationId, request_id: requestId, channel, started_at: new Date().toISOString() });
     }
+    let responseCompactedThisTurn = false;
+    const createContextManagedResponse = async (body: any) => {
+      const response = await session.openaiClient!.responses.create({
+        ...body,
+        context_management: getResponsesContextManagement(),
+      });
+      const usage = normalizeTokenUsage(response.usage);
+      const compacted = responseContainsCompaction(response);
+      responseCompactedThisTurn ||= compacted;
+      if (usage) {
+        session.latestModelUsage = { channel, ...usage, recordedAtMs: Date.now() };
+        addConversationEvent({
+          conversation_id: conversationId,
+          kind: 'model_usage',
+          payload: { channel, protocol: 'responses', response_id: response.id, ...usage },
+        });
+        broadcastContextActivity(chatClients, {
+          type: 'context.usage',
+          conversation_id: conversationId,
+          channel,
+          protocol: 'responses',
+          response_id: response.id,
+          ...usage,
+        });
+      }
+      if (compacted) {
+        addConversationEvent({
+          conversation_id: conversationId,
+          kind: 'context_compacted',
+          payload: { channel, protocol: 'responses', response_id: response.id },
+        });
+        broadcastContextActivity(chatClients, {
+          type: 'context.compacted',
+          conversation_id: conversationId,
+          channel,
+          protocol: 'responses',
+          response_id: response.id,
+        });
+      }
+      return response;
+    };
+    const maybeRefreshCapsule = () => {
+      const usage = session.latestModelUsage && session.latestModelUsage.channel === channel
+        ? session.latestModelUsage
+        : null;
+      if (!shouldRefreshContextCapsule(session, usage, responseCompactedThisTurn)) return;
+      const history = [...(session.conversationHistory || [])];
+      const throughTimestampMs = history.reduce((latest, item) => Math.max(latest, item.timestamp), 0);
+      const source = responseCompactedThisTurn ? 'responses_compaction' as const : 'token_threshold' as const;
+      session.contextCompactionInFlight = true;
+      broadcastContextActivity(chatClients, {
+        type: 'context.capsule',
+        phase: 'started',
+        conversation_id: conversationId,
+        channel,
+        source,
+      });
+      void writeContextCapsule({
+        createResponse: body => session.openaiClient!.responses.create(body),
+        model: getAgent('base').textModel || getAgent('base').model || 'gpt-5-mini',
+        history,
+      }).then(result => {
+        if (!result.text) return;
+        session.contextCapsule = { text: result.text, throughTimestampMs, updatedAtMs: Date.now(), source };
+        addConversationEvent({
+          conversation_id: conversationId,
+          kind: 'context_capsule',
+          payload: { ...session.contextCapsule, channel, usage: result.usage },
+        });
+        broadcastContextActivity(chatClients, {
+          type: 'context.capsule',
+          phase: 'completed',
+          conversation_id: conversationId,
+          channel,
+          source,
+          throughTimestampMs,
+        });
+      }).catch(error => {
+        console.warn('[context] Failed to refresh continuity capsule:', error?.message || error);
+        broadcastContextActivity(chatClients, {
+          type: 'context.capsule',
+          phase: 'failed',
+          conversation_id: conversationId,
+          channel,
+          source,
+        });
+      }).finally(() => {
+        session.contextCompactionInFlight = false;
+      });
+    };
     ensureActivitySpan(conversationId, isInnerContext ? 'inner' : 'user', channel);
     const userStepId = `${isInnerContext ? 'step_inner' : 'step_user'}_${requestId}`;
     // Link user turn to the most recent assistant message if available to preserve sub-threading
@@ -502,13 +606,19 @@ export async function handleTextChatMessage(
     }
     const memoriesPrefix = memories ? `[Retrieved memories from past conversations — use these facts when relevant to the user's query]\n${memories}\n\n` : '';
     const innerContextPrefix = innerContextText ? `${innerContextText}\n\n` : '';
-    const priorTurns = !isInternal && historyTurns.length > 0 && historyTurns[historyTurns.length - 1]?.role === 'user'
-      ? historyTurns.slice(0, -1)
-      : historyTurns;
-    const recentTimelineContext = !session.previousResponseId && priorTurns.length
-      ? `[Recent conversation timeline — continuity context, not new user input]\n${priorTurns.slice(-8).map(turn => `${turn.role === 'user' ? 'User' : 'Assistant'}: ${turn.text.slice(0, 800)}`).join('\n')}\n\n`
+    const priorHistory = !isInternal && session.conversationHistory?.at(-1)?.type === 'user'
+      ? session.conversationHistory.slice(0, -1)
+      : session.conversationHistory;
+    const priorChannel = priorHistory
+      ?.filter((item): item is Extract<typeof item, { type: 'user' | 'assistant' }> =>
+        item.type === 'user' || item.type === 'assistant'
+      )
+      .at(-1)?.channel;
+    const needsContinuityContext = !session.previousResponseId || priorChannel === 'voice';
+    const continuityContext = needsContinuityContext
+      ? buildContinuityContext({ ...session, conversationHistory: priorHistory })
       : '';
-    const instructions = [innerContextPrefix + recentTimelineContext + memoriesPrefix + contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
+    const instructions = [innerContextPrefix + continuityContext + memoriesPrefix + contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
     // ThoughtFlow snapshots for long-lived prompt inputs (Approach B)
     const policyHash = Buffer.from(baseInstructions, 'utf8').toString('base64').slice(0, 12);
     const toolsHash = Buffer.from(JSON.stringify(functionSchemas), 'utf8').toString('base64').slice(0, 12);
@@ -594,7 +704,7 @@ export async function handleTextChatMessage(
     });
     let response: Awaited<ReturnType<typeof session.openaiClient.responses.create>>;
     try {
-      response = await session.openaiClient.responses.create(requestBody);
+      response = await createContextManagedResponse(requestBody);
     } catch (firstErr: unknown) {
       const firstMsg: string = (firstErr as any)?.error?.message ?? (firstErr as any)?.message ?? '';
       if (firstMsg.includes('No tool output found for function call') && session.previousResponseId) {
@@ -604,7 +714,7 @@ export async function handleTextChatMessage(
         console.warn('[chat] Stale thread detected (unresolved tool call in previous response) — resetting previousResponseId and retrying as new thread.');
         session.previousResponseId = undefined;
         delete requestBody.previous_response_id;
-        response = await session.openaiClient.responses.create(requestBody);
+        response = await createContextManagedResponse(requestBody);
       } else {
         throw firstErr;
       }
@@ -690,9 +800,10 @@ export async function handleTextChatMessage(
               },
             ],
             tools: functionSchemas,
+            store: true,
           };
           console.log("[DEBUG] Follow-up Responses API request:", JSON.stringify(summarizeRequestForLog(followUpBody), null, 2));
-          const followUpResponse = await session.openaiClient.responses.create(followUpBody);
+          const followUpResponse = await createContextManagedResponse(followUpBody);
           if (!session.currentRequest || session.currentRequest.id !== requestId || session.currentRequest.canceled) {
             console.log(`[${requestId}] Aborting after follow-up due to cancel`);
             appendEvent({ type: 'conversation.aborted', conversation_id: conversationId, request_id: requestId, timestamp: Date.now() });
@@ -753,9 +864,10 @@ export async function handleTextChatMessage(
                 },
               ],
               tools: functionSchemas,
+              store: true,
             };
             console.log(`[DEBUG] Tool-call loop iteration ${loopIterations}, submitting ${loopCall.name} result back to LLM`);
-            currentLoopResponse = await session.openaiClient.responses.create(loopBody);
+            currentLoopResponse = await createContextManagedResponse(loopBody);
             session.previousResponseId = currentLoopResponse.id;
 
             console.log(
@@ -785,7 +897,7 @@ export async function handleTextChatMessage(
             type: "assistant" as const,
             content: finalResponse,
             timestamp: Date.now(),
-            channel: "text" as const,
+            channel,
             supervisor: false,
           };
           session.conversationHistory.push(assistantMessage);
@@ -797,6 +909,7 @@ export async function handleTextChatMessage(
               created_at_ms: assistantMessage.timestamp,
             });
           } catch {}
+          maybeRefreshCapsule();
           if (channel === 'sms' && isSmsWindowOpen()) {
             const { smsUserNumber, smsTwilioNumber } = getNumbers();
             sendSms(finalResponse, smsTwilioNumber, smsUserNumber).catch((e) =>
@@ -880,7 +993,7 @@ export async function handleTextChatMessage(
       type: "assistant" as const,
       content: assistantText,
       timestamp: Date.now(),
-      channel: "text" as const,
+      channel,
       supervisor: false,
     };
     session.conversationHistory.push(assistantMessage);
@@ -892,6 +1005,7 @@ export async function handleTextChatMessage(
         created_at_ms: assistantMessage.timestamp,
       });
     } catch {}
+    maybeRefreshCapsule();
     if (channel === 'sms' && isSmsWindowOpen()) {
       const { smsUserNumber, smsTwilioNumber } = getNumbers();
       sendSms(assistantText, smsTwilioNumber, smsUserNumber).catch((e) =>

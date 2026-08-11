@@ -121,11 +121,25 @@ async function main() {
   assert.strictEqual(timeline[5].timestamp, 10_801_000);
   assert.ok(timeline[5].timestamp - timeline[0].timestamp >= 10_800_000);
 
+  sqlite.addConversationEvent({
+    conversation_id: 'conversation-1',
+    kind: 'context_capsule',
+    payload: {
+      text: 'The user expects the relationship timeline to remain continuous.',
+      throughTimestampMs: 10_803_000,
+      updatedAtMs: 10_804_000,
+      source: 'token_threshold',
+      channel: 'text',
+    },
+    created_at_ms: 10_804_000,
+  });
+
   const state = await import('../../src/session/state');
   const { session } = state;
   session.currentConversationId = undefined;
   session.currentActivitySpanId = undefined;
   session.conversationHistory = [];
+  session.contextCapsule = undefined;
   session.thoughtflow = undefined;
   const { resumeOpenTimelineOnStartup } = await import('../../src/server/startup/continuity');
   resumeOpenTimelineOnStartup();
@@ -135,6 +149,12 @@ async function main() {
     'user', 'assistant', 'user', 'assistant',
   ]);
   assert.strictEqual(session.currentActivitySpanId, undefined);
+  assert.deepStrictEqual(session.contextCapsule, {
+    text: 'The user expects the relationship timeline to remain continuous.',
+    throughTimestampMs: 10_803_000,
+    updatedAtMs: 10_804_000,
+    source: 'token_threshold',
+  });
 
   session.previousResponseId = 'response-1';
   session.lastAssistantStepId = 'assistant-step-1';
