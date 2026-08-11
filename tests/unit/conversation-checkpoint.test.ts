@@ -11,6 +11,7 @@ async function main() {
   const sqlite = await import('../../src/db/sqlite');
   const observed: Array<{ turns: Array<{ role: string; text: string }> }> = [];
   conversationBus.onConversationCheckpoint(checkpoint => observed.push(checkpoint));
+  assert.strictEqual(String(sqlite.getDb().pragma('journal_mode', { simple: true })).toLowerCase(), 'delete');
 
   sqlite.upsertSession('session-1');
   sqlite.upsertConversation({

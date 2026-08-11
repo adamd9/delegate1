@@ -9,6 +9,7 @@ import { appendEvent, ensureSession } from '../observability/thoughtflow';
 import { MemoryDeduplicator, formatMemoryItems } from './deduplicator';
 import { filterMemoriesWithArbitrator, type ArbitratorResult } from './arbitrator';
 import { recordMemoryRuntimeEvent } from './observability';
+import { session } from '../session/state';
 
 /** Minimal turn shape for building context queries — callers pass their own history items. */
 export interface ContextTurn {
@@ -125,8 +126,12 @@ class MemoryModule {
     return this._openaiClient;
   }
 
-  private _broadcast(event: Record<string, unknown>): void {
-    const msg = JSON.stringify(event);
+  private _broadcast(event: Record<string, unknown>, conversationId?: string, spanId?: string): void {
+    const msg = JSON.stringify({
+      ...event,
+      ...(conversationId ? { conversation_id: conversationId } : {}),
+      ...(spanId ? { span_id: spanId } : {}),
+    });
     for (const ws of chatClients) {
       if (ws.readyState === 1 /* OPEN */) ws.send(msg);
     }
@@ -157,6 +162,9 @@ class MemoryModule {
   async retrieve(query: string, timeoutMs?: number, conversationId?: string): Promise<string | null> {
     const backend = getMemoryBackend();
     if (!backend.available) return null;
+    const spanId = session.currentConversationId === conversationId
+      ? session.currentActivitySpanId
+      : undefined;
 
     // Warm cache — return immediately if the new query is topically related; otherwise bust
     if (this._cachedMemories !== null) {
@@ -171,7 +179,7 @@ class MemoryModule {
           details: { count: lines.length, age_ms: ageMs, overlap: Number(similarity.toFixed(3)) },
         });
         const cachets = Date.now();
-        this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: this._cachedMemories, source: 'cache', age_ms: ageMs, timestamp: cachets });
+        this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: this._cachedMemories, source: 'cache', age_ms: ageMs, timestamp: cachets }, conversationId, spanId);
         if (conversationId) {
           this._persist(conversationId, 'memory_retrieved', { source: 'cache', count: lines.length, age_ms: ageMs, memories: this._cachedMemories }, cachets);
           this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'cache', count: lines.length }, cachets);
@@ -215,7 +223,7 @@ class MemoryModule {
                 details: { count: lines.length, elapsed_ms: Date.now() - start },
               });
               const latets = Date.now();
-              this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: result, source: 'late', elapsed_ms: latets - start, timestamp: latets });
+              this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: result, source: 'late', elapsed_ms: latets - start, timestamp: latets }, conversationId, spanId);
               if (conversationId) {
                 this._persist(conversationId, 'memory_retrieved', { source: 'late', count: lines.length, elapsed_ms: latets - start, memories: result }, latets);
                 this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'late', count: lines.length }, latets);
@@ -228,7 +236,7 @@ class MemoryModule {
             if (timedOut) {
               recordMemoryRuntimeEvent({ type: 'retrieve.miss', conversationId, details: { source: 'late' } });
               const missts = Date.now();
-              this._broadcast({ type: 'memory.miss', timestamp: missts });
+              this._broadcast({ type: 'memory.miss', timestamp: missts }, conversationId, spanId);
               if (conversationId) this._persist(conversationId, 'memory_miss', {}, missts);
             }
           }
@@ -259,7 +267,7 @@ class MemoryModule {
         conversationId,
         details: { timeout_ms: effectiveTimeout },
       });
-      this._broadcast({ type: 'memory.pending', elapsed_ms: effectiveTimeout, timestamp: pendingts });
+      this._broadcast({ type: 'memory.pending', elapsed_ms: effectiveTimeout, timestamp: pendingts }, conversationId, spanId);
       if (conversationId) {
         this._persist(conversationId, 'memory_pending', { elapsed_ms: effectiveTimeout }, pendingts);
         this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'timeout', elapsed_ms: effectiveTimeout }, pendingts);
@@ -278,7 +286,7 @@ class MemoryModule {
         conversationId,
         details: { count: lines.length, elapsed_ms: freshts - start },
       });
-      this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: result, source: 'fresh', elapsed_ms: freshts - start, timestamp: freshts });
+      this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: result, source: 'fresh', elapsed_ms: freshts - start, timestamp: freshts }, conversationId, spanId);
       if (conversationId) {
         this._persist(conversationId, 'memory_retrieved', { source: 'fresh', count: lines.length, elapsed_ms: freshts - start, memories: result }, freshts);
         this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'fresh', count: lines.length }, freshts);
@@ -288,7 +296,7 @@ class MemoryModule {
       const missts = Date.now();
       console.log(`[memory] retrieve — no matching memories (${missts - start}ms)`);
       recordMemoryRuntimeEvent({ type: 'retrieve.miss', conversationId, details: { source: 'fresh', elapsed_ms: missts - start } });
-      this._broadcast({ type: 'memory.miss', timestamp: missts });
+      this._broadcast({ type: 'memory.miss', timestamp: missts }, conversationId, spanId);
       if (conversationId) {
         this._persist(conversationId, 'memory_miss', {}, missts);
         this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'miss', elapsed_ms: missts - start }, missts);
@@ -360,7 +368,7 @@ class MemoryModule {
       await backend.add(text, { channel: conv.channel, conversation_id: conv.conversationId });
       console.log('[memory] extraction — stored successfully');
       const storedts = Date.now();
-      this._broadcast({ type: 'memory.stored', facts: text, channel: conv.channel, timestamp: storedts });
+      this._broadcast({ type: 'memory.stored', facts: text, channel: conv.channel, timestamp: storedts }, conv.conversationId);
       this._persist(conv.conversationId, 'memory_stored', { facts: text, channel: conv.channel }, storedts);
       this._thoughtflowStep(conv.conversationId, 'memory.store', { channel: conv.channel, facts_length: text.length }, storedts);
       recordMemoryRuntimeEvent({
@@ -526,7 +534,7 @@ class MemoryModule {
         kept,
         removed,
         timestamp: arbTs,
-      });
+      }, conversationId, session.currentConversationId === conversationId ? session.currentActivitySpanId : undefined);
       recordMemoryRuntimeEvent({
         type: 'arbitrator.result',
         conversationId,

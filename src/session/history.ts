@@ -178,8 +178,17 @@ export function replayHistoryOnConnect(ws: WebSocket) {
     if (isOpen(ws)) jsonSend(ws, { type: 'history.header', count: 0 });
 
     let ordinal = 0;
+    const failedConversations: Array<{ id: string; error: string }> = [];
     const records = conversations.flatMap(conv => {
-      const events = listConversationEvents(conv.id) as any[];
+      let events: any[];
+      try {
+        events = listConversationEvents(conv.id) as any[];
+      } catch (error: any) {
+        const message = error?.message || String(error);
+        failedConversations.push({ id: conv.id, error: message });
+        console.warn(`[history] Failed to replay conversation ${conv.id}: ${message}`);
+        return [];
+      }
       const base = events[0]?.created_at_ms || Date.now();
       let previousSortTime = 0;
       return events.map(event => {
@@ -191,6 +200,13 @@ export function replayHistoryOnConnect(ws: WebSocket) {
     );
     const activeSpans = new Map<string, string>();
     const seenThoughtflow = new Set<string>();
+
+    if (failedConversations.length && isOpen(ws)) jsonSend(ws, {
+      type: 'history.warning',
+      failed_count: failedConversations.length,
+      conversation_ids: failedConversations.map(item => item.id),
+      timestamp: Date.now(),
+    });
 
     for (const { conv, event, base } of records) {
       const convId = conv.id as string;

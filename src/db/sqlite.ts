@@ -14,12 +14,19 @@ const DB_FILE = RUNTIME_DATA_DIR
 let databaseInstance: any | null = null;
 const LEDGER_DEBUG = (process.env.LEDGER_DEBUG || '').toLowerCase() === 'true';
 
+function getJournalMode(): 'WAL' | 'DELETE' {
+  const configured = String(process.env.SQLITE_JOURNAL_MODE || '').trim().toUpperCase();
+  if (configured === 'WAL' || configured === 'DELETE') return configured;
+  return RUNTIME_DATA_DIR ? 'DELETE' : 'WAL';
+}
+
 export function getDb() {
   if (databaseInstance) return databaseInstance;
   const dir = dirname(DB_FILE);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   databaseInstance = new Database(DB_FILE);
-  databaseInstance.pragma('journal_mode = WAL');
+  databaseInstance.pragma(`journal_mode = ${getJournalMode()}`);
+  databaseInstance.pragma('busy_timeout = 5000');
   databaseInstance.exec(`
     CREATE TABLE IF NOT EXISTS config (
       key TEXT PRIMARY KEY,

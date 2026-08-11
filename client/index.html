@@ -541,6 +541,8 @@
       margin: 3px 0; cursor: pointer;
     }
     .tool-ev:hover { background: #fff; }
+    .tool-ev.inner-plane { border-left: 3px solid var(--accent); background: var(--surface2); }
+    .inner-plane-tag { color: var(--accent); font-size: 9px; font-weight: 700; text-transform: uppercase; margin-right: 6px; }
 
     .tool-ev-icon { color: var(--text-dim); font-size: 12px; padding-top: 1px; flex-shrink: 0; }
     .tool-ev-body { flex: 1; min-width: 0; }
@@ -1059,6 +1061,13 @@ function handleEvent(event) {
       break;
     }
 
+    case 'history.warning': {
+      addBreadcrumb(`History partially unavailable: ${event.failed_count || 0} conversation(s) could not be read`, {
+        conversation_ids: event.conversation_ids || [],
+      }, false, event.timestamp);
+      break;
+    }
+
     case 'conversation.item.created': {
       if (!event.item) return;
       const item = event.item;
@@ -1212,13 +1221,13 @@ function handleEvent(event) {
 
     case 'memory.pending': {
       const isReplay = event.replay === true;
-      addBreadcrumb(`🧠 Memory: fetching… (>${event.elapsed_ms}ms, response sent without it)`, { detail: 'Memory backend did not respond within the timeout. Will follow up when it arrives.' }, isReplay, event.timestamp);
+      addBreadcrumb(`Memory retrieval pending (>${event.elapsed_ms}ms)`, { _innerPlane: true, operation: 'memory.retrieve', phase: 'pending', detail: 'Memory backend did not respond within the timeout. The response continued while retrieval remained active.' }, isReplay, event.timestamp);
       break;
     }
 
     case 'memory.miss': {
       const isReplay = event.replay === true;
-      addBreadcrumb('🧠 Memory: no relevant memories found', {}, isReplay, event.timestamp);
+      addBreadcrumb('Memory retrieval completed: no relevant memories', { _innerPlane: true, operation: 'memory.retrieve', phase: 'miss' }, isReplay, event.timestamp);
       break;
     }
 
@@ -1236,14 +1245,27 @@ function handleEvent(event) {
         label = `🧠 Memory: ${count} result(s) injected (${event.elapsed_ms}ms)`;
         detail = 'Injected into this response.';
       }
-      addBreadcrumb(label, { detail, memories: (event.memories || event.preview || '').trim() }, isReplay, event.timestamp);
+      addBreadcrumb(label, { _innerPlane: true, operation: 'memory.retrieve', phase: 'completed', source: event.source, count, elapsed_ms: event.elapsed_ms, age_ms: event.age_ms, detail, memories: (event.memories || event.preview || '').trim() }, isReplay, event.timestamp);
+      break;
+    }
+
+    case 'memory.arbitrator': {
+      const isReplay = event.replay === true;
+      addBreadcrumb(`Memory arbitration: kept ${event.output_count || 0}/${event.input_count || 0}`, {
+        _innerPlane: true,
+        operation: 'memory.arbitrate',
+        phase: event.timed_out ? 'timeout_fallback' : 'completed',
+        elapsed_ms: event.elapsed_ms,
+        kept: event.kept || [],
+        removed: event.removed || [],
+      }, isReplay, event.timestamp);
       break;
     }
 
     case 'memory.stored': {
       const isReplay = event.replay === true;
       const lines = (event.facts || '').trim().split('\n').filter(Boolean);
-      addBreadcrumb(`💾 Memory: ${lines.length} fact(s) stored`, { facts: event.facts, channel: event.channel }, isReplay, event.timestamp);
+      addBreadcrumb(`Memory extraction stored ${lines.length} fact(s)`, { _innerPlane: true, operation: 'memory.store', phase: 'completed', facts: event.facts, channel: event.channel }, isReplay, event.timestamp);
       break;
     }
 
@@ -1548,14 +1570,14 @@ function renderItem(item, prepend) {
     // BREADCRUMB
     el = document.createElement('div');
     el.id = `ev-${item.id}`;
-    el.className = 'tool-ev';
+    el.className = `tool-ev${item.data?._innerPlane ? ' inner-plane' : ''}`;
 
     // Note breadcrumbs get a special open button
     if (item.data && item.data._note) {
       el.innerHTML = `
         <span class="tool-ev-icon">📌</span>
         <div class="tool-ev-body">
-          <div class="tool-ev-title">${esc(item.title)}</div>
+          <div class="tool-ev-title">${item.data?._innerPlane ? '<span class="inner-plane-tag">inner plane</span>' : ''}${esc(item.title)}</div>
         </div>
         <button onclick="openNote(${JSON.stringify(item.data).replace(/"/g,'&quot;')})" style="padding:3px 8px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--accent);font-size:10px;font-family:var(--font);cursor:pointer;">open</button>
         <span class="tool-ev-ts">${esc(item.ts)}</span>
