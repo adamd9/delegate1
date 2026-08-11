@@ -41,6 +41,7 @@ import { writeLatestStartupResults } from './server/startup/note';
 import { reloadAdaptations } from './adaptations';
 import { startBrowserInfra, stopBrowserInfra, reinitBrowserInfra } from './browser';
 import { registerMcpServerRoutes } from './mcp/server';
+import { startInnerContextPlane, stopInnerContextPlane } from './innerContext';
 import { configService } from './config';
 import { registerReinit } from './reinit/registry';
 import { getDb } from './db/sqlite';
@@ -362,6 +363,7 @@ server.listen(PORT, () => {
   } catch (err: any) {
     console.warn('[server] copilot tasks reconcile failed:', err?.message || err);
   }
+  startInnerContextPlane();
   // If tools are already ready, this will write immediately
   void writeLatestStartupResultsIfReady();
   // Update readiness
@@ -370,6 +372,7 @@ server.listen(PORT, () => {
 
 function gracefulShutdown(signal: string) {
   console.log(`[server] ${signal} received — shutting down`);
+  stopInnerContextPlane();
   stopBrowserInfra();
   process.exit(0);
 }

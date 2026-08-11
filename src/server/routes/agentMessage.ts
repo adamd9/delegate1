@@ -1,5 +1,5 @@
 import type { Application, Request, Response } from 'express';
-import { injectMessage } from '../../services/agentBridge';
+import { publishInnerSignal } from '../../innerContext';
 
 export type AgentMessagePriority = 'normal' | 'high' | 'low';
 
@@ -66,11 +66,20 @@ export function parseAgentMessagePayload(body: unknown): { ok: true; data: Agent
 }
 
 export async function deliverAgentMessage(payload: AgentMessagePayload) {
-  return injectMessage({
-    message: formatAgentMessage(payload),
-    channel: 'agent',
-    metadata: payload.metadata,
-    opts: { conversationId: getConversationId(payload.metadata) },
+  const eventId = typeof payload.metadata?.eventId === 'string' ? payload.metadata.eventId : undefined;
+  return publishInnerSignal({
+    ...(eventId ? { id: `external:${eventId}` } : {}),
+    kind: 'external.agent-message',
+    source: payload.source || payload.sender,
+    awarenessMode: 'wake',
+    priority: payload.priority === 'high' ? 100 : payload.priority === 'low' ? -10 : 0,
+    payload: {
+      message: formatAgentMessage(payload),
+      sender: payload.sender,
+      ...(payload.source ? { source: payload.source } : {}),
+      ...(getConversationId(payload.metadata) ? { conversationId: getConversationId(payload.metadata) } : {}),
+      ...(payload.metadata ? { metadata: payload.metadata } : {}),
+    },
   });
 }
 

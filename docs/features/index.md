@@ -19,6 +19,7 @@ Your delegate has a lot of capabilities. This section has a page for each one �
 ## Memory & knowledge
 
 - **[Memory](memory/)** — your delegate remembers you across every conversation
+- **[Inner Context Plane](inner-context-plane/)** — how memory, tasks, timers, and other subprocessors enter the delegate's background awareness
 - **[Notes](notes/)** — your delegate's notebook; it can take notes, read them back, and share them with you
 
 ## Tools & integrations

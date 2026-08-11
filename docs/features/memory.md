@@ -20,6 +20,10 @@ Something you mention once is noted lightly. Something that comes up again and a
 
 When similar memories start to pile up, the system consolidates them — deciding whether to reinforce, merge, or discard — so your memory store stays clean and meaningful rather than filling with noise.
 
+## Memory and background awareness
+
+Retrieval, extraction, consolidation, conflicts, and failures enter the [Inner Context Plane](../inner-context-plane/) as typed signals. Passive retrieval also enriches every base-agent activation, including activations started by timers and other inner signals. The activation itself is the retrieval cue, so learned instructions can surface without a timer-specific workflow. The memory subsystem reports what happened; the base agent applies its prompt and recalled memories to decide whether any action is appropriate.
+
 ## Native adaptive memory
 
 - **Adaptive memory** is always on. It builds up a picture of you on your own device, stored privately.

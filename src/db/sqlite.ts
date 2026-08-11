@@ -122,6 +122,24 @@ export function getDb() {
       FOREIGN KEY(task_id) REFERENCES copilot_tasks(id)
     );
     CREATE INDEX IF NOT EXISTS idx_copilot_task_events_task ON copilot_task_events(task_id, id);
+
+    CREATE TABLE IF NOT EXISTS inner_signals (
+      id                TEXT PRIMARY KEY,
+      kind              TEXT NOT NULL,
+      source            TEXT NOT NULL,
+      awareness_mode    TEXT NOT NULL,
+      priority          INTEGER NOT NULL DEFAULT 0,
+      payload_json      TEXT NOT NULL,
+      status            TEXT NOT NULL DEFAULT 'pending',
+      created_at_ms     INTEGER NOT NULL,
+      available_at_ms   INTEGER NOT NULL,
+      claimed_at_ms     INTEGER,
+      handled_at_ms     INTEGER,
+      attempts          INTEGER NOT NULL DEFAULT 0,
+      last_error        TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_inner_signals_pending
+      ON inner_signals(status, available_at_ms, priority DESC, created_at_ms ASC);
   `);
   return databaseInstance;
 }
@@ -245,15 +263,16 @@ export function addConversationEvent(rec: { id?: string; conversation_id: string
   // Emit turn_complete when an assistant message is committed — single hook point for all channels
   if (rec.kind === 'message_assistant') {
     try {
-      const userEvent = getLastUserEventForConversation(rec.conversation_id);
-      if (userEvent) {
+      const activationEvent = getLastActivationEventForConversation(rec.conversation_id);
+      if (activationEvent) {
         const assistantPayload = rec.payload || {};
-        console.log(`[memory] turn_complete emit — conv: ${rec.conversation_id} channel: ${userEvent.channel || assistantPayload.channel}`);
+        console.log(`[memory] turn_complete emit — conv: ${rec.conversation_id} channel: ${activationEvent.channel || assistantPayload.channel}`);
         conversationBus.emitTurnComplete({
-          userContent: userEvent.text || '',
+          userContent: activationEvent.text || '',
           assistantContent: assistantPayload.text || '',
-          channel: (userEvent.channel || assistantPayload.channel || 'text') as Channel,
+          channel: (activationEvent.channel || assistantPayload.channel || 'text') as Channel,
           conversationId: rec.conversation_id,
+          activationRole: activationEvent.kind === 'inner_context' ? 'inner_context' : 'user',
         });
       }
     } catch {}
@@ -277,14 +296,14 @@ export function addDeepgramTranscript(rec: {
   return { id };
 }
 
-/** Returns the most recent message_user payload for a conversation (used by conversationBus hook). */
-function getLastUserEventForConversation(conversation_id: string): { text: string; channel: string } | null {
+/** Returns the most recent outer or inner activation payload for the conversation bus hook. */
+function getLastActivationEventForConversation(conversation_id: string): { text: string; channel: string; kind: string } | null {
   const db = getDb();
   const row = db.prepare(
-    "SELECT payload_json FROM conversation_events WHERE conversation_id = ? AND kind = 'message_user' ORDER BY seq DESC LIMIT 1"
-  ).get(conversation_id) as { payload_json: string } | undefined;
+    "SELECT kind, payload_json FROM conversation_events WHERE conversation_id = ? AND kind IN ('message_user', 'inner_context') ORDER BY seq DESC LIMIT 1"
+  ).get(conversation_id) as { kind: string; payload_json: string } | undefined;
   if (!row) return null;
-  try { return JSON.parse(row.payload_json); } catch { return null; }
+  try { return { ...JSON.parse(row.payload_json), kind: row.kind }; } catch { return null; }
 }
 
 export function listConversationEvents(conversation_id: string) {

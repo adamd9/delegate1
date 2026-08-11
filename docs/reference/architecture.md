@@ -33,6 +33,10 @@ user turn ──▶ base agent ──▶ answer
 - **Base agent** (`src/agentConfigs/baseAgentConfig.ts`) — handles every turn. Calls tools as needed (including `web_search` for fresh information).
 - **Registry** (`src/agentConfigs/index.ts`).
 
+## Inner Context Plane
+
+Memory, tasks, timers, and other background processors publish typed signals through the [Inner Context Plane](../../features/inner-context-plane/). A serialized Attention Broker selects relevant signals and the Context Composer presents them separately from user messages. The single base agent interprets those signals and invokes tools when action is warranted.
+
 ## Tool registry
 
 `src/tools/registry.ts` is the canonical bus for callable capabilities. Three providers feed it:

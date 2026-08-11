@@ -20,6 +20,10 @@ import { classifyOpenAIError } from "../services/openaiErrors";
 import { memoryModule } from '../memory';
 import type { ContextTurn } from '../memory';
 import { getMemoryConfig } from '../memory/memoryConfig';
+import { formatInnerContext } from '../innerContext/format';
+import { SqliteInnerSignalStore } from '../innerContext/store';
+
+const innerSignalStore = new SqliteInnerSignalStore();
 
 export function establishChatSocket(
   ws: WebSocket,
@@ -267,16 +271,19 @@ export async function handleTextChatMessage(
   logsClients: Set<WebSocket>,
   channel: Channel = 'text',
   metadata: ChatMetadata = {},
-  opts: { conversationId?: string; internal?: boolean } = {}
+  opts: { conversationId?: string; internal?: boolean; innerContext?: boolean } = {}
 ): Promise<ChatResult | undefined> {
   const { currentTime, timeZone } = getTimeContext();
+  let claimedInnerSignalIds: string[] = [];
+  let innerSignalsSettled = false;
   const context: Context = {
     channel,
     currentTime,
     timeZone,
   };
   try {
-    const isInternal = opts.internal === true;
+    const isInnerContext = opts.innerContext === true;
+    const isInternal = opts.internal === true || isInnerContext;
     console.log("🔤 Processing text message:", content);
     // Create a new request id and mark as in-flight (cancel any previous text/sms request implicitly for safety)
     const requestId = `req_${Date.now()}`;
@@ -297,10 +304,10 @@ export async function handleTextChatMessage(
     if (isNewConversation) {
       appendEvent({ type: 'conversation.started', conversation_id: conversationId, request_id: requestId, channel, started_at: new Date().toISOString() });
     }
-    const userStepId = `step_user_${requestId}`;
+    const userStepId = `${isInnerContext ? 'step_inner' : 'step_user'}_${requestId}`;
     // Link user turn to the most recent assistant message if available to preserve sub-threading
     const userDepends = (session as any).lastAssistantStepId ? [(session as any).lastAssistantStepId] : undefined;
-    appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: userStepId , label: ThoughtFlowStepType.UserMessage, payload: { content }, ...(userDepends ? { depends_on: userDepends } : {}), timestamp: Date.now() });
+    appendEvent({ type: 'step.started', conversation_id: conversationId, step_id: userStepId , label: isInnerContext ? 'inner.context' : ThoughtFlowStepType.UserMessage, payload: { content }, ...(userDepends ? { depends_on: userDepends } : {}), timestamp: Date.now() });
     // Inform UI that work has started
     for (const ws of chatClients) {
       if (isOpen(ws)) jsonSend(ws, { type: "chat.working", request_id: requestId, timestamp: Date.now() });
@@ -333,6 +340,15 @@ export async function handleTextChatMessage(
           conversation_id: conversationId,
           kind: 'message_user',
           payload: { text: content, channel, supervisor: false },
+          created_at_ms: userMessage.timestamp,
+        });
+      } catch {}
+    } else if (isInnerContext) {
+      try {
+        addConversationEvent({
+          conversation_id: conversationId,
+          kind: 'inner_context',
+          payload: { text: content, channel, internal: true },
           created_at_ms: userMessage.timestamp,
         });
       } catch {}
@@ -371,6 +387,9 @@ export async function handleTextChatMessage(
     const adaptationIdentifier = 'adn.prompt.core.handleText';
     const singleAdapt = await getAdaptationTextById(adaptationIdentifier);
     const adaptationsText = singleAdapt?.text || '';
+    const claimedInnerSignals = isInternal ? [] : innerSignalStore.claimForTurn(Date.now(), 20, 30_000);
+    claimedInnerSignalIds = claimedInnerSignals.map(signal => signal.id);
+    const innerContextText = claimedInnerSignals.length ? formatInnerContext(claimedInnerSignals) : '';
     // Retrieve relevant memories with deduplication applied.
     // `memories` = all (for context), `newMemories` = only novel items.
     // If retrieval times out, the onLateArrival callback triggers a shadow turn
@@ -381,7 +400,8 @@ export async function handleTextChatMessage(
         item.type === 'user' || item.type === 'assistant'
       )
       .map(item => ({ role: item.type as 'user' | 'assistant', text: item.content }));
-    const { memories, newMemories } = await memoryModule.retrieveWithLate(content, {
+    const retrievalCue = innerContextText ? `${content}\n\n${innerContextText}` : content;
+    const { memories, newMemories } = await memoryModule.retrieveWithLate(retrievalCue, {
       timeoutMs: getMemoryConfig().retrieve_timeout_ms,
       conversationId,
       conversationHistory: historyTurns,
@@ -406,7 +426,8 @@ export async function handleTextChatMessage(
       console.log(`[memory] on-time: total=${memories.split('\n').filter(Boolean).length} new=${newMemories ? newMemories.split('\n').filter(Boolean).length : 0}`);
     }
     const memoriesPrefix = memories ? `[Retrieved memories from past conversations — use these facts when relevant to the user's query]\n${memories}\n\n` : '';
-    const instructions = [memoriesPrefix + contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
+    const innerContextPrefix = innerContextText ? `${innerContextText}\n\n` : '';
+    const instructions = [innerContextPrefix + memoriesPrefix + contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
     // ThoughtFlow snapshots for long-lived prompt inputs (Approach B)
     const policyHash = Buffer.from(baseInstructions, 'utf8').toString('base64').slice(0, 12);
     const toolsHash = Buffer.from(JSON.stringify(functionSchemas), 'utf8').toString('base64').slice(0, 12);
@@ -453,7 +474,7 @@ export async function handleTextChatMessage(
     const userInput: ResponsesTextInput = {
       type: "message",
       content: content,
-      role: "user",
+      role: isInnerContext ? "developer" : "user",
     };
     requestBody.input = [userInput];
     console.log("[DEBUG] Responses API Request:", JSON.stringify(summarizeRequestForLog(requestBody), null, 2));
@@ -513,7 +534,16 @@ export async function handleTextChatMessage(
       // Still mark step as completed but with cancel status
       appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: llmStepId, payload: { meta: { status: 'canceled' } }, timestamp: Date.now() });
       appendEvent({ type: 'conversation.aborted', conversation_id: conversationId, request_id: requestId, timestamp: Date.now() });
+      if (claimedInnerSignalIds.length) {
+        innerSignalStore.markFailed(claimedInnerSignalIds, 'User turn was superseded before inner context completed', Date.now());
+        innerSignalsSettled = true;
+      }
       return;
+    }
+
+    if (claimedInnerSignalIds.length) {
+      innerSignalStore.markHandled(claimedInnerSignalIds, Date.now());
+      innerSignalsSettled = true;
     }
 
     // Consolidate LLM output into the AssistantCall's completed payload
@@ -805,6 +835,10 @@ export async function handleTextChatMessage(
     appendEvent({ type: 'step.completed', conversation_id: conversationId, step_id: assistantStepId_fallback, timestamp: Date.now() });
     return { conversationId, sessionId, requestId, assistantText, supervisor: false };
   } catch (err) {
+    if (claimedInnerSignalIds.length && !innerSignalsSettled) {
+      innerSignalStore.markFailed(claimedInnerSignalIds, err instanceof Error ? err.message : String(err), Date.now() + 1000);
+      innerSignalsSettled = true;
+    }
     const errInfo = classifyOpenAIError(err);
     if (errInfo.isQuotaOrRateLimit) {
       console.error(`🚫 OpenAI quota/rate-limit error (status=${errInfo.status}, code=${errInfo.code}, type=${errInfo.errorType}): ${errInfo.message}`);

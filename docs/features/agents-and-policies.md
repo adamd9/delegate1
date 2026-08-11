@@ -42,4 +42,20 @@ user message ──▶ base agent ──▶ answer (direct)
 
 The standard function-call loop runs up to 8 iterations, allowing the agent to chain tools (e.g. `web_search` followed by `create_note` and `send_sms`) before producing the final reply.
 
+### Inner-context flow
+
+The [Inner Context Plane](../inner-context-plane/) extends activation beyond user turns while preserving one base agent:
+
+```
+memory / task / timer / subprocessor
+              │
+              ▼
+        durable inner signal
+              │
+              ▼
+        attention + context ──▶ base agent ──▶ existing tools
+```
+
+Subprocessors contribute awareness rather than becoming additional agents. Tool policy remains attached to the base agent, and prompts plus standing memories determine whether a signal warrants action.
+
 See also: [Tools](../tools/), [Reference → Model calling flows](../../reference/model-calling-flows/).

@@ -2,7 +2,7 @@ import type { Application, Request, Response } from 'express';
 import { getLastCompletedSession, getSessionOutput, markHookDelivered, setFallbackInjector, buildTaskUrl } from '../../tools/handlers/copilotCli';
 import { listTasks } from '../../copilot/tasks';
 import type { GitSyncResult } from '../../browser';
-import { injectMessage } from '../../services/agentBridge';
+import { publishInnerSignal } from '../../innerContext';
 
 /**
  * Resolve the most-recent task. Because the copilot runner holds a single-task
@@ -61,15 +61,33 @@ function formatNotification(opts: {
   );
 }
 
+function publishCopilotSignal(message: string, status: string, taskId?: string, conversationId?: string) {
+  return publishInnerSignal({
+    ...(taskId ? { id: `copilot:${taskId}:${status}` } : {}),
+    kind: status === 'error' ? 'copilot.task-failed' : 'copilot.task-completed',
+    source: 'copilot',
+    awarenessMode: 'wake',
+    priority: status === 'error' ? 50 : 10,
+    payload: {
+      message,
+      status,
+      ...(taskId ? { taskId } : {}),
+      ...(conversationId ? { conversationId } : {}),
+    },
+  });
+}
+
 export function registerCopilotRoutes(app: Application) {
   // Wire the fallback injector so the close handler can inject a notification if hooks don't fire
   setFallbackInjector((task, status, _stdout, _stderr, gitResult) => {
-    const { taskUrl, notifyPref } = resolveLatestTask();
+    const { taskId, taskUrl, notifyPref } = resolveLatestTask();
     const message = formatNotification({ task, status, gitResult, taskUrl, notifyPref });
     console.log(`[copilot-callback] Fallback notification (status=${status}, git=${gitResult?.status || 'n/a'})`);
-    injectMessage({ message, channel: 'copilot' }).catch((err) => {
+    try {
+      publishCopilotSignal(message, status, taskId);
+    } catch (err) {
       console.error('[copilot-callback] Fallback notification failed:', err);
-    });
+    }
   });
 
   app.post('/api/copilot/callback', async (req: Request, res: Response) => {
@@ -100,9 +118,9 @@ export function registerCopilotRoutes(app: Application) {
             const sess = require('../../session/state').session;
             conversationId = (sess as any).currentConversationId as string | undefined;
           } catch {}
-          const { taskUrl, notifyPref } = resolveLatestTask();
+          const { taskId, taskUrl, notifyPref } = resolveLatestTask();
           const message = formatNotification({ task, status: reason, conversationId, gitResult, taskUrl, notifyPref });
-          await injectMessage({ message, channel: 'copilot' });
+          publishCopilotSignal(message, reason, taskId, conversationId);
 
           console.log(`[copilot-callback] sessionEnd notification sent (reason=${reason})`);
           res.json({ ok: true, action: 'notified' });
@@ -122,7 +140,7 @@ export function registerCopilotRoutes(app: Application) {
             conversationId = (sess as any).currentConversationId as string | undefined;
           } catch {}
 
-          const { taskUrl, notifyPref } = resolveLatestTask();
+          const { taskId, taskUrl, notifyPref } = resolveLatestTask();
           const convRef = conversationId ? `\nConversation ID: ${conversationId}` : '';
           const linkLine = taskUrl ? `\nTask link: ${taskUrl}` : '';
           const pref = notifyPref && notifyPref.trim() ? notifyPref.trim() : 'none recorded — default to SMS';
@@ -133,7 +151,7 @@ export function registerCopilotRoutes(app: Application) {
             `Delivery preference: ${pref}.\n\n` +
             `Use \`copilot_status\` to see any available output. Inform the user about the error via the recorded preference (default SMS), include the task link, and if appropriate retry or complete any originally requested follow-up actions with whatever results are available.`;
 
-          await injectMessage({ message, channel: 'copilot' });
+          publishCopilotSignal(message, 'error', taskId, conversationId);
 
           console.log(`[copilot-callback] errorOccurred notification (${errorName}: ${errorMsg})`);
           res.json({ ok: true, action: 'notified' });

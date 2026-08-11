@@ -12,6 +12,7 @@ export interface CompletedTurn {
   assistantContent: string;
   channel: Channel;
   conversationId: string;
+  activationRole: 'user' | 'inner_context';
 }
 
 export interface CompletedConversation {

@@ -9,6 +9,7 @@ export type InjectMessageParams = {
   opts?: {
     conversationId?: string;
     internal?: boolean;
+    innerContext?: boolean;
   };
 };
 

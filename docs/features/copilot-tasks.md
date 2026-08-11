@@ -38,6 +38,10 @@ The tasks UI can show live browser state (when browser infra is available). If V
 - Task workdirs are created under `runtime-data/copilot-workdir/tasks/<task-id>/`.
 - Pretty task URLs are supported: `/tasks/<id>` routes to `client/task.html`.
 
+### Background completion
+
+Copilot Tasks publish lifecycle signals such as `subprocess.completed`, `subprocess.needs_input`, and `subprocess.failed` through the [Inner Context Plane](../inner-context-plane/). The base agent uses its existing task and messaging tools to inspect output, finish follow-up work, and honour delivery preferences.
+
 Key endpoints:
 
 | Method | Path | Purpose |
