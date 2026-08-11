@@ -60,6 +60,9 @@ export interface Session {
   previousResponseId?: string; // For Responses API conversation tracking
   // Sticky conversation tracking for web chat: reuse an open conversation until explicitly finalized
   currentConversationId?: string;
+  // Current collapsible activity burst within the long-lived conversation timeline.
+  currentActivitySpanId?: string;
+  currentActivitySpanKind?: 'user' | 'voice' | 'inner';
   // Track the most recent assistant step to link subsequent user turns in ThoughtFlow
   lastAssistantStepId?: string;
   // Track the most recent user step to link assistant responses in ThoughtFlow
@@ -115,13 +118,21 @@ export function closeModel() {
   cleanupConnection(session.modelConn);
   session.modelConn = undefined;
   if (!session.twilioConn && !session.browserConn && !session.frontendConn) {
-    // Preserve session-continuity state so a voice reconnect within the inactivity
-    // window resumes the same session and conversation thread rather than starting fresh.
-    const thoughtflow = (session as any).thoughtflow;
-    const currentConversationId = (session as any).currentConversationId;
+    // Release channel resources without severing the long-lived relationship timeline.
+    const continuity: Partial<Session> = {
+      thoughtflow: session.thoughtflow,
+      currentConversationId: session.currentConversationId,
+      currentActivitySpanId: session.currentActivitySpanId,
+      currentActivitySpanKind: session.currentActivitySpanKind,
+      conversationHistory: session.conversationHistory,
+      previousResponseId: session.previousResponseId,
+      lastAssistantStepId: session.lastAssistantStepId,
+      lastUserStepId: session.lastUserStepId,
+    };
     session = {};
-    if (thoughtflow !== undefined) (session as any).thoughtflow = thoughtflow;
-    if (currentConversationId !== undefined) (session as any).currentConversationId = currentConversationId;
+    for (const [key, value] of Object.entries(continuity)) {
+      if (value !== undefined) (session as any)[key] = value;
+    }
   }
 }
 

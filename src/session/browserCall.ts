@@ -16,6 +16,7 @@ import { getChatVoiceConfig } from "../voice/voiceConfig";
 import { classifyOpenAIError } from "../services/openaiErrors";
 import { getVoiceModePreset } from "../voice/voiceDefaults";
 import { configService } from "../config";
+import { ensureActivitySpan } from '../timeline/activity';
 
 let browserSessionRecycleTimer: NodeJS.Timeout | undefined;
 const BROWSER_SESSION_RECYCLE_INTERVAL_MS = 90_000;
@@ -158,6 +159,7 @@ export function processBrowserCallEvent(data: RawData) {
             started_at: new Date().toISOString(),
           });
         }
+        ensureActivitySpan((session as any).currentConversationId, 'voice', 'voice');
       } catch {}
 
       establishBrowserRealtimeModelConnection();

@@ -22,7 +22,11 @@ When similar memories start to pile up, the system consolidates them — decidin
 
 ## Memory and background awareness
 
-Retrieval, extraction, consolidation, conflicts, and failures enter the [Inner Context Plane](../inner-context-plane/) as typed signals. Passive retrieval also enriches every base-agent activation, including activations started by timers and other inner signals. The activation itself is the retrieval cue, so learned instructions can surface without a timer-specific workflow. The memory subsystem reports what happened; the base agent applies its prompt and recalled memories to decide whether any action is appropriate.
+Consolidation, conflict, and override outcomes enter the [Inner Context Plane](../inner-context-plane/) as typed wake signals. Brand-new inserts remain observable without waking the agent. Passive retrieval also enriches every base-agent activation, including activations started by timers and other inner signals. The activation itself is the retrieval cue, so learned instructions can surface without a timer-specific workflow. The memory subsystem reports what happened; the base agent applies its prompt and recalled memories to decide whether any action is appropriate.
+
+When consolidation wakes the agent, the conversation timeline shows the full signal batch, recalled memories, subsequent tool activity, and final outcome as expandable internal entries around the assistant response. Settings > Memory Insights remains a memory-store diagnostic view, not the primary Inner Context Plane history.
+
+Idle time creates an incremental memory checkpoint rather than ending the conversation. Each checkpoint extracts only user and assistant turns added since the previous checkpoint, so memory can learn regularly while the user returns to the same continuous timeline hours later.
 
 ## Native adaptive memory
 

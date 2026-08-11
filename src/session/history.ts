@@ -15,11 +15,11 @@ export function getSessionHistoryLimit(): number {
 }
 
 // Map one DB event row into a UI event for the chat websocket
-function mapDbEventToUiEvent(row: any, convId: string, sessionId: string, baseTs: number, replay: boolean): any[] {
+export function mapDbEventToUiEvent(row: any, convId: string, sessionId: string, baseTs: number, replay: boolean, spanId?: string): any[] {
   const out: any[] = [];
   const kind = row.kind as string;
   const payload = typeof row.payload_json === 'string' ? (() => { try { return JSON.parse(row.payload_json); } catch { return {}; } })() : (row.payload || {});
-  const ts = (typeof row.seq === 'number' ? (baseTs + row.seq) : (row.created_at_ms || Date.now()));
+  const ts = row.created_at_ms || (typeof row.seq === 'number' ? (baseTs + row.seq) : Date.now());
 
   if (kind === 'message_user' || kind === 'message_assistant') {
     out.push({
@@ -118,62 +118,138 @@ function mapDbEventToUiEvent(row: any, convId: string, sessionId: string, baseTs
       url_d2_viewer: payload.url_d2_viewer,
       timestamp: ts,
     });
+  } else if (kind === 'inner_context') {
+    out.push({
+      type: 'inner.activation',
+      phase: payload.mode === 'attached_to_user' ? 'attached' : 'started',
+      ...(replay ? { replay: true } : {}),
+      conversation_id: convId,
+      signals: Array.isArray(payload.innerSignals) ? payload.innerSignals : [],
+      composed_context: payload.text || '',
+      timestamp: ts,
+    });
+  } else if (kind === 'inner_signal_published') {
+    out.push({
+      type: 'inner.signal',
+      ...(replay ? { replay: true } : {}),
+      conversation_id: convId,
+      signal: payload.signal || {},
+      timestamp: ts,
+    });
+  } else if (kind === 'inner_activation_completed' || kind === 'inner_activation_failed') {
+    out.push({
+      type: 'inner.activation',
+      phase: kind === 'inner_activation_completed' ? 'completed' : 'failed',
+      ...(replay ? { replay: true } : {}),
+      conversation_id: convId,
+      signals: Array.isArray(payload.signals) ? payload.signals : [],
+      duration_ms: payload.duration_ms,
+      ...(payload.error ? { error: payload.error } : {}),
+      timestamp: ts,
+    });
   } else if (kind === 'memory_retrieved') {
-    out.push({ type: 'memory.retrieved', ...(replay ? { replay: true } : {}), source: payload.source, count: payload.count, preview: payload.preview, age_ms: payload.age_ms, elapsed_ms: payload.elapsed_ms, timestamp: ts });
+    out.push({ type: 'memory.retrieved', ...(replay ? { replay: true } : {}), conversation_id: convId, source: payload.source, count: payload.count, memories: payload.memories, preview: payload.preview, age_ms: payload.age_ms, elapsed_ms: payload.elapsed_ms, timestamp: ts });
   } else if (kind === 'memory_pending') {
     out.push({ type: 'memory.pending', ...(replay ? { replay: true } : {}), elapsed_ms: payload.elapsed_ms, timestamp: ts });
   } else if (kind === 'memory_miss') {
     out.push({ type: 'memory.miss', ...(replay ? { replay: true } : {}), timestamp: ts });
   } else if (kind === 'memory_stored') {
     out.push({ type: 'memory.stored', ...(replay ? { replay: true } : {}), facts: payload.facts, channel: payload.channel, timestamp: ts });
+  } else if (kind === 'conversation_checkpoint') {
+    out.push({
+      type: 'timeline.checkpoint',
+      ...(replay ? { replay: true } : {}),
+      conversation_id: convId,
+      span_id: payload.span_id || spanId,
+      reason: payload.reason,
+      from_seq: payload.from_seq,
+      through_seq: payload.through_seq,
+      turn_count: payload.turn_count,
+      timestamp: ts,
+    });
   }
-  return out;
+  return out.map(event => spanId && !event.span_id ? { ...event, span_id: spanId } : event);
 }
 
 export function replayHistoryOnConnect(ws: WebSocket) {
   try {
     const limit = getSessionHistoryLimit();
     const conversations: any[] = dbListConversations(limit) || [];
-    const ended = conversations.filter((c: any) => Boolean(c.ended_at));
-    const open = conversations.find((c: any) => !c.ended_at);
+    if (isOpen(ws)) jsonSend(ws, { type: 'history.header', count: 0 });
 
-    // Header for history section (ended runs only)
-    if (isOpen(ws)) jsonSend(ws, { type: 'history.header', count: ended.length });
+    let ordinal = 0;
+    const records = conversations.flatMap(conv => {
+      const events = listConversationEvents(conv.id) as any[];
+      const base = events[0]?.created_at_ms || Date.now();
+      let previousSortTime = 0;
+      return events.map(event => {
+        previousSortTime = Math.max(previousSortTime, event.created_at_ms || base + event.seq);
+        return { conv, event, base, sortTime: previousSortTime, ordinal: ordinal++ };
+      });
+    }).sort((left, right) =>
+      left.sortTime - right.sortTime || left.ordinal - right.ordinal
+    );
+    const activeSpans = new Map<string, string>();
+    const seenThoughtflow = new Set<string>();
 
-    // Replay ended runs under history (replay: true)
-    for (const conv of ended.slice().reverse()) {
-      const convId = conv.id;
-      const events = listConversationEvents(convId) as any[];
-      const base = (Array.isArray(events) && events.length > 0 && events[0].created_at_ms) || Date.now();
-      const seenKinds = new Set<string>();
-      for (const e of events) {
-        if (e.kind === 'thoughtflow_artifacts') {
-          if (seenKinds.has('thoughtflow_artifacts')) continue;
-          seenKinds.add('thoughtflow_artifacts');
+    for (const { conv, event, base } of records) {
+      const convId = conv.id as string;
+      if (event.kind === 'thoughtflow_artifacts') {
+        if (seenThoughtflow.has(convId)) continue;
+        seenThoughtflow.add(convId);
+      }
+      const payload = typeof event.payload_json === 'string' ? (() => { try { return JSON.parse(event.payload_json); } catch { return {}; } })() : (event.payload || {});
+      if (event.kind === 'activity_span_started') {
+        const spanId = payload.span_id || `span_${convId}_${event.seq}`;
+        activeSpans.set(convId, spanId);
+        if (isOpen(ws)) jsonSend(ws, {
+          type: 'timeline.span.started', replay: true, span_id: spanId,
+          conversation_id: convId, kind: payload.kind || 'user',
+          channel: payload.channel || conv.channel || 'text',
+          timestamp: event.created_at_ms || base + event.seq,
+        });
+        continue;
+      }
+      let activeSpanId = activeSpans.get(convId);
+      if (event.kind === 'inner_signal_published' && !activeSpanId) {
+        for (const uiEvent of mapDbEventToUiEvent(event, convId, conv.session_id, base, true)) {
+          if (isOpen(ws)) jsonSend(ws, uiEvent);
         }
-        const uiEvents = mapDbEventToUiEvent(e, convId, conv.session_id, base, true);
-        for (const evt of uiEvents) {
-          if (isOpen(ws)) jsonSend(ws, evt);
-        }
+        continue;
+      }
+      if (!activeSpanId) {
+        activeSpanId = `span_legacy_${convId}_${event.seq}`;
+        activeSpans.set(convId, activeSpanId);
+        if (isOpen(ws)) jsonSend(ws, {
+          type: 'timeline.span.started', replay: true, span_id: activeSpanId,
+          conversation_id: convId,
+          kind: event.kind === 'inner_context' ? 'inner' : (conv.channel === 'voice' ? 'voice' : 'user'),
+          channel: conv.channel || 'text', timestamp: event.created_at_ms || base + event.seq,
+        });
+      }
+      for (const uiEvent of mapDbEventToUiEvent(event, convId, conv.session_id, base, true, activeSpanId)) {
+        if (isOpen(ws)) jsonSend(ws, uiEvent);
+      }
+      if (event.kind === 'conversation_checkpoint') {
+        if (isOpen(ws)) jsonSend(ws, {
+          type: 'timeline.span.closed', replay: true, span_id: activeSpanId,
+          conversation_id: convId, reason: payload.reason || 'checkpoint',
+          turn_count: payload.turn_count, timestamp: event.created_at_ms || base + event.seq,
+        });
+        activeSpans.delete(convId);
       }
     }
 
-    // Replay current open run (if any) into the live area (replay: false)
-    if (open) {
-      const convId = open.id;
-      const events = listConversationEvents(convId) as any[];
-      const base = (Array.isArray(events) && events.length > 0 && events[0].created_at_ms) || Date.now();
-      const seenKinds = new Set<string>();
-      for (const e of events) {
-        if (e.kind === 'thoughtflow_artifacts') {
-          if (seenKinds.has('thoughtflow_artifacts')) continue;
-          seenKinds.add('thoughtflow_artifacts');
-        }
-        const uiEvents = mapDbEventToUiEvent(e, convId, open.session_id, base, false);
-        for (const evt of uiEvents) {
-          if (isOpen(ws)) jsonSend(ws, evt);
-        }
-      }
+    for (const conv of conversations) {
+      const activeSpanId = activeSpans.get(conv.id);
+      if (activeSpanId && conv.ended_at && isOpen(ws)) jsonSend(ws, {
+        type: 'timeline.span.closed',
+        replay: true,
+        span_id: activeSpanId,
+        conversation_id: conv.id,
+        reason: conv.status || 'completed',
+        timestamp: new Date(conv.ended_at).getTime(),
+      });
     }
   } catch (e) {
     console.warn('[history] auto history replay failed:', (e as any)?.message || e);

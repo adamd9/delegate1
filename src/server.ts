@@ -35,7 +35,7 @@ import { getConfig } from './server/config/env';
 import { registerHealthRoutes, setReady } from './server/routes/health';
 import { registerBuildInfoRoutes } from './server/routes/buildInfo';
 import { chatClients, logsClients } from './ws/clients';
-import { finalizeOpenSessionsOnStartup } from './server/startup/finalize';
+import { resumeOpenTimelineOnStartup } from './server/startup/continuity';
 import { initToolsAndRegistry } from './server/startup/init';
 import { writeLatestStartupResults } from './server/startup/note';
 import { reloadAdaptations } from './adaptations';
@@ -354,8 +354,8 @@ attachWebSockets(server, {
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   serverListening = true;
-  // Finalize any open sessions at startup for consistency
-  finalizeOpenSessionsOnStartup();
+  // Resume the latest open timeline; inactivity checkpoints do not end continuity.
+  resumeOpenTimelineOnStartup();
   // Reset copilot tasks that were left in 'running' across a restart
   try {
     const { reconcileOnStartup } = require('./copilot/taskRunner');

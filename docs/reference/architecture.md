@@ -37,6 +37,18 @@ user turn ──▶ base agent ──▶ answer
 
 Memory, tasks, timers, and other background processors publish typed signals through the [Inner Context Plane](../../features/inner-context-plane/). A serialized Attention Broker selects relevant signals and the Context Composer presents them separately from user messages. The single base agent interprets those signals and invokes tools when action is warranted.
 
+## Continuous timeline
+
+The user-facing history is one chronological relationship timeline, not a stack of conversations that expire on inactivity. Technical conversation IDs remain as persistence and tooling anchors, while activity inside them is divided into collapsible spans:
+
+- user interaction bursts
+- phone and browser voice activity
+- autonomous inner-context activations
+
+After the configured idle period, the current span is checkpointed and memory extraction processes only turns added since the previous checkpoint. The conversation ID, recent working context, and causal anchors remain resumable. A later message starts a new span in the same timeline, even hours later. Explicit **End conversation** remains available when a true semantic boundary is wanted.
+
+Queued inner signals are durable timeline events between spans. When a signal wakes the agent, the activation span contains the full claimed batch, recalled memories, tool calls and results, assistant output, and completion or failure outcome.
+
 ## Tool registry
 
 `src/tools/registry.ts` is the canonical bus for callable capabilities. Three providers feed it:

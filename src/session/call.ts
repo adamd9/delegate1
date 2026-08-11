@@ -15,6 +15,7 @@ import { memoryModule } from '../memory';
 import type { ContextTurn } from '../memory';
 import { getMemoryConfig } from '../memory/memoryConfig';
 import { configService } from '../config';
+import { ensureActivitySpan } from '../timeline/activity';
 
 
 // Accumulator for assistant voice transcript text by item id (server logs only)
@@ -435,6 +436,7 @@ export function processRealtimeCallEvent(data: RawData) {
         } else {
           (session as any).currentConversationId = existingConv;
         }
+        ensureActivitySpan((session as any).currentConversationId, 'voice', 'voice');
       } catch {}
       establishRealtimeModelConnection();
       scheduleTwilioSessionRecycleLoop();

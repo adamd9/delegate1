@@ -34,7 +34,7 @@ Almost every key here can be set in `.env` **or** in the in-app config store (vi
 | `REALTIME_VOICE` | Override realtime voice |
 | `DELEGATE_MAX_AUDIO_BYTES` | Cap on per-message audio size |
 | `SESSION_HISTORY_LIMIT` | Max turns retained in the session |
-| `SESSION_IDLE_TIMEOUT_MINUTES` | Auto-finalize session after idle period (0 disables) |
+| `SESSION_IDLE_TIMEOUT_MINUTES` | Checkpoint and collapse the current activity span after an idle period; the conversation remains resumable (0 disables) |
 | `TIMEZONE` | Timezone string used in agent prompts |
 
 ### Twilio

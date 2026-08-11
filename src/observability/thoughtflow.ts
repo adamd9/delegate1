@@ -3,8 +3,9 @@ import { randomUUID } from 'crypto';
 import { join, sep } from 'path';
 import { session } from '../session/state';
 import { configService } from '../config';
-import { upsertSession, finalizeSession, upsertConversation, completeConversation, updateConversationStatus, addConversationEvent, getLastEventTimestampForConversation, upsertThoughtflowArtifact } from '../db/sqlite';
+import { upsertSession, finalizeSession, upsertConversation, checkpointConversation, updateConversationStatus, addConversationEvent, getLastEventTimestampForConversation, upsertThoughtflowArtifact } from '../db/sqlite';
 import { getEffectivePublicUrl } from '../server/config/env';
+import { closeActivitySpan } from '../timeline/activity';
 
 // Explicit step types for ThoughtFlow events
 export enum ThoughtFlowStepType {
@@ -68,29 +69,21 @@ function scheduleInactivityTimer(targetSessionId: string) {
     try {
       const conversationId = (session as any).currentConversationId as string | undefined;
       if (conversationId) {
-        const endedAt = new Date().toISOString();
-        // Mirror manual finalization path so memory extraction/consolidation runs on timeout too.
-        completeConversation({ id: conversationId, status: 'timeout', ended_at: endedAt });
-        appendEvent({
-          type: 'conversation.completed',
+        const result = checkpointConversation(conversationId, 'idle', session.currentActivitySpanId);
+        if (result) appendEvent({
+          type: 'activity.checkpoint',
           conversation_id: conversationId,
-          ended_at: endedAt,
-          status: 'timeout',
+          checkpoint_seq: result.checkpointSeq,
+          turn_count: result.turnCount,
+          timestamp: Date.now(),
+        });
+        if (result) closeActivitySpan(conversationId, 'idle', {
+          checkpoint_seq: result.checkpointSeq,
+          turn_count: result.turnCount,
         });
       }
     } catch {}
-
-    try {
-      session.currentRequest = undefined;
-      try { (session as any).currentConversationId = undefined; } catch {}
-      try { (session as any).lastAssistantStepId = undefined; } catch {}
-      try { (session as any).lastUserStepId = undefined; } catch {}
-      try { (session as any).pendingMemoryPromise = undefined; } catch {}
-      endSession({ statusOverride: 'timeout' });
-      console.info('[thoughtflow] Session auto-finalized due to inactivity timeout');
-    } catch (e) {
-      console.warn('[thoughtflow] Session inactivity auto-finalization failed:', (e as any)?.message || e);
-    }
+    console.info('[thoughtflow] Activity checkpointed after inactivity; conversation remains resumable');
   }, timeoutMs);
 }
 

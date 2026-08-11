@@ -107,10 +107,14 @@ class MemoryModule {
   private _dedup: MemoryDeduplicator = new MemoryDeduplicator();
 
   constructor() {
+    conversationBus.onConversationCheckpoint((conv) => {
+      this._extractAndStore(conv).catch(() => {});
+    });
+    conversationBus.onConversationClosed(() => {
+      this._dedup.reset();
+    });
     conversationBus.onConversationComplete((conv) => {
       this._extractAndStore(conv).catch(() => {});
-      // Reset deduplicator state so the next conversation starts fresh
-      this._dedup.reset();
     });
   }
 
@@ -169,7 +173,7 @@ class MemoryModule {
         const cachets = Date.now();
         this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: this._cachedMemories, source: 'cache', age_ms: ageMs, timestamp: cachets });
         if (conversationId) {
-          this._persist(conversationId, 'memory_retrieved', { source: 'cache', count: lines.length, age_ms: ageMs }, cachets);
+          this._persist(conversationId, 'memory_retrieved', { source: 'cache', count: lines.length, age_ms: ageMs, memories: this._cachedMemories }, cachets);
           this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'cache', count: lines.length }, cachets);
         }
         this._kickBackgroundRefresh(backend, query);
@@ -213,7 +217,7 @@ class MemoryModule {
               const latets = Date.now();
               this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: result, source: 'late', elapsed_ms: latets - start, timestamp: latets });
               if (conversationId) {
-                this._persist(conversationId, 'memory_retrieved', { source: 'late', count: lines.length, elapsed_ms: latets - start }, latets);
+                this._persist(conversationId, 'memory_retrieved', { source: 'late', count: lines.length, elapsed_ms: latets - start, memories: result }, latets);
                 this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'late', count: lines.length }, latets);
               }
             } else {
@@ -276,7 +280,7 @@ class MemoryModule {
       });
       this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: result, source: 'fresh', elapsed_ms: freshts - start, timestamp: freshts });
       if (conversationId) {
-        this._persist(conversationId, 'memory_retrieved', { source: 'fresh', count: lines.length, elapsed_ms: freshts - start }, freshts);
+        this._persist(conversationId, 'memory_retrieved', { source: 'fresh', count: lines.length, elapsed_ms: freshts - start, memories: result }, freshts);
         this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'fresh', count: lines.length }, freshts);
       }
     } else {

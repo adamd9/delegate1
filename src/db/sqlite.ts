@@ -141,6 +141,13 @@ export function getDb() {
     CREATE INDEX IF NOT EXISTS idx_inner_signals_pending
       ON inner_signals(status, available_at_ms, priority DESC, created_at_ms ASC);
   `);
+  const conversationColumns = databaseInstance.pragma('table_info(conversations)') as Array<{ name: string }>;
+  if (!conversationColumns.some(column => column.name === 'last_checkpoint_seq')) {
+    databaseInstance.exec('ALTER TABLE conversations ADD COLUMN last_checkpoint_seq INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!conversationColumns.some(column => column.name === 'last_checkpoint_at_ms')) {
+    databaseInstance.exec('ALTER TABLE conversations ADD COLUMN last_checkpoint_at_ms INTEGER');
+  }
   return databaseInstance;
 }
 
@@ -173,31 +180,67 @@ export function upsertConversation(conv: { id: string; session_id: string; chann
 }
 
 export function completeConversation(conv: { id: string; status?: string; ended_at?: string; duration_ms?: number; }) {
+  checkpointConversation(conv.id, 'conversation_end');
   updateConversationStatus(conv);
-  // Emit conversation_complete so memory extraction can run over the full transcript
-  try {
-    const db = getDb();
-    const events = db.prepare(
-      `SELECT kind, payload_json FROM conversation_events WHERE conversation_id = ? ORDER BY seq ASC`
-    ).all(conv.id) as Array<{ kind: string; payload_json: string }>;
+  conversationBus.emitConversationClosed(conv.id);
+}
+
+export function checkpointConversation(conversationId: string, reason: string = 'idle', spanId?: string): {
+  checkpointSeq: number;
+  turnCount: number;
+} | null {
+  const database = getDb();
+  const checkpoint = database.transaction(() => {
+    const conversation = database.prepare(
+      'SELECT last_checkpoint_seq FROM conversations WHERE id = ?'
+    ).get(conversationId) as { last_checkpoint_seq?: number } | undefined;
+    if (!conversation) return null;
+    const previousSeq = Number(conversation.last_checkpoint_seq || 0);
+    const rows = database.prepare(`
+      SELECT seq, kind, payload_json
+      FROM conversation_events
+      WHERE conversation_id = ? AND seq > ? AND kind IN ('message_user', 'message_assistant')
+      ORDER BY seq ASC
+    `).all(conversationId, previousSeq) as Array<{ seq: number; kind: string; payload_json: string }>;
     const turns: Array<{ role: 'user' | 'assistant'; text: string }> = [];
     let channel = 'text';
-    for (const e of events) {
-      if (e.kind !== 'message_user' && e.kind !== 'message_assistant') continue;
-      const p = (() => { try { return JSON.parse(e.payload_json); } catch { return {}; } })();
-      // Skip internal shadow-turn injections
-      if (p.internal) continue;
-      if (p.channel) channel = p.channel;
-      turns.push({ role: e.kind === 'message_user' ? 'user' : 'assistant', text: p.text || '' });
+    let checkpointSeq = previousSeq;
+    for (const row of rows) {
+      checkpointSeq = Math.max(checkpointSeq, row.seq);
+      const payload = (() => { try { return JSON.parse(row.payload_json); } catch { return {}; } })();
+      if (payload.internal) continue;
+      if (payload.channel) channel = payload.channel;
+      turns.push({ role: row.kind === 'message_user' ? 'user' : 'assistant', text: payload.text || '' });
     }
-    if (turns.length > 0) {
-      conversationBus.emitConversationComplete({
-        conversationId: conv.id,
-        channel: channel as any,
-        turns,
-      });
-    }
-  } catch {}
+    if (!turns.length) return null;
+    const createdAtMs = Date.now();
+    const eventId = `ti_checkpoint_${conversationId}_${checkpointSeq}`;
+    const seq = nextSeqByConversation(conversationId);
+    database.prepare(`
+      INSERT OR IGNORE INTO conversation_events
+        (id, conversation_id, seq, kind, payload_json, created_at_ms)
+      VALUES (?, ?, ?, 'conversation_checkpoint', ?, ?)
+    `).run(eventId, conversationId, seq, JSON.stringify({
+      reason,
+      ...(spanId ? { span_id: spanId } : {}),
+      from_seq: previousSeq + 1,
+      through_seq: checkpointSeq,
+      turn_count: turns.length,
+    }), createdAtMs);
+    database.prepare(`
+      UPDATE conversations
+      SET last_checkpoint_seq = ?, last_checkpoint_at_ms = ?
+      WHERE id = ?
+    `).run(checkpointSeq, createdAtMs, conversationId);
+    return { checkpointSeq, turns, channel, createdAtMs };
+  })();
+  if (!checkpoint) return null;
+  conversationBus.emitConversationCheckpoint({
+    conversationId,
+    channel: checkpoint.channel as Channel,
+    turns: checkpoint.turns,
+  });
+  return { checkpointSeq: checkpoint.checkpointSeq, turnCount: checkpoint.turns.length };
 }
 
 /** Update conversation status in DB without emitting the conversation bus event.

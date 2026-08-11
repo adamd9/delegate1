@@ -22,6 +22,7 @@ import type { ContextTurn } from '../memory';
 import { getMemoryConfig } from '../memory/memoryConfig';
 import { formatInnerContext } from '../innerContext/format';
 import { SqliteInnerSignalStore } from '../innerContext/store';
+import { ensureActivitySpan, closeActivitySpan } from '../timeline/activity';
 
 const innerSignalStore = new SqliteInnerSignalStore();
 
@@ -64,6 +65,7 @@ export async function processChatSocketMessage(
         // Mark conversation completed now
         const endedAt = new Date().toISOString();
         completeConversation({ id: targetConvId, status: 'completed', ended_at: endedAt });
+        closeActivitySpan(targetConvId, 'explicit_end');
         // Emit a ThoughtFlow event so artifact generation and ledger entries are produced
         try {
           appendEvent({ type: 'conversation.completed', conversation_id: targetConvId, ended_at: endedAt, status: 'completed' });
@@ -146,6 +148,51 @@ export async function processChatSocketMessage(
                 },
                 timestamp: ts,
               } as any;
+              if (requester && isOpen(requester)) jsonSend(requester, evt);
+            } else if (kind === 'inner_context') {
+              const evt = {
+                type: 'inner.activation',
+                phase: payload.mode === 'attached_to_user' ? 'attached' : 'started',
+                replay: true,
+                signals: Array.isArray(payload.innerSignals) ? payload.innerSignals : [],
+                composed_context: payload.text || '',
+                timestamp: ts,
+              } as any;
+              if (requester && isOpen(requester)) jsonSend(requester, evt);
+            } else if (kind === 'inner_activation_completed') {
+              const evt = {
+                type: 'inner.activation',
+                phase: 'completed',
+                replay: true,
+                signals: Array.isArray(payload.signals) ? payload.signals : [],
+                duration_ms: payload.duration_ms,
+                timestamp: ts,
+              } as any;
+              if (requester && isOpen(requester)) jsonSend(requester, evt);
+            } else if (kind === 'inner_activation_failed') {
+              const evt = {
+                type: 'inner.activation',
+                phase: 'failed',
+                replay: true,
+                signals: Array.isArray(payload.signals) ? payload.signals : [],
+                duration_ms: payload.duration_ms,
+                error: payload.error,
+                timestamp: ts,
+              } as any;
+              if (requester && isOpen(requester)) jsonSend(requester, evt);
+            } else if (kind === 'memory_retrieved') {
+              const evt = {
+                type: 'memory.retrieved',
+                replay: true,
+                ...payload,
+                timestamp: ts,
+              } as any;
+              if (requester && isOpen(requester)) jsonSend(requester, evt);
+            } else if (kind === 'memory_pending') {
+              const evt = { type: 'memory.pending', replay: true, ...payload, timestamp: ts } as any;
+              if (requester && isOpen(requester)) jsonSend(requester, evt);
+            } else if (kind === 'memory_miss') {
+              const evt = { type: 'memory.miss', replay: true, ...payload, timestamp: ts } as any;
               if (requester && isOpen(requester)) jsonSend(requester, evt);
             } else if (kind === 'function_call_created') {
               const evt = {
@@ -304,6 +351,7 @@ export async function handleTextChatMessage(
     if (isNewConversation) {
       appendEvent({ type: 'conversation.started', conversation_id: conversationId, request_id: requestId, channel, started_at: new Date().toISOString() });
     }
+    ensureActivitySpan(conversationId, isInnerContext ? 'inner' : 'user', channel);
     const userStepId = `${isInnerContext ? 'step_inner' : 'step_user'}_${requestId}`;
     // Link user turn to the most recent assistant message if available to preserve sub-threading
     const userDepends = (session as any).lastAssistantStepId ? [(session as any).lastAssistantStepId] : undefined;
@@ -348,7 +396,7 @@ export async function handleTextChatMessage(
         addConversationEvent({
           conversation_id: conversationId,
           kind: 'inner_context',
-          payload: { text: content, channel, internal: true },
+          payload: { text: content, channel, internal: true, innerSignals: metadata.innerSignals || [] },
           created_at_ms: userMessage.timestamp,
         });
       } catch {}
@@ -390,6 +438,33 @@ export async function handleTextChatMessage(
     const claimedInnerSignals = isInternal ? [] : innerSignalStore.claimForTurn(Date.now(), 20, 30_000);
     claimedInnerSignalIds = claimedInnerSignals.map(signal => signal.id);
     const innerContextText = claimedInnerSignals.length ? formatInnerContext(claimedInnerSignals) : '';
+    if (claimedInnerSignals.length) {
+      const signalDetails = claimedInnerSignals.map(signal => ({
+        id: signal.id,
+        kind: signal.kind,
+        source: signal.source,
+        awarenessMode: signal.awarenessMode,
+        priority: signal.priority,
+        payload: signal.payload,
+        createdAtMs: signal.createdAtMs,
+        attempts: signal.attempts,
+      }));
+      addConversationEvent({
+        conversation_id: conversationId,
+        kind: 'inner_context',
+        payload: { text: innerContextText, channel, internal: true, mode: 'attached_to_user', innerSignals: signalDetails },
+      });
+      for (const ws of chatClients) {
+        if (isOpen(ws)) jsonSend(ws, {
+          type: 'inner.activation',
+          phase: 'attached',
+          signals: signalDetails,
+          composed_context: innerContextText,
+          conversation_id: conversationId,
+          timestamp: Date.now(),
+        });
+      }
+    }
     // Retrieve relevant memories with deduplication applied.
     // `memories` = all (for context), `newMemories` = only novel items.
     // If retrieval times out, the onLateArrival callback triggers a shadow turn
@@ -427,7 +502,13 @@ export async function handleTextChatMessage(
     }
     const memoriesPrefix = memories ? `[Retrieved memories from past conversations — use these facts when relevant to the user's query]\n${memories}\n\n` : '';
     const innerContextPrefix = innerContextText ? `${innerContextText}\n\n` : '';
-    const instructions = [innerContextPrefix + memoriesPrefix + contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
+    const priorTurns = !isInternal && historyTurns.length > 0 && historyTurns[historyTurns.length - 1]?.role === 'user'
+      ? historyTurns.slice(0, -1)
+      : historyTurns;
+    const recentTimelineContext = !session.previousResponseId && priorTurns.length
+      ? `[Recent conversation timeline — continuity context, not new user input]\n${priorTurns.slice(-8).map(turn => `${turn.role === 'user' ? 'User' : 'Assistant'}: ${turn.text.slice(0, 800)}`).join('\n')}\n\n`
+      : '';
+    const instructions = [innerContextPrefix + recentTimelineContext + memoriesPrefix + contextInstructionString, adaptationsText, baseInstructions].filter(Boolean).join('\n');
     // ThoughtFlow snapshots for long-lived prompt inputs (Approach B)
     const policyHash = Buffer.from(baseInstructions, 'utf8').toString('base64').slice(0, 12);
     const toolsHash = Buffer.from(JSON.stringify(functionSchemas), 'utf8').toString('base64').slice(0, 12);

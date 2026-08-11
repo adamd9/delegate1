@@ -457,6 +457,26 @@
     .events::-webkit-scrollbar { width: 3px; }
     .events::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
+    .activity-span {
+      border-left: 2px solid var(--border);
+      margin: 5px 0 12px;
+      padding-left: 12px;
+    }
+    .activity-span.inner { border-left-color: var(--accent); }
+    .activity-span.voice { border-left-color: var(--green); }
+    .activity-span-header {
+      width: 100%; display: flex; align-items: center; gap: 8px;
+      border: 0; background: transparent; color: var(--text-mid);
+      padding: 5px 2px 8px; cursor: pointer; text-align: left;
+      font-family: var(--font-ui);
+    }
+    .activity-span-header:hover { color: var(--text); }
+    .activity-span-chevron { font-family: var(--font); font-size: 11px; width: 12px; }
+    .activity-span-title { font-size: 12px; font-weight: 600; }
+    .activity-span-meta { margin-left: auto; font-family: var(--font); font-size: 10px; color: var(--text-dim); }
+    .activity-span-body { display: flex; flex-direction: column; gap: 1px; }
+    .activity-span.collapsed .activity-span-body { display: none; }
+
     /* Event groups */
     .ev-group { display: flex; flex-direction: column; gap: 3px; margin: 6px 0; }
     .ev-group.right { align-items: flex-end; }
@@ -897,6 +917,10 @@ const state = {
   historyExpanded: false,
   historyHeaderCount: 0,
 
+  // Continuous timeline activity spans. Conversations remain resumable across checkpoints.
+  spans: new Map(),
+  currentSpanId: null,
+
   // Streaming: map of itemId → current accumulated text
   streaming: {},
 };
@@ -1002,7 +1026,27 @@ let lastFinalizedVoiceUserItemId = null;
 const seenFunctionCallBreadcrumbs = new Set();
 
 function handleEvent(event) {
+  if (event.span_id && state.spans.has(event.span_id)) state.currentSpanId = event.span_id;
   switch (event.type) {
+
+    case 'timeline.span.started': {
+      startTimelineSpan(event);
+      break;
+    }
+
+    case 'timeline.span.closed': {
+      closeTimelineSpan(event);
+      break;
+    }
+
+    case 'timeline.checkpoint': {
+      addBreadcrumb('Activity checkpoint', {
+        reason: event.reason,
+        turns: event.turn_count,
+        through_seq: event.through_seq,
+      }, false, event.timestamp);
+      break;
+    }
 
     case 'history.header': {
       const count = typeof event.count === 'number' ? event.count : 0;
@@ -1024,7 +1068,8 @@ function handleEvent(event) {
         if (item.role === 'user' && !text) text = '[Transcribing…]';
 
         const newId = isReplay ? `replay_${event.conversation_id || 'conv'}_${item.id}` : item.id;
-        addMessage(newId, item.role, text, channel, supervisor, isReplay, convId, event.timestamp);
+        const spanManaged = Boolean(event.span_id || state.currentSpanId);
+        addMessage(newId, item.role, text, channel, supervisor, isReplay && !spanManaged, convId, event.timestamp, event.span_id);
 
         if (item.role === 'user' && channel === 'voice') currentVoiceUserItemId = item.id;
 
@@ -1198,6 +1243,38 @@ function handleEvent(event) {
       break;
     }
 
+    case 'inner.signal': {
+      const signal = event.signal || {};
+      addBreadcrumb(`Inner context queued: ${signal.kind || 'event'}`, {
+        source: signal.source,
+        mode: signal.awarenessMode,
+        priority: signal.priority,
+        payload: signal.payload,
+      }, false, event.timestamp);
+      break;
+    }
+
+    case 'inner.activation': {
+      const signals = Array.isArray(event.signals) ? event.signals : [];
+      const kinds = signals.map(signal => signal.kind).filter(Boolean);
+      const suffix = kinds.length ? `: ${kinds.join(', ')}` : '';
+      const labels = {
+        started: `Inner context activation started${suffix}`,
+        attached: `Inner context attached to user turn${suffix}`,
+        completed: `Inner context activation completed${suffix}`,
+        failed: `Inner context activation failed${suffix}`,
+        recorded: `Inner context activation recorded${suffix}`,
+      };
+      addBreadcrumb(labels[event.phase] || `Inner context activation${suffix}`, {
+        phase: event.phase,
+        signals,
+        ...(event.composed_context ? { composed_context: event.composed_context } : {}),
+        ...(typeof event.duration_ms === 'number' ? { duration_ms: event.duration_ms } : {}),
+        ...(event.error ? { error: event.error } : {}),
+      }, event.replay === true, event.timestamp);
+      break;
+    }
+
     case 'chat.error': {
       const id = `error_${event.timestamp || Date.now()}`;
       addMessage(id, 'assistant', `❌ ${event.error || 'An error occurred'}`, 'text', false, false);
@@ -1262,12 +1339,13 @@ function safeParse(val) {
   try { return typeof val === 'string' ? JSON.parse(val) : val; } catch { return val; }
 }
 
-function addMessage(id, role, text, channel, supervisor, isHistory, convId, timestamp) {
+function addMessage(id, role, text, channel, supervisor, isHistory, convId, timestamp, spanId) {
   if (state.items.find(i => i.id === id && i.type === 'MESSAGE')) return;
   const item = {
     id, type: 'MESSAGE', role, title: text,
     channel: channel || 'text', supervisor: supervisor || false,
     isHistory: !!isHistory, convId: convId || null,
+    spanId: spanId || state.currentSpanId || null,
     ts: (typeof timestamp === 'number' ? tsFromEpoch(timestamp) : ts()),
     createdAt: (typeof timestamp === 'number' ? timestamp : Date.now()),
     isHidden: isHistory && !state.historyExpanded,
@@ -1305,10 +1383,13 @@ function setText(id, text) {
 
 function addBreadcrumb(title, data, isHidden, timestamp) {
   const id = `bc-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+  const spanId = state.currentSpanId || null;
+  const effectiveHidden = !!isHidden && !spanId;
   const item = {
     id, type: 'BREADCRUMB', title, data: data || {},
-    isHidden: !!isHidden,
-    isHistory: !!isHidden,   // history breadcrumbs start hidden; toggleHistory uses isHistory to render them
+    spanId,
+    isHidden: effectiveHidden,
+    isHistory: effectiveHidden,
     ts: (typeof timestamp === 'number' ? tsFromEpoch(timestamp) : ts()),
     createdAt: (typeof timestamp === 'number' ? timestamp : Date.now()),
   };
@@ -1332,10 +1413,63 @@ function addNoteEvent(event) {
     id, type: 'BREADCRUMB',
     title: `📌 Note: ${event.title || 'untitled'}`,
     data: { _note: true, url: event.url, content: event.content, title: event.title },
+    spanId: state.currentSpanId || null,
     isHidden: false, ts: ts(), createdAt: Date.now(),
   };
   state.items.push(item);
   renderItem(item);
+}
+
+function spanTitle(kind) {
+  if (kind === 'inner') return 'Inner activity';
+  if (kind === 'voice') return 'Voice activity';
+  return 'Conversation activity';
+}
+
+function startTimelineSpan(event) {
+  const spanId = event.span_id;
+  if (!spanId) return;
+  state.currentSpanId = spanId;
+  if (event.conversation_id) {
+    state.currentConversationId = event.conversation_id;
+    updateConvId();
+  }
+  if (state.spans.has(spanId)) return;
+  const container = document.createElement('section');
+  container.id = `span-${spanId}`;
+  container.className = `activity-span ${event.kind || 'user'}`;
+  const header = document.createElement('button');
+  header.type = 'button';
+  header.className = 'activity-span-header';
+  header.innerHTML = `
+    <span class="activity-span-chevron">▾</span>
+    <span class="activity-span-title">${esc(spanTitle(event.kind))}</span>
+    <span class="activity-span-meta">${esc(tsFromEpoch(event.timestamp || Date.now()))}</span>
+  `;
+  const body = document.createElement('div');
+  body.className = 'activity-span-body';
+  header.addEventListener('click', () => {
+    container.classList.toggle('collapsed');
+    const chevron = header.querySelector('.activity-span-chevron');
+    if (chevron) chevron.textContent = container.classList.contains('collapsed') ? '▸' : '▾';
+  });
+  container.appendChild(header);
+  container.appendChild(body);
+  document.getElementById('events')?.appendChild(container);
+  state.spans.set(spanId, { container, header, body, startedAt: event.timestamp || Date.now(), itemCount: 0 });
+}
+
+function closeTimelineSpan(event) {
+  const span = state.spans.get(event.span_id);
+  if (!span) return;
+  span.container.classList.add('collapsed');
+  const chevron = span.header.querySelector('.activity-span-chevron');
+  if (chevron) chevron.textContent = '▸';
+  const meta = span.header.querySelector('.activity-span-meta');
+  const elapsed = Math.max(0, (event.timestamp || Date.now()) - span.startedAt);
+  const duration = elapsed >= 60_000 ? `${Math.round(elapsed / 60_000)}m` : `${Math.round(elapsed / 1000)}s`;
+  if (meta) meta.textContent = `${span.itemCount} events · ${duration} · ${event.reason || 'checkpoint'}`;
+  if (state.currentSpanId === event.span_id) state.currentSpanId = null;
 }
 
 // ─── History ──────────────────────────────────────────────────────────────────
@@ -1380,7 +1514,8 @@ function toggleHistory() {
 // ─── Rendering ────────────────────────────────────────────────────────────────
 function renderItem(item, prepend) {
   if (item.isHidden) return;
-  const eventsEl = document.getElementById('events');
+  const span = item.spanId ? state.spans.get(item.spanId) : null;
+  const eventsEl = span?.body || document.getElementById('events');
   if (!eventsEl) return;
 
   let el;
@@ -1452,6 +1587,12 @@ function renderItem(item, prepend) {
     eventsEl.insertBefore(el, eventsEl.firstChild);
   } else {
     eventsEl.appendChild(el);
+  }
+
+  if (span) {
+    span.itemCount += 1;
+    const meta = span.header.querySelector('.activity-span-meta');
+    if (meta && !span.container.classList.contains('collapsed')) meta.textContent = `${span.itemCount} events · ${item.ts}`;
   }
 
   scrollToBottom();

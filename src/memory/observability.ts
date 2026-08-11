@@ -26,6 +26,7 @@ export interface MemoryRuntimeEvent {
 
 const MAX_EVENTS = 400;
 const runtimeEvents: MemoryRuntimeEvent[] = [];
+const listeners = new Set<(event: MemoryRuntimeEvent) => void>();
 
 function trimEvents() {
   if (runtimeEvents.length <= MAX_EVENTS) return;
@@ -33,8 +34,19 @@ function trimEvents() {
 }
 
 export function recordMemoryRuntimeEvent(event: Omit<MemoryRuntimeEvent, 'timestamp'> & { timestamp?: number }): void {
-  runtimeEvents.push({ ...event, timestamp: event.timestamp ?? Date.now() });
+  const recorded = { ...event, timestamp: event.timestamp ?? Date.now() } as MemoryRuntimeEvent;
+  runtimeEvents.push(recorded);
   trimEvents();
+  for (const listener of listeners) {
+    try { listener(recorded); } catch (error) {
+      console.warn('[memory] runtime event listener failed:', error instanceof Error ? error.message : error);
+    }
+  }
+}
+
+export function onMemoryRuntimeEvent(listener: (event: MemoryRuntimeEvent) => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
 
 export function getMemoryRuntimeEvents(limit = 100): MemoryRuntimeEvent[] {

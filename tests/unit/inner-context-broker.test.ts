@@ -1,5 +1,7 @@
 import assert from 'assert';
 import { InnerContextBroker } from '../../src/innerContext/broker';
+import { memoryEventToInnerSignal } from '../../src/innerContext/memorySignals';
+import { onMemoryRuntimeEvent, recordMemoryRuntimeEvent } from '../../src/memory/observability';
 import type { InnerSignal, InnerSignalInput, InnerSignalStore } from '../../src/innerContext/types';
 
 type StoredSignal = InnerSignal & {
@@ -93,6 +95,48 @@ function signal(id: string, awarenessMode: InnerSignalInput['awarenessMode'], cr
 
 async function main() {
   let nowMs = 10_000;
+
+  {
+    const consolidated = memoryEventToInnerSignal({
+      type: 'consolidation.consolidated',
+      timestamp: 123,
+      conversationId: 'conv-1',
+      channel: 'text',
+      details: { memory_id: 'mem-1', mode: 'delta', delta: 'Prefers concise reports' },
+    });
+    assert.deepStrictEqual(consolidated, {
+      id: 'memory:consolidation.consolidated:mem-1:123',
+      kind: 'memory.consolidated',
+      source: 'memory.consolidation',
+      awarenessMode: 'wake',
+      priority: 20,
+      createdAtMs: 123,
+      payload: {
+        memoryId: 'mem-1',
+        outcome: 'consolidated',
+        conversationId: 'conv-1',
+        channel: 'text',
+        memory_id: 'mem-1',
+        mode: 'delta',
+        delta: 'Prefers concise reports',
+      },
+    });
+    assert.strictEqual(memoryEventToInnerSignal({ type: 'consolidation.new', timestamp: 124 }), undefined);
+    assert.strictEqual(memoryEventToInnerSignal({
+      type: 'consolidation.conflict',
+      timestamp: 125,
+      details: { memory_id: 'mem-2' },
+    })?.priority, 30);
+  }
+
+  {
+    const observed: string[] = [];
+    const unsubscribe = onMemoryRuntimeEvent(event => observed.push(event.type));
+    recordMemoryRuntimeEvent({ type: 'consolidation.consolidated', details: { memory_id: 'listener-test' } });
+    unsubscribe();
+    recordMemoryRuntimeEvent({ type: 'consolidation.override', details: { memory_id: 'listener-test' } });
+    assert.deepStrictEqual(observed, ['consolidation.consolidated']);
+  }
 
   {
     const store = new FakeStore();

@@ -66,12 +66,22 @@ Timers do not encode those behaviours or map schedules to actions. They only pub
 
 | Source | Typical signals |
 |---|---|
-| Memory | Recall results, extraction, consolidation, conflicts, and failures |
+| Memory | Consolidation, conflict, and override outcomes |
 | Copilot Tasks | Completion, input required, and failure |
 | Timers | Scheduled work becoming due |
 | External processors | Status or results delivered through trusted HTTP or MCP adapters |
 
 The durable journal gives the delegate a truthful history of its background activity. For example, it can describe recent consolidation runs from recorded memory signals rather than reconstructing them from conversation transcripts.
+
+Brand-new memory inserts do not wake the agent. Consolidated, conflicting, and overridden memories do, because they represent a meaningful relationship with existing knowledge. This avoids a feedback loop where every ordinary extraction starts another autonomous activation.
+
+## Logs and UI
+
+- Server logs use structured `[inner-context]` lines for publication, deduplication, batch activation, completion, and failure. Each publication includes the stable signal ID, kind, source, and awareness mode.
+- The conversation timeline is the primary operator view. It shows expandable internal-activity entries in sequence with memory recall, tool calls, tool results, and the assistant's response.
+- Activation entries retain the full claimed batch: stable IDs, kinds, sources, awareness modes, priorities, attempts, creation times, payloads, and the composed inner-context envelope.
+- Signals consumed by a genuine user turn appear as `Inner context attached to user turn`; autonomous work appears as started followed by completed or failed.
+- Replayed history rebuilds the same sequence from durable conversation events, including recalled memory content and activation duration or error. Inner context is never rendered as a user message.
 
 ## Prompt and memory
 
