@@ -268,7 +268,15 @@ export function getSessionDetail(id: string) {
 
 export function listConversations(limit: number) {
   const db = getDb();
-  return db.prepare('SELECT id, session_id, channel, started_at, ended_at, status, duration_ms FROM conversations ORDER BY COALESCE(ended_at, started_at) DESC LIMIT ?').all(limit);
+  return db.prepare(`
+    SELECT id, session_id, channel, started_at, ended_at, status, duration_ms
+    FROM conversations
+    ORDER BY COALESCE(
+      (SELECT MAX(e.created_at_ms) FROM conversation_events e WHERE e.conversation_id = conversations.id),
+      CAST(strftime('%s', COALESCE(ended_at, started_at)) AS INTEGER) * 1000
+    ) DESC
+    LIMIT ?
+  `).all(limit);
 }
 
 export function getConversationById(id: string) {

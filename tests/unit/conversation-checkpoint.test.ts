@@ -13,7 +13,12 @@ async function main() {
   conversationBus.onConversationCheckpoint(checkpoint => observed.push(checkpoint));
 
   sqlite.upsertSession('session-1');
-  sqlite.upsertConversation({ id: 'conversation-1', session_id: 'session-1', channel: 'text' });
+  sqlite.upsertConversation({
+    id: 'conversation-1',
+    session_id: 'session-1',
+    channel: 'text',
+    started_at: '2020-01-01T00:00:00.000Z',
+  });
   sqlite.addConversationEvent({
     conversation_id: 'conversation-1',
     kind: 'activity_span_started',
@@ -77,6 +82,19 @@ async function main() {
   const checkpointEvents = sqlite.listConversationEvents('conversation-1')
     .filter((event: any) => event.kind === 'conversation_checkpoint');
   assert.strictEqual(checkpointEvents.length, 2);
+
+  for (let index = 0; index < 4; index += 1) {
+    sqlite.upsertConversation({
+      id: `newer-conversation-${index}`,
+      session_id: 'session-1',
+      channel: 'text',
+      started_at: new Date(Date.now() - 60_000 + index).toISOString(),
+    });
+  }
+  assert.ok(
+    (sqlite.listConversations(3) as Array<{ id: string }>).some(item => item.id === 'conversation-1'),
+    'recent activity must keep an old resumed conversation inside the history limit',
+  );
 
   const { replayHistoryOnConnect } = await import('../../src/session/history');
   const replayed: any[] = [];
