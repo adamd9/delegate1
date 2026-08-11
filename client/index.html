@@ -984,6 +984,10 @@ function connect() {
     // Clear stale UI state so the server replay starts fresh.
     // Without this, every reconnect duplicates breadcrumbs/notes/events.
     state.items = [];
+    state.spans.clear();
+    state.currentSpanId = null;
+    state.currentConversationId = null;
+    state.streaming = {};
     state.historyHeaderCount = 0;
     seenFunctionCallBreadcrumbs.clear();
     const eventsEl = document.getElementById('events');
