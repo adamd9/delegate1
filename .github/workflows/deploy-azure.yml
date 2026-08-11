@@ -30,7 +30,7 @@ jobs:
           az webapp config container set \
             --name hk-api-drop37 \
             --resource-group AppServiceDev \
-            --container-image-name ghcr.io/adamd9/delegate1:latest
+            --container-image-name ghcr.io/adamd9/delegate1:${{ github.event.workflow_run.head_sha || 'latest' }}
 
       - name: Restart Azure Web App
         run: az webapp restart --name hk-api-drop37 --resource-group AppServiceDev
