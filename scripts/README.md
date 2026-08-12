@@ -54,10 +54,10 @@ npm run script:inspect-app
 
 ### Auto-Update DEV TwiML Application after ngrok restart
 ```bash
-# Ensure websocket-server/.env has PUBLIC_URL and TWILIO_TWIML_APP_SID set
+# Ensure the root .env has PUBLIC_URL and TWILIO_TWIML_APP_SID set
 # Example: PUBLIC_URL=https://<your-ngrok>.ngrok-free.app
 
-# Run the updater (reads websocket-server/.env)
+# Run the updater (reads .env)
 npm run script:update-app
 
 # Optional: specify a custom .env path
@@ -82,7 +82,7 @@ npm run ask -- "Please escalate this to the supervisor and tell me our company p
 
 Make sure you have the following environment variables configured:
 
-### For Backend (websocket-server/.env):
+### For the app (root `.env`):
 ```bash
 TWILIO_ACCOUNT_SID=AC...
 TWILIO_API_KEY_SID=SK...
@@ -92,8 +92,8 @@ PUBLIC_URL=https://<your-ngrok>.ngrok-free.app
 ```
 
 ### For Scripts:
-- Scripts now read from `websocket-server/.env` where applicable (e.g., update-twiml-app).
-- Install once at repo root: `npm install dotenv`.
+- Scripts read the root `.env` where applicable (for example, `update-twiml-app`).
+- Install dependencies once at repo root with `npm install`.
 - For production, migrate secrets to environment variables or a secret manager.
 
 ## 🔧 Manual Usage
@@ -109,7 +109,7 @@ node scripts/debug/validate-token.js
 
 ## 🛡️ Security Notes
 
-- Scripts contain hardcoded credentials for development convenience
-- For production use, migrate to environment variables
+- Scripts read credentials from environment variables or `.env`
+- For production, prefer a managed secret store
 - Never commit real credentials to version control
 - Use `.env` files and `.gitignore` for sensitive data

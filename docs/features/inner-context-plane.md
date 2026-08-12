@@ -83,6 +83,17 @@ Brand-new memory inserts do not wake the agent. Consolidated, conflicting, and o
 - Signals consumed by a genuine user turn appear as `Inner context attached to user turn`; autonomous work appears as started followed by completed or failed.
 - Replayed history rebuilds the same sequence from durable conversation events, including recalled memory content and activation duration or error. Inner context is never rendered as a user message.
 
+The UI also uses the **Inner Plane** label for internal context operations that are observable but are not themselves wake signals:
+
+| Event | Meaning |
+|---|---|
+| Memory retrieval | Pending, miss, or recalled memories injected into working context |
+| `context.usage` | Responses or Realtime token usage recorded for the turn |
+| `context.compacted` | Official Responses compaction completed |
+| `context.capsule` | Continuity capsule refresh started, completed, or failed |
+
+This is a presentation category, not a claim that token usage or compaction passed through the Attention Broker. Usage, compaction, and completed capsule events replay from durable conversation events; capsule `started` and `failed` notifications are live-only. All remain distinct from user messages.
+
 ## Prompt and memory
 
 The plane supplies awareness, not behaviour. Code handles persistence, timing, ordering, concurrency, and trust boundaries. The prompt and standing memories determine whether a signal deserves action, which existing tool to use, and whether the user should be contacted.

@@ -12,6 +12,7 @@ Your delegate has a lot of capabilities. This section has a page for each one �
 ## Channels — how you talk to your delegate
 
 - **[Text chat](text-chat/)** — type a message and get a response; the default way to interact
+- **[Conversation continuity](conversation-continuity/)** — how one relationship timeline stays coherent across channels, restarts, and bounded model contexts
 - **[Phone](phone/)** — call your delegate on a real phone number, or have it call you
 - **[SMS](sms/)** — text your delegate and it texts back
 - **[Email](email/)** — email your delegate like a colleague; great for longer or async tasks

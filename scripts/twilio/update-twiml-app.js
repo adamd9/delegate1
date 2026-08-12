@@ -4,9 +4,9 @@
  * TwiML Application Updater for Delegate 1 (DEV)
  * 
  * Automatically updates the TwiML Application's Voice URL to point to the
- * websocket-server PUBLIC_URL + "/twiml" so ngrok restarts are a one-liner.
+ * root PUBLIC_URL + "/twiml" so ngrok restarts are a one-liner.
  * 
- * Reads config from: websocket-server/.env by default.
+ * Reads config from: .env at the repository root by default.
  * Override with: node scripts/twilio/update-twiml-app.js --env path/to/.env
  */
 
@@ -16,7 +16,7 @@ const dotenv = require('dotenv');
 const twilio = require('twilio');
 
 function loadEnv(envPathArg) {
-  const defaultPath = path.resolve(__dirname, '../../websocket-server/.env');
+  const defaultPath = path.resolve(__dirname, '../../.env');
   const envPathIndex = process.argv.findIndex((a) => a === '--env');
   const envPath = envPathArg || (envPathIndex !== -1 ? process.argv[envPathIndex + 1] : defaultPath);
 
@@ -39,10 +39,10 @@ function buildVoiceUrl(publicUrl) {
 }
 
 async function updateTwiMLApplication() {
-  console.log('🔧 Updating TwiML Application from websocket-server/.env');
   let envPathUsed;
   try {
     envPathUsed = loadEnv();
+    console.log(`🔧 Updating TwiML Application from ${envPathUsed}`);
     console.log(`📄 Loaded env: ${envPathUsed}`);
 
     const accountSid = required('TWILIO_ACCOUNT_SID');
@@ -92,7 +92,7 @@ async function updateTwiMLApplication() {
     console.log('   Error:', error.message);
     if (envPathUsed) console.log(`   Loaded env: ${envPathUsed}`);
     console.log('\n🔧 Checks:');
-    console.log('   - TWILIO_* credentials present in websocket-server/.env');
+    console.log('   - TWILIO_* credentials present in the selected .env file');
     console.log('   - TWILIO_TWIML_APP_SID is correct for DEV');
     console.log('   - PUBLIC_URL looks like https://<ngrok>.ngrok-free.app');
     console.log('   - API Key has permission to update Applications');

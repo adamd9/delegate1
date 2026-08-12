@@ -42,4 +42,17 @@ For local dev you can wipe `runtime-data/` and re-run install. Don't do this in 
 
 ## Backups
 
-Everything in this directory is plain JSON or SQLite. A simple tarball is a complete backup.
+Everything in this directory is plain JSON or SQLite. Stop the app before taking a filesystem-level tarball so the SQLite database and JSON files are captured consistently. For a live system, use SQLite's backup API or a storage snapshot rather than copying only `assistant.sqlite` while writes are active.
+
+## SQLite journal mode
+
+Local development defaults to WAL for concurrency. When `RUNTIME_DATA_DIR` is set, Delegate 1 assumes the runtime may be a mounted volume and defaults to rollback `DELETE` mode with `busy_timeout = 5000`.
+
+Do not use WAL for the production database on Azure Files or another SMB-backed mount. WAL depends on shared-memory and locking semantics that SMB does not reliably provide and can corrupt the database. Keep `SQLITE_JOURNAL_MODE=DELETE` for those deployments and verify backups with:
+
+```sql
+PRAGMA journal_mode;
+PRAGMA quick_check;
+```
+
+A healthy mounted production database should report `delete` and `ok`, with no persistent `assistant.sqlite-wal` or `assistant.sqlite-shm` files.

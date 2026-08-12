@@ -25,7 +25,7 @@ Your delegate isn't just a chatbot — it can take action on your behalf from a 
 1. Open your Delegate app.
 2. Type your message in the text box at the bottom of the screen.
 3. Press **Enter** (or click **Send**).
-4. Your delegate's reply appears in real time — you'll see the words arrive as it writes them, rather than waiting for the full response.
+4. A working indicator remains visible while the model and any tools run; the completed reply then appears in the timeline.
 
 When your delegate uses a tool (such as searching the web or reading your notes), you'll see that activity appear inline in the conversation so you know what it's doing.
 
@@ -35,7 +35,9 @@ You can open the app in several browser tabs at once — all tabs show the same 
 
 ## Starting fresh
 
-If you want to wipe the conversation and start over, use the **Reset session** option. This clears all in-progress context. (During development, this can also be triggered via `POST /session/reset`.)
+Use **End conversation** when you want an explicit semantic boundary. The next message starts a new technical conversation record, while earlier activity remains in the chronological relationship timeline.
+
+`POST /session/reset` is a development and test control that clears in-progress singleton state. It is not the normal user-facing way to organise conversation history.
 
 ---
 
@@ -54,14 +56,14 @@ The browser opens a persistent WebSocket connection (a low-latency two-way pipe)
 { "type": "chat.message", "content": "Hello!" }
 ```
 
-**Server → client (streaming)**
+**Server → client**
 ```json
-{ "type": "chat.response.delta", "content": "Hel" }
-{ "type": "chat.response.delta", "content": "lo!" }
+{ "type": "chat.working", "request_id": "..." }
 { "type": "chat.response", "content": "Hello!", "conversation_id": "..." }
+{ "type": "chat.done", "request_id": "..." }
 ```
 
-Responses are streamed token-by-token via the OpenAI Responses API. Tool calls emit additional event types. The chat channel shares the same session, memory, and tool registry as all other channels (voice, phone).
+Responses use the OpenAI Responses API with `previous_response_id` and official context compaction. Tool calls emit additional events, and context usage, compaction, capsule refresh, and memory retrieval appear as expandable Inner Plane activity. The chat channel shares the same timeline, memory, continuity capsule, and tool registry as all other channels.
 
 - Server handler: `src/session/chat.ts`
 - Frontend: `client/index.html` (plain HTML/JS)

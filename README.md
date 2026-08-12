@@ -45,6 +45,7 @@ Everything else — installation, configuration, every feature (phone, email, me
 
 - **[Getting Started](./docs/getting-started/)**
 - **[Features](./docs/features/)** — one page per capability
+- **[Conversation continuity](./docs/features/conversation-continuity.md)** — relationship timeline, activity spans, compaction, Realtime truncation, and durable capsules
 - **[Operations](./docs/operations/)**
 - **[Reference](./docs/reference/)** — env vars, endpoints, architecture
 

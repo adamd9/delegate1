@@ -6,7 +6,7 @@ nav_order: 1
 
 # Environment variables
 
-Almost every key here can be set in `.env` **or** in the in-app config store (via `/settings.html`). The config store is checked first; environment is the fallback.
+Settings-backed keys can be set in `.env` or in the in-app config store (via `/settings.html`); the config store is checked first. Bootstrap and low-level storage/context-policy keys are read directly from `process.env`.
 
 ## Bootstrap (read directly from `process.env`)
 
@@ -15,6 +15,12 @@ Almost every key here can be set in `.env` **or** in the in-app config store (vi
 | `PORT` | `8081` | HTTP listen port |
 | `ADMIN_PASSWORD` | — | Admin password. If unset, install flow asks for one. |
 | `RUNTIME_DATA_DIR` | `./runtime-data` | Where persisted state lives |
+| `SQLITE_JOURNAL_MODE` | automatic | Force `WAL` or `DELETE`. Defaults to `WAL` locally and `DELETE` whenever `RUNTIME_DATA_DIR` is set. Keep Azure Files/SMB mounts on `DELETE`. |
+| `RESPONSES_COMPACT_THRESHOLD_TOKENS` | `120000` | Token threshold sent to official Responses API compaction |
+| `CONTEXT_CAPSULE_TRIGGER_TOKENS` | `24000` | Input-token threshold for refreshing the durable continuity capsule |
+| `CONTEXT_CAPSULE_SOURCE_TURNS` | `40` | Maximum recent user/assistant turns supplied to capsule generation |
+| `CONTEXT_RECENT_TURNS` | `8` | Maximum post-capsule turns included verbatim when continuity context is injected |
+| `REALTIME_CONTEXT_RETENTION_RATIO` | `0.8` | Fraction of recent Realtime context retained when truncation occurs; must be greater than 0 and less than 1 |
 | `LEDGER_DEBUG` | unset | Verbose event-ledger logging |
 | `FRONTEND_URL` | `http://localhost:8081` | Used by the startup notification script |
 | `CALL_MY_PHONE_ENDPOINT` | — | Optional startup notification webhook |
@@ -33,7 +39,7 @@ Almost every key here can be set in `.env` **or** in the in-app config store (vi
 | `REALTIME_MODEL` | Override realtime voice model |
 | `REALTIME_VOICE` | Override realtime voice |
 | `DELEGATE_MAX_AUDIO_BYTES` | Cap on per-message audio size |
-| `SESSION_HISTORY_LIMIT` | Max turns retained in the session |
+| `SESSION_HISTORY_LIMIT` | Number of technical conversation records hydrated into browser history (1-50, default 3); does not prune the event ledger or set model context size |
 | `SESSION_IDLE_TIMEOUT_MINUTES` | Checkpoint and collapse the current activity span after an idle period; the conversation remains resumable (0 disables) |
 | `TIMEZONE` | Timezone string used in agent prompts |
 

@@ -25,11 +25,12 @@ Routed in `src/ws/attach.ts` by URL path. Only one voice/call connection can be 
 **Server → client**
 
 ```json
-{ "type": "chat.response.delta", "content": "..." }
+{ "type": "chat.working", "request_id": "..." }
 { "type": "chat.response", "content": "...", "conversation_id": "..." }
+{ "type": "chat.done", "request_id": "..." }
 ```
 
-Tool calls emit additional event types (`tool.call`, `tool.result`, etc.) — see `src/session/chat.ts` for the full list.
+Timeline replay and live observability also use `conversation.item.*`, `timeline.span.*`, `memory.*`, `inner.activation`, `context.usage`, `context.compacted`, and `context.capsule` events. Context and memory events render as Inner Plane activity rather than user messages. See `src/session/chat.ts` and `src/session/history.ts` for the complete mapping.
 
 ## `/browser-call`
 
@@ -39,13 +40,13 @@ Key control messages:
 
 - `session.start` (client) — opens a Realtime session
 - `input_audio_buffer.append` (client) — incoming mic chunk
-- `response.audio.delta` (server) — outbound speech chunk
-- `response.audio.done` (server) — assistant finished speaking
+- `media` (server) — outbound speech chunk
+- `response.audio.done` (model event handled by the server) — assistant finished generating audio
 - `input_audio_buffer.speech_started` (model event) — realtime VAD interruption trigger
 
 ## `/call`
 
-Twilio-specific framing: each frame is `{ event: "media", media: { payload: <base64 µ-law> }}`. The server transcodes µ-law ⇄ PCM16 for the OpenAI Realtime API. Same barge-in logic as `/browser-call`.
+Twilio-specific framing: each frame is `{ event: "media", media: { payload: <base64 µ-law> }}`. The server declares the stream as `audio/pcmu` and passes the µ-law payload directly to and from the OpenAI Realtime API. Same barge-in logic as `/browser-call`.
 
 ## Barge-in invariant
 

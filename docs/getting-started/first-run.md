@@ -36,6 +36,14 @@ Open <http://localhost:8081>. If this is the first launch, you'll be sent throug
 
 The password you set (or `ADMIN_PASSWORD` from `.env`) gets you in.
 
+## Returning to an existing timeline
+
+Delegate 1 automatically resumes the most recently active open technical conversation after a server restart. Recent user and assistant turns are reconstructed from the event ledger, and the latest durable continuity capsule is restored independently. You do not need to choose a chat before carrying on.
+
+Idle time closes the current activity span and creates an incremental memory checkpoint; it does not end the relationship timeline. A later text, call, SMS, email, or autonomous activation appears as another collapsible span in chronological order. Use **End conversation** only when you want an explicit technical boundary.
+
+The browser hydrates a configurable number of technical records, while SQLite remains the authoritative history. Model compaction or voice truncation can reduce working context without deleting that durable history.
+
 ## The UI tour
 
 ### Chat (home)

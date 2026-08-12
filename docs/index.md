@@ -42,7 +42,7 @@ You *delegate* to it. It acts, reports back, and remembers.
 Delegate 1 holds a real phone number (via Twilio) and an email address. You can call it, send it an SMS, or fire off an email the same way you'd contact a human assistant. It replies through the same channel, or whichever makes most sense for the task.
 
 ### One conversation, every channel
-There are no separate sessions. A single conversational context persists across every mode — pick up the phone mid-email thread, switch to text, carry on. The thread is always the same thread.
+There are no separate user-visible chats for each channel. One durable relationship timeline runs across every mode — pick up the phone mid-email thread, switch to text, carry on. Underneath, each model protocol keeps a bounded working context using compaction or truncation, plus a durable continuity capsule and recent turns. The timeline stays whole even when a model window is shortened.
 
 ### Voice-first, interface-free
 The design favours conversation over clicking. Interactions are driven by natural language and prompting logic rather than UI flows. When richer output is needed, the delegate uses **notes** (a persistent store it can write to and share) rather than forcing you back to a screen.

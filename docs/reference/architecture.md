@@ -39,15 +39,30 @@ Memory, tasks, timers, and other background processors publish typed signals thr
 
 ## Continuous timeline
 
-The user-facing history is one chronological relationship timeline, not a stack of conversations that expire on inactivity. Technical conversation IDs remain as persistence and tooling anchors, while activity inside them is divided into collapsible spans:
+The user-facing history is one chronological relationship timeline, not a stack of chats that expire on inactivity. Technical conversation IDs remain as persistence and tooling anchors, while activity inside them is divided into collapsible spans:
 
 - user interaction bursts
 - phone and browser voice activity
 - autonomous inner-context activations
 
-After the configured idle period, the current span is checkpointed and memory extraction processes only turns added since the previous checkpoint. The conversation ID, recent working context, and causal anchors remain resumable. A later message starts a new span in the same timeline, even hours later. Explicit **End conversation** remains available when a true semantic boundary is wanted.
+After the configured idle period, the current span is checkpointed and memory extraction processes only turns added since the previous checkpoint. The technical conversation, recent working state, and causal anchors remain resumable. A later message starts a new span in the same timeline, even hours later. Explicit **End conversation** closes the current technical record when a true semantic boundary is wanted; earlier records remain visible in the relationship timeline.
 
 Queued inner signals are durable timeline events between spans. When a signal wakes the agent, the activation span contains the full claimed batch, recalled memories, tool calls and results, assistant output, and completion or failure outcome.
+
+The SQLite event ledger is authoritative. Browser history hydration replays a configurable number of technical conversation records (`SESSION_HISTORY_LIMIT`) in activity order. That setting does not prune the ledger or limit model tokens.
+
+## Model context continuity
+
+The visible timeline and the model's working context are separate layers. This keeps the relationship continuous without sending an unbounded transcript to every model call:
+
+- Text, SMS, email, and autonomous Inner Context turns use the Responses API with `previous_response_id` and official server-side compaction.
+- Phone and browser voice use Realtime sessions with retention-ratio truncation.
+- A durable, model-written continuity capsule preserves established facts, commitments, unresolved work, preferences, and corrections.
+- Recent verbatim turns after the capsule provide exact cross-channel grounding when a model session starts or changes protocol.
+
+Responses compaction and Realtime truncation only change model working context. They do not delete conversation events or create a visible history boundary. The latest capsule is persisted as a `context_capsule` event and restored independently during startup; recent user and assistant turns are reconstructed from the latest event window.
+
+See [Conversation continuity](../../features/conversation-continuity/) for the user-facing model and [Model calling flows](../model-calling-flows/) for protocol details.
 
 ## Tool registry
 
@@ -81,6 +96,8 @@ Two layers, plus a deduplicator and a real-time conversation bus that extracts m
 | `runtime-data/*.json` | notes, MCP config, agent policies, adaptations, memory config |
 | `runtime-data/voice-presets/` | voice configurations |
 | `runtime-data/thoughtflow/` | run artifacts (D2) |
+
+Local SQLite defaults to WAL mode. When `RUNTIME_DATA_DIR` points at a mounted runtime volume, SQLite defaults to rollback `DELETE` mode with a 5-second busy timeout. Production Azure Files mounts must remain in `DELETE` mode because WAL's shared-memory coordination is unsafe on SMB-backed storage.
 
 ## Channels
 

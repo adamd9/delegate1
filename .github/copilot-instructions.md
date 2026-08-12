@@ -13,6 +13,8 @@ Delegate 1 is a single-session, multi-channel AI assistant (text, voice, phone) 
 - **Run a single E2E test**: `npx @playwright/test@1.55.0 test tests/e2e/<filename>.spec.ts`
 - **Run a single test by name**: `npx @playwright/test@1.55.0 test -g "test name pattern"`
 - **Run unit tests**: `npm run test:unit` (runs `ts-node tests/unit/memory-deduplicator.test.ts`)
+- **Run context policy tests**: `npm run test:context-policy`
+- **Run checkpoint/continuity tests**: `npm run test:checkpoint`
 - **Run voice tests**: `npm run test:voice` (runs `ts-node src/voice/voicePipeline.test.ts`)
 
 Unit tests use plain Node `assert` — there is no test framework (no Jest/Vitest). There is no linter configured.
@@ -52,11 +54,19 @@ Defined in `src/ws/attach.ts`, routing by URL path:
 | `/browser-call` | `src/session/browserCall.ts` | Browser voice (PCM16 24kHz audio) |
 | `/chat` | `src/session/chat.ts` | Text chat via Responses API |
 
-Chat protocol: client sends `{ type: 'chat.message', content }`, server responds with `{ type: 'chat.response', content, conversation_id }` plus streaming deltas.
+Chat protocol: client sends `{ type: 'chat.message', content }`; the server emits `chat.working`, then a completed `{ type: 'chat.response', content, conversation_id }`, followed by `chat.done`.
 
 ### Database
 
 SQLite via `better-sqlite3` (`src/db/sqlite.ts`). Key tables: `sessions`, `conversations`, `conversation_events` (event ledger), `thoughtflow_artifacts`. Database file lives at `runtime-data/db/assistant.sqlite` (or `$RUNTIME_DATA_DIR/db/assistant.sqlite`).
+
+Local development defaults to WAL. Any mounted runtime selected with `RUNTIME_DATA_DIR` defaults to rollback `DELETE` mode with `busy_timeout = 5000`; production Azure Files/SMB must never use WAL.
+
+### Timeline and Model Context
+
+The user sees one chronological relationship timeline across all channels. Technical conversation records, collapsible activity spans, and incremental checkpoints organise the durable SQLite event ledger without creating idle-time chat boundaries.
+
+Model context is bounded separately: Responses calls use `previous_response_id` plus official compaction, Realtime sessions use retention-ratio truncation, and both protocols use a durable model-written continuity capsule plus recent verbatim turns when starting or switching context. Usage, compaction, capsule, and memory activity render as Inner Plane events.
 
 ### Runtime Data
 
@@ -74,7 +84,7 @@ The memory module (`src/memory/`) manages persistent user context across convers
 
 ## Key Conventions
 
-- **Voice interruption guard**: always check `isResponseActivelyStreaming()` before calling `response.cancel` in voice/barge-in logic (`src/session/call.ts`).
+- **Voice interruption invariant**: Realtime turn detection uses `interrupt_response: true`; barge-in code flushes downstream playback and suppresses stale deltas rather than sending `response.cancel` or `conversation.item.truncate`.
 - **`responseStartTimestamp`** tracks active audio streaming state: set on first audio delta, cleared on `response.audio.done` or truncation.
 - Build copies `src/twiml.xml` and `src/config/*` to `dist/` as non-TS assets (`npm run copy-assets`).
 - E2E tests run sequentially with a single Playwright worker (`workers: 1`) because the backend has a single global session. Tests reset session state via `POST /session/reset` before each test.
@@ -82,4 +92,4 @@ The memory module (`src/memory/`) manages persistent user context across convers
 
 ## Deployment
 
-GitHub Actions workflow (`.github/workflows/deploy.yml`): pushes to `main` deploy to prod domains, other branches to dev domains. The build produces `dist/` + assets, dispatches to `adamd9/docker-server-dev` for Docker deployment. Production logs: `scripts/hk_app_logs.sh` (Azure App Service, requires `az login`).
+On pushes to `main`, `.github/workflows/publish.yml` builds `Dockerfile.browser` and publishes `latest` plus the immutable commit SHA to GHCR. After a successful publish, `.github/workflows/deploy-azure.yml` pins Azure App Service to that exact SHA and restarts it. Production logs: `scripts/hk_app_logs.sh` (requires `az login`).
