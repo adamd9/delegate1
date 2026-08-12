@@ -20,7 +20,7 @@ function git(cmd: string): string {
 
 function loadBuildInfo(): BuildInfo {
   // Try reading a CI-generated build-info.json first (production).
-  const filePath = path.resolve(__dirname, '..', '..', 'build-info.json');
+  const filePath = path.resolve(process.cwd(), 'client', 'build-info.json');
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
     const data = JSON.parse(raw);
