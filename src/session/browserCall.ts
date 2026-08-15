@@ -11,12 +11,12 @@ import {
   closeAllConnections,
   closeModel,
 } from "./state";
-import { processRealtimeModelEvent, buildRealtimeSessionConfig, sendVoiceSessionRecycleCue } from "./call";
+import { processRealtimeModelEvent, buildRealtimeGreetingInstruction, buildRealtimeSessionConfig, sendVoiceSessionRecycleCue } from "./call";
 import { getChatVoiceConfig } from "../voice/voiceConfig";
 import { classifyOpenAIError } from "../services/openaiErrors";
 import { getVoiceModePreset } from "../voice/voiceDefaults";
 import { configService } from "../config";
-import { ensureActivitySpan } from '../timeline/activity';
+import { closeActivitySpan, ensureActivitySpan } from '../timeline/activity';
 
 let browserSessionRecycleTimer: NodeJS.Timeout | undefined;
 const BROWSER_SESSION_RECYCLE_INTERVAL_MS = 90_000;
@@ -271,6 +271,9 @@ export function processBrowserCallEvent(data: RawData) {
     case "close": {
       console.info("\ud83c\udf10 Browser call closed");
       stopBrowserSessionRecycleLoop();
+      if (session.currentActivitySpanKind === 'voice' && session.currentConversationId) {
+        closeActivitySpan(session.currentConversationId, 'voice_ended');
+      }
       closeAllConnections();
       break;
     }
@@ -313,8 +316,7 @@ function establishBrowserRealtimeModelConnection(options?: { skipGreeting?: bool
       jsonSend(session.modelConn, {
         type: "response.create",
         response: {
-          instructions:
-            "Greet briefly in English, in a style that aligns with your given personality, before awaiting input.",
+          instructions: buildRealtimeGreetingInstruction(false),
         },
       });
     }

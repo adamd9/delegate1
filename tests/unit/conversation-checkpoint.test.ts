@@ -6,6 +6,9 @@ import { join } from 'path';
 async function main() {
   const runtimeDir = mkdtempSync(join(tmpdir(), 'delegate-checkpoint-'));
   process.env.RUNTIME_DATA_DIR = runtimeDir;
+  const realDateNow = Date.now;
+  let clock = 1_000;
+  Date.now = () => clock;
 
   const { conversationBus } = await import('../../src/memory/conversationBus');
   const sqlite = await import('../../src/db/sqlite');
@@ -39,6 +42,7 @@ async function main() {
     created_at_ms: 3_000,
   });
 
+  clock = 4_000;
   assert.deepStrictEqual(sqlite.checkpointConversation('conversation-1', 'idle'), {
     checkpointSeq: 3,
     turnCount: 2,
@@ -64,6 +68,7 @@ async function main() {
     created_at_ms: 10_803_000,
   });
 
+  clock = 10_804_000;
   assert.deepStrictEqual(sqlite.checkpointConversation('conversation-1', 'idle'), {
     checkpointSeq: 7,
     turnCount: 2,
@@ -103,7 +108,10 @@ async function main() {
     readyState: 1,
     send(data: string) { replayed.push(JSON.parse(data)); },
   } as any);
-  const timeline = replayed.filter(event => event.type !== 'history.header');
+  const timeline = replayed.filter(event => event.type !== 'history.header' && event.type !== 'history.page');
+  const historyPage = replayed.find(event => event.type === 'history.page');
+  assert.strictEqual(historyPage.event_count, 8);
+  assert.strictEqual(historyPage.has_more, false);
   assert.deepStrictEqual(timeline.map(event => event.type), [
     'timeline.span.started',
     'conversation.item.created',
@@ -121,6 +129,34 @@ async function main() {
   assert.strictEqual(timeline[5].timestamp, 10_801_000);
   assert.ok(timeline[5].timestamp - timeline[0].timestamp >= 10_800_000);
 
+  const state = await import('../../src/session/state');
+  const { session } = state;
+  const { ensureActivitySpan, closeActivitySpan } = await import('../../src/timeline/activity');
+  session.currentActivitySpanId = undefined;
+  session.currentActivitySpanKind = undefined;
+  session.currentActivitySpanChannel = undefined;
+  session.currentActivitySpanConversationId = undefined;
+  clock = 10_805_000;
+  const textSpanId = ensureActivitySpan('conversation-1', 'user', 'text');
+  clock = 10_806_000;
+  const voiceSpanId = ensureActivitySpan('conversation-1', 'voice', 'voice');
+  assert.notStrictEqual(voiceSpanId, textSpanId);
+  assert.strictEqual(session.currentActivitySpanId, voiceSpanId);
+  assert.strictEqual(session.currentActivitySpanChannel, 'voice');
+  const transitionEvents = sqlite.listConversationEvents('conversation-1').slice(-3) as any[];
+  assert.deepStrictEqual(transitionEvents.map(event => event.kind), [
+    'activity_span_started',
+    'activity_span_closed',
+    'activity_span_started',
+  ]);
+  assert.strictEqual(JSON.parse(transitionEvents[1].payload_json).reason, 'activity_changed');
+  assert.strictEqual(
+    sqlite.listConversationEvents('conversation-1').filter((event: any) => event.kind === 'conversation_checkpoint').length,
+    2,
+  );
+  clock = 10_807_000;
+  closeActivitySpan('conversation-1', 'voice_ended');
+
   sqlite.addConversationEvent({
     conversation_id: 'conversation-1',
     kind: 'context_capsule',
@@ -134,10 +170,11 @@ async function main() {
     created_at_ms: 10_804_000,
   });
 
-  const state = await import('../../src/session/state');
-  const { session } = state;
   session.currentConversationId = undefined;
   session.currentActivitySpanId = undefined;
+  session.currentActivitySpanKind = undefined;
+  session.currentActivitySpanChannel = undefined;
+  session.currentActivitySpanConversationId = undefined;
   session.conversationHistory = [];
   session.contextCapsule = undefined;
   session.thoughtflow = undefined;
@@ -164,7 +201,47 @@ async function main() {
   assert.strictEqual(state.session.lastAssistantStepId, 'assistant-step-1');
   assert.strictEqual(state.session.conversationHistory?.length, 4);
 
+  sqlite.upsertConversation({
+    id: 'old-record',
+    session_id: 'session-1',
+    channel: 'text',
+    started_at: new Date(20_000_000).toISOString(),
+  });
+  for (let index = 0; index < 6; index += 1) {
+    sqlite.addConversationEvent({
+      conversation_id: 'old-record',
+      kind: 'message_user',
+      payload: { text: `Old event ${index}`, channel: 'text' },
+      created_at_ms: 20_000_000 + index,
+    });
+  }
+  sqlite.upsertConversation({
+    id: 'recent-record',
+    session_id: 'session-1',
+    channel: 'text',
+    started_at: new Date(30_000_000).toISOString(),
+  });
+  sqlite.addConversationEvent({
+    conversation_id: 'recent-record',
+    kind: 'message_user',
+    payload: { text: 'Recent question', channel: 'text' },
+    created_at_ms: 30_000_000,
+  });
+  sqlite.addConversationEvent({
+    conversation_id: 'recent-record',
+    kind: 'message_assistant',
+    payload: { text: 'Recent answer', channel: 'text' },
+    created_at_ms: 30_000_001,
+  });
+  const recentPage = sqlite.listTimelineEvents(2);
+  assert.deepStrictEqual(recentPage.events.map((event: any) => event.conversation_id), [
+    'recent-record',
+    'recent-record',
+  ]);
+  assert.strictEqual(recentPage.hasMore, true);
+
   sqlite.getDb().close();
+  Date.now = realDateNow;
   rmSync(runtimeDir, { recursive: true, force: true });
   console.log('conversation checkpoint tests passed');
 }

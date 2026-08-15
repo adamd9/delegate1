@@ -39,7 +39,7 @@ Settings-backed keys can be set in `.env` or in the in-app config store (via `/s
 | `REALTIME_MODEL` | Override realtime voice model |
 | `REALTIME_VOICE` | Override realtime voice |
 | `DELEGATE_MAX_AUDIO_BYTES` | Cap on per-message audio size |
-| `SESSION_HISTORY_LIMIT` | Number of technical conversation records hydrated into browser history (1-50, default 3); does not prune the event ledger or set model context size |
+| `TIMELINE_HISTORY_EVENT_LIMIT` | Number of globally ordered ledger events hydrated initially (1-5000, default 500); older activity can be loaded on demand and remains in SQLite |
 | `SESSION_IDLE_TIMEOUT_MINUTES` | Checkpoint and collapse the current activity span after an idle period; the conversation remains resumable (0 disables) |
 | `TIMEZONE` | Timezone string used in agent prompts |
 

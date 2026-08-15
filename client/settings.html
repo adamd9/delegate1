@@ -700,8 +700,8 @@ const CONFIG_SECTIONS = [
     description: 'Optional — these have sensible defaults and rarely need changing.',
     fields: [
       { key: 'PUBLIC_URL', label: 'Public URL Override', help: 'Only for dev behind NAT/proxy (e.g. ngrok). In production the hostname is used automatically.', type: 'text' },
-      { key: 'SESSION_HISTORY_LIMIT', label: 'Session History Limit', help: 'Conversation items in context (default: 50).', type: 'number' },
-      { key: 'SESSION_IDLE_TIMEOUT_MINUTES', label: 'Session Idle Timeout (minutes)', help: 'Auto-end the active session after this many minutes of no activity. Default: 60. Set to 0 to disable.', type: 'number', default: '60' },
+      { key: 'TIMELINE_HISTORY_EVENT_LIMIT', label: 'Initial Timeline Event Limit', help: 'Recent ledger events loaded into the timeline initially. Default: 500. Older activity remains available on demand.', type: 'number', default: '500' },
+      { key: 'SESSION_IDLE_TIMEOUT_MINUTES', label: 'Activity Idle Timeout (minutes)', help: 'Checkpoint and collapse the current activity span after this many idle minutes without ending the relationship timeline. Default: 30. Set to 0 to disable.', type: 'number', default: '30' },
     ],
   },
 ];

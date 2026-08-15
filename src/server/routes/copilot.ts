@@ -1,64 +1,51 @@
 import type { Application, Request, Response } from 'express';
-import { getLastCompletedSession, getSessionOutput, markHookDelivered, setFallbackInjector, buildTaskUrl } from '../../tools/handlers/copilotCli';
+import { markHookDelivered, setFallbackInjector, buildTaskUrl } from '../../tools/handlers/copilotCli';
 import { listTasks } from '../../copilot/tasks';
 import type { GitSyncResult } from '../../browser';
 import { publishInnerSignal } from '../../innerContext';
+import { formatCopilotTaskNotification } from '../../copilot/notification';
 
 /**
  * Resolve the most-recent task. Because the copilot runner holds a single-task
  * lock, the latest row is the one that just finished — giving us its deep link
  * and the delivery preference recorded at dispatch time.
  */
-function resolveLatestTask(): { taskId?: string; taskUrl?: string; notifyPref?: string | null } {
+function resolveLatestTask(): {
+  taskId?: string;
+  title?: string;
+  taskUrl?: string;
+  notifyPref?: string | null;
+  conversationId?: string;
+  gitResult?: GitSyncResult;
+} {
   try {
     const recent = listTasks({ limit: 1 });
     if (!recent.length) return {};
     const t = recent[0];
     let notifyPref: string | null = null;
-    try { const m = t.meta_json ? JSON.parse(t.meta_json) : {}; notifyPref = m?.notify ?? null; } catch { /* ignore */ }
-    return { taskId: t.id, taskUrl: buildTaskUrl(t.id), notifyPref };
+    let gitResult: GitSyncResult | undefined;
+    try {
+      const metadata = t.meta_json ? JSON.parse(t.meta_json) : {};
+      notifyPref = metadata?.notify ?? null;
+      gitResult = metadata?.lastGit;
+    } catch { /* ignore */ }
+    return {
+      taskId: t.id,
+      title: t.title,
+      taskUrl: buildTaskUrl(t.id),
+      notifyPref,
+      conversationId: t.originating_conversation_id || undefined,
+      gitResult,
+    };
   } catch {
     return {};
   }
 }
 
-function formatNotification(opts: {
-  task: string;
-  status: string;
-  conversationId?: string;
-  gitResult?: GitSyncResult;
-  taskUrl?: string;
-  notifyPref?: string | null;
-}): string {
-  const { task, status, conversationId, gitResult, taskUrl, notifyPref } = opts;
-  const statusLine = status === 'complete' ? 'completed successfully'
-    : status === 'error' ? 'encountered an error'
-    : status === 'timeout' ? 'timed out'
-    : `finished (${status})`;
-
-  const convRef = conversationId ? `\nConversation ID: ${conversationId}` : '';
-  const linkLine = taskUrl ? `\nTask link: ${taskUrl}` : '';
-
-  let gitLine = '';
-  if (gitResult) {
-    if (gitResult.status === 'pushed') {
-      gitLine = `\nGit: ${gitResult.message}`;
-    } else if (gitResult.status === 'no_changes') {
-      gitLine = `\nGit: No file changes to commit.`;
-    } else {
-      gitLine = `\nGit issue: ${gitResult.message}`;
-    }
-  }
-
-  const pref = notifyPref && notifyPref.trim() ? notifyPref.trim() : 'none recorded — default to SMS';
-
-  return (
-    `[COPILOT TASK NOTIFICATION — this is NOT from the user]\n\n` +
-    `A background task you dispatched has ${statusLine}.\n` +
-    `Task: "${task}"${convRef}${linkLine}${gitLine}\n\n` +
-    `Delivery preference: ${pref}.\n\n` +
-    `Use the \`copilot_status\` tool to retrieve the full output. Then deliver the result to the user via the recorded preference (default SMS if none), and INCLUDE the task link so they can open live progress and read any output files. Complete any originally requested follow-up action — don't just acknowledge completion.`
-  );
+function gitMessage(result?: GitSyncResult): string | undefined {
+  if (!result) return undefined;
+  if (result.status === 'no_changes') return 'No file changes to commit.';
+  return result.message;
 }
 
 function publishCopilotSignal(message: string, status: string, taskId?: string, conversationId?: string) {
@@ -80,11 +67,19 @@ function publishCopilotSignal(message: string, status: string, taskId?: string, 
 export function registerCopilotRoutes(app: Application) {
   // Wire the fallback injector so the close handler can inject a notification if hooks don't fire
   setFallbackInjector((task, status, _stdout, _stderr, gitResult) => {
-    const { taskId, taskUrl, notifyPref } = resolveLatestTask();
-    const message = formatNotification({ task, status, gitResult, taskUrl, notifyPref });
+    const context = resolveLatestTask();
+    const message = formatCopilotTaskNotification({
+      taskId: context.taskId,
+      title: context.title || task,
+      status,
+      conversationId: context.conversationId,
+      taskUrl: context.taskUrl,
+      notifyPref: context.notifyPref,
+      gitMessage: gitMessage(gitResult || context.gitResult),
+    });
     console.log(`[copilot-callback] Fallback notification (status=${status}, git=${gitResult?.status || 'n/a'})`);
     try {
-      publishCopilotSignal(message, status, taskId);
+      publishCopilotSignal(message, status, context.taskId, context.conversationId);
     } catch (err) {
       console.error('[copilot-callback] Fallback notification failed:', err);
     }
@@ -103,24 +98,21 @@ export function registerCopilotRoutes(app: Application) {
 
       switch (hookType) {
         case 'sessionEnd': {
-          const sessionOutput = getSessionOutput();
           const reason = payload.reason || 'unknown';
-          const task = sessionOutput?.task || 'unknown task';
-          const completedSession = getLastCompletedSession();
-          const gitResult = completedSession?.task === task ? completedSession.gitResult : undefined;
 
           // Signal that hooks delivered — prevents fallback notification on close
           markHookDelivered();
-
-          // Try to get conversation ID from current session
-          let conversationId: string | undefined;
-          try {
-            const sess = require('../../session/state').session;
-            conversationId = (sess as any).currentConversationId as string | undefined;
-          } catch {}
-          const { taskId, taskUrl, notifyPref } = resolveLatestTask();
-          const message = formatNotification({ task, status: reason, conversationId, gitResult, taskUrl, notifyPref });
-          publishCopilotSignal(message, reason, taskId, conversationId);
+          const context = resolveLatestTask();
+          const message = formatCopilotTaskNotification({
+            taskId: context.taskId,
+            title: context.title || 'unknown task',
+            status: reason,
+            conversationId: context.conversationId,
+            taskUrl: context.taskUrl,
+            notifyPref: context.notifyPref,
+            gitMessage: gitMessage(context.gitResult),
+          });
+          publishCopilotSignal(message, reason, context.taskId, context.conversationId);
 
           console.log(`[copilot-callback] sessionEnd notification sent (reason=${reason})`);
           res.json({ ok: true, action: 'notified' });
@@ -130,28 +122,19 @@ export function registerCopilotRoutes(app: Application) {
         case 'errorOccurred': {
           const errorMsg = payload.error?.message || 'Unknown error';
           const errorName = payload.error?.name || 'Error';
-          const sessionOutput = getSessionOutput();
-          const task = sessionOutput?.task || 'unknown task';
-
-          // Try to get conversation ID from current session
-          let conversationId: string | undefined;
-          try {
-            const sess = require('../../session/state').session;
-            conversationId = (sess as any).currentConversationId as string | undefined;
-          } catch {}
-
-          const { taskId, taskUrl, notifyPref } = resolveLatestTask();
-          const convRef = conversationId ? `\nConversation ID: ${conversationId}` : '';
-          const linkLine = taskUrl ? `\nTask link: ${taskUrl}` : '';
-          const pref = notifyPref && notifyPref.trim() ? notifyPref.trim() : 'none recorded — default to SMS';
+          const context = resolveLatestTask();
+          const convRef = context.conversationId ? `\nConversation ID: ${context.conversationId}` : '';
+          const taskIdLine = context.taskId ? `\nTask ID: ${context.taskId}` : '';
+          const linkLine = context.taskUrl ? `\nTask link: ${context.taskUrl}` : '';
+          const pref = context.notifyPref?.trim() || 'none recorded - default to SMS';
           const message =
-            `[COPILOT TASK NOTIFICATION — this is NOT from the user]\n\n` +
+            `[COPILOT TASK NOTIFICATION - this is NOT from the user]\n\n` +
             `A background task encountered an error: ${errorName}: ${errorMsg}\n` +
-            `Task: "${task}"${convRef}${linkLine}\n\n` +
+            `Task: "${context.title || 'unknown task'}"${taskIdLine}${convRef}${linkLine}\n\n` +
             `Delivery preference: ${pref}.\n\n` +
-            `Use \`copilot_status\` to see any available output. Inform the user about the error via the recorded preference (default SMS), include the task link, and if appropriate retry or complete any originally requested follow-up actions with whatever results are available.`;
+            `${context.taskId ? `Use \`copilot_task_status\` with \`task_id_or_name\` set to \`${context.taskId}\`` : 'Use `copilot_status`'} to see any available output. Inform the user via the recorded preference, include the task link, and retry or complete follow-up actions when appropriate.`;
 
-          publishCopilotSignal(message, 'error', taskId, conversationId);
+          publishCopilotSignal(message, 'error', context.taskId, context.conversationId);
 
           console.log(`[copilot-callback] errorOccurred notification (${errorName}: ${errorMsg})`);
           res.json({ ok: true, action: 'notified' });

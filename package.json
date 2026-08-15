@@ -17,6 +17,7 @@
     "test:inner-context": "ts-node tests/unit/inner-context-broker.test.ts",
     "test:context-policy": "ts-node tests/unit/context-policy.test.ts",
     "test:checkpoint": "ts-node tests/unit/conversation-checkpoint.test.ts",
+    "test:copilot-notification": "ts-node tests/unit/copilot-notification.test.ts",
     "test:copilot": "ts-node tests/unit/copilot-dispatch.test.ts",
     "clean": "rm -rf node_modules dist",
     "script:token": "node scripts/twilio/generate-token.js",

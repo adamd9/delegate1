@@ -96,7 +96,7 @@ const SETUP_GROUPS: SetupGroupDefinition[] = [
     required: false,
     items: [
       { key: 'PUBLIC_URL', label: 'Public URL Override' },
-      { key: 'SESSION_HISTORY_LIMIT', label: 'Session History Limit' },
+      { key: 'TIMELINE_HISTORY_EVENT_LIMIT', label: 'Initial Timeline Event Limit' },
     ],
   },
 ];

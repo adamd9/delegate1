@@ -64,6 +64,8 @@ Memory retrieval uses the same Inner Plane treatment. Usage, compaction, and com
 
 ## History breadth
 
-`SESSION_HISTORY_LIMIT` controls how many technical conversation records are hydrated into the browser timeline. It is a replay breadth setting, not a model token limit and not the number of turns retained in the durable ledger. Older records remain in SQLite unless the runtime data is explicitly reset or removed.
+The browser hydrates the latest globally ordered ledger events across every technical conversation record. `TIMELINE_HISTORY_EVENT_LIMIT` controls the initial event window (default 500), and **load older activity** expands that bounded window. An old record receiving a new task, memory, or Inner Context event no longer causes its entire historical contents to displace newer activity.
+
+This setting controls replay breadth only. It is not a model token limit and does not prune SQLite; older events remain durable unless runtime data is explicitly reset or removed.
 
 See [Model calling flows](../../reference/model-calling-flows/) for protocol details and [Runtime data](../../operations/runtime-data/) for persistence and backup guidance.

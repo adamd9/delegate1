@@ -78,6 +78,8 @@ export interface Session {
   // Current collapsible activity burst within the long-lived conversation timeline.
   currentActivitySpanId?: string;
   currentActivitySpanKind?: 'user' | 'voice' | 'inner';
+  currentActivitySpanChannel?: string;
+  currentActivitySpanConversationId?: string;
   // Track the most recent assistant step to link subsequent user turns in ThoughtFlow
   lastAssistantStepId?: string;
   // Track the most recent user step to link assistant responses in ThoughtFlow
@@ -139,6 +141,8 @@ export function closeModel() {
       currentConversationId: session.currentConversationId,
       currentActivitySpanId: session.currentActivitySpanId,
       currentActivitySpanKind: session.currentActivitySpanKind,
+      currentActivitySpanChannel: session.currentActivitySpanChannel,
+      currentActivitySpanConversationId: session.currentActivitySpanConversationId,
       conversationHistory: session.conversationHistory,
       previousResponseId: session.previousResponseId,
       contextCapsule: session.contextCapsule,

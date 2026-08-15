@@ -49,7 +49,7 @@ After the configured idle period, the current span is checkpointed and memory ex
 
 Queued inner signals are durable timeline events between spans. When a signal wakes the agent, the activation span contains the full claimed batch, recalled memories, tool calls and results, assistant output, and completion or failure outcome.
 
-The SQLite event ledger is authoritative. Browser history hydration replays a configurable number of technical conversation records (`SESSION_HISTORY_LIMIT`) in activity order. That setting does not prune the ledger or limit model tokens.
+The SQLite event ledger is authoritative. Browser history hydration reads one globally ordered event window across technical conversation records, then reconstructs activity spans from those events. `TIMELINE_HISTORY_EVENT_LIMIT` controls the initial window, and the user can load older activity without changing model context or pruning the ledger.
 
 ## Model context continuity
 

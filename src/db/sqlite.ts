@@ -71,6 +71,8 @@ export function getDb() {
       ON conversation_events(conversation_id, seq);
     CREATE INDEX IF NOT EXISTS idx_conversation_events_conversation_created_at
       ON conversation_events(conversation_id, created_at_ms);
+    CREATE INDEX IF NOT EXISTS idx_conversation_events_created_at
+      ON conversation_events(created_at_ms, id);
     CREATE TABLE IF NOT EXISTS thoughtflow_artifacts (
       artifact_id TEXT NOT NULL,
       format TEXT NOT NULL,
@@ -367,6 +369,31 @@ function getLastActivationEventForConversation(conversation_id: string): { text:
 export function listConversationEvents(conversation_id: string) {
   const db = getDb();
   return db.prepare('SELECT id, conversation_id, seq, kind, payload_json, created_at_ms FROM conversation_events WHERE conversation_id = ? ORDER BY seq ASC').all(conversation_id);
+}
+
+export function listTimelineEvents(limit: number) {
+  const db = getDb();
+  const safeLimit = Math.max(1, Math.min(5000, Math.floor(limit || 500)));
+  const rows = db.prepare(`
+    SELECT
+      e.id,
+      e.conversation_id,
+      e.seq,
+      e.kind,
+      e.payload_json,
+      e.created_at_ms,
+      c.session_id,
+      c.channel AS conversation_channel,
+      c.ended_at AS conversation_ended_at,
+      c.status AS conversation_status
+    FROM conversation_events e
+    JOIN conversations c ON c.id = e.conversation_id
+    ORDER BY e.created_at_ms DESC, e.id DESC
+    LIMIT ?
+  `).all(safeLimit + 1) as any[];
+  const hasMore = rows.length > safeLimit;
+  if (hasMore) rows.pop();
+  return { events: rows.reverse(), hasMore, limit: safeLimit };
 }
 
 export function listRecentMemoryEvents(limit: number = 100): Array<{

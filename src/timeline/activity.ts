@@ -16,11 +16,24 @@ export function ensureActivitySpan(
   kind: ActivitySpanKind,
   channel: string,
 ): string {
-  if (session.currentActivitySpanId) return session.currentActivitySpanId;
+  const canReuse = session.currentActivitySpanId
+    && session.currentActivitySpanConversationId === conversationId
+    && session.currentActivitySpanKind === kind
+    && session.currentActivitySpanChannel === channel;
+  if (canReuse) return session.currentActivitySpanId!;
+  if (session.currentActivitySpanId) {
+    closeActivitySpan(
+      session.currentActivitySpanConversationId || conversationId,
+      'activity_changed',
+      { next_kind: kind, next_channel: channel },
+    );
+  }
   const spanId = `span_${randomUUID()}`;
   const timestamp = Date.now();
   session.currentActivitySpanId = spanId;
   session.currentActivitySpanKind = kind;
+  session.currentActivitySpanChannel = channel;
+  session.currentActivitySpanConversationId = conversationId;
   addConversationEvent({
     conversation_id: conversationId,
     kind: 'activity_span_started',
@@ -45,14 +58,24 @@ export function closeActivitySpan(
 ): void {
   const spanId = session.currentActivitySpanId;
   if (!spanId) return;
+  const timestamp = Date.now();
+  const activeConversationId = session.currentActivitySpanConversationId || conversationId;
+  addConversationEvent({
+    conversation_id: activeConversationId,
+    kind: 'activity_span_closed',
+    payload: { span_id: spanId, reason, ...details },
+    created_at_ms: timestamp,
+  });
   broadcast({
     type: 'timeline.span.closed',
     span_id: spanId,
-    conversation_id: conversationId,
+    conversation_id: activeConversationId,
     reason,
     ...details,
-    timestamp: Date.now(),
+    timestamp,
   });
   session.currentActivitySpanId = undefined;
   session.currentActivitySpanKind = undefined;
+  session.currentActivitySpanChannel = undefined;
+  session.currentActivitySpanConversationId = undefined;
 }

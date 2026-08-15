@@ -9,10 +9,10 @@ import { sendSms } from "../sms";
 import { getReplyTo } from "../emailState";
 import { sendEmail } from "../email";
 import { session, parseMessage, jsonSend, isOpen } from "./state";
-import { listConversations as dbListConversations, listConversationEvents, completeConversation, getConversationById } from "../db/sqlite";
+import { completeConversation, getConversationById } from "../db/sqlite";
 import { ensureSession, appendEvent, ThoughtFlowStepType, endSession } from "../observability/thoughtflow";
 import { addConversationEvent } from "../db/sqlite";
-import { getSessionHistoryLimit, replayHistoryOnConnect } from './history';
+import { getTimelineHistoryEventLimit, replayHistoryOnConnect } from './history';
 import { summarizeRequestForLog } from '../utils/logSanitize';
 import { getAdaptationTextById } from '../adaptations';
 import { createOpenAIClient } from "../services/openaiClient";
@@ -115,163 +115,12 @@ export async function processChatSocketMessage(
       }
       break;
     }
-    case "history.request": {
-      try {
-        const limit = Math.max(1, Math.min(50, Number((msg as any).limit) || getSessionHistoryLimit()));
-        const conversations: any[] = dbListConversations(limit) || [];
-        console.debug(`[history.request] limit=${limit} conversations=${conversations.length}`);
-        // Only include ended conversations for history; exclude any active/un-ended runs
-        const include = conversations.filter((c: any) => Boolean(c.ended_at)).reverse();
-        if (requester && isOpen(requester)) {
-          jsonSend(requester, { type: 'history.header', count: include.length });
-        }
-        for (const conv of include) {
-          const convId = conv.id;
-          const events = listConversationEvents(convId) as any[];
-          console.debug(`[history.request] conv=${convId} events=${events.length}`);
-          // Establish a base timestamp and strictly order by seq
-          const base = (Array.isArray(events) && events.length > 0 && events[0].created_at_ms) || Date.now();
-          const seenKinds = new Set<string>();
-          for (const e of events) {
-            const kind = e.kind as string;
-            const payload = typeof e.payload_json === 'string' ? (() => { try { return JSON.parse(e.payload_json); } catch { return {}; } })() : (e.payload || {});
-            const ts = (typeof e.seq === 'number' ? (base + e.seq) : (e.created_at_ms || Date.now()));
-            if (kind === 'thoughtflow_artifacts') {
-              if (seenKinds.has('thoughtflow_artifacts')) continue;
-              seenKinds.add('thoughtflow_artifacts');
-            }
-            if (kind === 'message_user' || kind === 'message_assistant') {
-              const evt = {
-                type: 'conversation.item.created',
-                replay: true,
-                session_id: conv.session_id,
-                conversation_id: convId,
-                item: {
-                  id: `ti_${e.seq}`,
-                  type: 'message',
-                  role: kind === 'message_user' ? 'user' : 'assistant',
-                  content: [{ type: 'text', text: String(payload.text || '') }],
-                  channel: payload.channel || 'text',
-                  supervisor: Boolean(payload.supervisor),
-                },
-                timestamp: ts,
-              } as any;
-              if (requester && isOpen(requester)) jsonSend(requester, evt);
-            } else if (kind === 'inner_context') {
-              const evt = {
-                type: 'inner.activation',
-                phase: payload.mode === 'attached_to_user' ? 'attached' : 'started',
-                replay: true,
-                signals: Array.isArray(payload.innerSignals) ? payload.innerSignals : [],
-                composed_context: payload.text || '',
-                timestamp: ts,
-              } as any;
-              if (requester && isOpen(requester)) jsonSend(requester, evt);
-            } else if (kind === 'inner_activation_completed') {
-              const evt = {
-                type: 'inner.activation',
-                phase: 'completed',
-                replay: true,
-                signals: Array.isArray(payload.signals) ? payload.signals : [],
-                duration_ms: payload.duration_ms,
-                timestamp: ts,
-              } as any;
-              if (requester && isOpen(requester)) jsonSend(requester, evt);
-            } else if (kind === 'inner_activation_failed') {
-              const evt = {
-                type: 'inner.activation',
-                phase: 'failed',
-                replay: true,
-                signals: Array.isArray(payload.signals) ? payload.signals : [],
-                duration_ms: payload.duration_ms,
-                error: payload.error,
-                timestamp: ts,
-              } as any;
-              if (requester && isOpen(requester)) jsonSend(requester, evt);
-            } else if (kind === 'memory_retrieved') {
-              const evt = {
-                type: 'memory.retrieved',
-                replay: true,
-                ...payload,
-                timestamp: ts,
-              } as any;
-              if (requester && isOpen(requester)) jsonSend(requester, evt);
-            } else if (kind === 'memory_pending') {
-              const evt = { type: 'memory.pending', replay: true, ...payload, timestamp: ts } as any;
-              if (requester && isOpen(requester)) jsonSend(requester, evt);
-            } else if (kind === 'memory_miss') {
-              const evt = { type: 'memory.miss', replay: true, ...payload, timestamp: ts } as any;
-              if (requester && isOpen(requester)) jsonSend(requester, evt);
-            } else if (kind === 'function_call_created') {
-              const evt = {
-                type: 'conversation.item.created',
-                replay: true,
-                session_id: conv.session_id,
-                conversation_id: convId,
-                item: {
-                  id: String(payload.call_id || `call_${e.seq}`),
-                  type: 'function_call',
-                  name: payload.name || 'tool',
-                  call_id: payload.call_id || `call_${e.seq}`,
-                  arguments: typeof payload.arguments === 'string' ? payload.arguments : JSON.stringify(payload.arguments || {}),
-                  status: 'created',
-                },
-                timestamp: ts,
-              } as any;
-              if (requester && isOpen(requester)) jsonSend(requester, evt);
-            } else if (kind === 'function_call_completed') {
-              const evt = {
-                type: 'conversation.item.completed',
-                replay: true,
-                session_id: conv.session_id,
-                conversation_id: convId,
-                item: {
-                  id: String(payload.call_id || `call_${e.seq}`),
-                  type: 'function_call',
-                  name: payload.name || 'tool',
-                  call_id: payload.call_id || `call_${e.seq}`,
-                  arguments: typeof payload.arguments === 'string' ? payload.arguments : JSON.stringify(payload.arguments || {}),
-                  status: 'completed',
-                  result: typeof payload.result === 'string' ? payload.result : (payload.result ? JSON.stringify(payload.result) : undefined),
-                },
-                timestamp: ts,
-              } as any;
-              if (requester && isOpen(requester)) jsonSend(requester, evt);
-            } else if (kind === 'canvas' || kind === 'note_created') {
-              // Backward compat: old 'canvas' events mapped to chat.note alongside new 'note_created' events
-              const evt = {
-                type: 'chat.note',
-                replay: true,
-                session_id: conv.session_id,
-                conversation_id: convId,
-                content: payload.url,
-                title: payload.title,
-                timestamp: ts,
-                id: payload.id,
-                url: payload.url,
-              } as any;
-              if (requester && isOpen(requester)) jsonSend(requester, evt);
-            } else if (kind === 'thoughtflow_artifacts') {
-              const evt = {
-                type: 'thoughtflow.artifacts',
-                replay: true,
-                session_id: conv.session_id,
-                conversation_id: convId,
-                artifact_id: payload.artifact_id,
-                json_path: payload.json_path,
-                d2_path: payload.d2_path,
-                url_json: payload.url_json,
-                url_d2: payload.url_d2,
-                url_d2_raw: payload.url_d2_raw,
-                url_d2_viewer: payload.url_d2_viewer,
-                timestamp: ts,
-              } as any;
-              if (requester && isOpen(requester)) jsonSend(requester, evt);
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('history.request failed', e);
+    case "history.more": {
+      if (requester && isOpen(requester)) {
+        const currentLimit = Number((msg as any).limit) || getTimelineHistoryEventLimit();
+        const nextLimit = Math.min(5000, Math.max(getTimelineHistoryEventLimit(), currentLimit));
+        jsonSend(requester, { type: 'history.reset', timestamp: Date.now() });
+        replayHistoryOnConnect(requester, nextLimit);
       }
       break;
     }
@@ -905,7 +754,7 @@ export async function handleTextChatMessage(
             addConversationEvent({
               conversation_id: conversationId,
               kind: 'message_assistant',
-              payload: { text: finalResponse, channel: 'text', supervisor: false },
+              payload: { text: finalResponse, channel, supervisor: false },
               created_at_ms: assistantMessage.timestamp,
             });
           } catch {}
@@ -927,6 +776,7 @@ export async function handleTextChatMessage(
               jsonSend(ws, {
                 type: "chat.response",
                 content: finalResponse,
+                channel,
                 timestamp: Date.now(),
                 supervisor: false,
                 session_id: sessionId,
@@ -950,7 +800,7 @@ export async function handleTextChatMessage(
           type: "assistant" as const,
           content: errorText,
           timestamp: Date.now(),
-          channel: "text" as const,
+          channel,
           supervisor: false,
         };
         session.conversationHistory.push(assistantMessage);
@@ -959,12 +809,12 @@ export async function handleTextChatMessage(
           addConversationEvent({
             conversation_id: conversationId,
             kind: 'message_assistant',
-            payload: { text: errorText, channel: 'text', supervisor: false },
+            payload: { text: errorText, channel, supervisor: false },
             created_at_ms: assistantMessage.timestamp,
           });
         } catch {}
         for (const ws of chatClients) {
-          if (isOpen(ws)) jsonSend(ws, { type: "chat.response", content: errorText, timestamp: Date.now(), supervisor: false, session_id: sessionId, conversation_id: conversationId });
+          if (isOpen(ws)) jsonSend(ws, { type: "chat.response", content: errorText, channel, timestamp: Date.now(), supervisor: false, session_id: sessionId, conversation_id: conversationId });
         }
         for (const ws of chatClients) {
           if (isOpen(ws)) jsonSend(ws, { type: "chat.done", request_id: requestId, timestamp: Date.now() });
@@ -1001,7 +851,7 @@ export async function handleTextChatMessage(
       addConversationEvent({
         conversation_id: conversationId,
         kind: 'message_assistant',
-        payload: { text: assistantText, channel: 'text', supervisor: false },
+        payload: { text: assistantText, channel, supervisor: false },
         created_at_ms: assistantMessage.timestamp,
       });
     } catch {}
@@ -1020,7 +870,7 @@ export async function handleTextChatMessage(
     }
     for (const ws of chatClients) {
       if (isOpen(ws))
-        jsonSend(ws, { type: "chat.response", content: assistantText, timestamp: Date.now(), session_id: sessionId, conversation_id: conversationId });
+        jsonSend(ws, { type: "chat.response", content: assistantText, channel, timestamp: Date.now(), session_id: sessionId, conversation_id: conversationId });
     }
     for (const ws of chatClients) {
       if (isOpen(ws)) jsonSend(ws, { type: "chat.done", request_id: requestId, timestamp: Date.now() });

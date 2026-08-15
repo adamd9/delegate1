@@ -69,11 +69,13 @@ export function resumeOpenTimelineOnStartup(): void {
     }
 
     for (const row of rows) {
-      if (row.kind === 'conversation_checkpoint') break;
+      if (row.kind === 'conversation_checkpoint' || row.kind === 'activity_span_closed') break;
       if (row.kind === 'activity_span_started') {
         const payload = parsePayload(row.payload_json);
         session.currentActivitySpanId = payload.span_id;
         session.currentActivitySpanKind = payload.kind;
+        session.currentActivitySpanChannel = payload.channel;
+        session.currentActivitySpanConversationId = conversation.id;
         break;
       }
     }

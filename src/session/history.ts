@@ -1,6 +1,6 @@
 import { WebSocket } from 'ws';
 import { jsonSend, isOpen } from './state';
-import { listConversations as dbListConversations, listConversationEvents } from '../db/sqlite';
+import { listTimelineEvents } from '../db/sqlite';
 import { configService } from '../config';
 
 function toNumber(value: any, fallback: number): number {
@@ -8,10 +8,10 @@ function toNumber(value: any, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-export function getSessionHistoryLimit(): number {
-  const raw = configService.get('SESSION_HISTORY_LIMIT');
-  const n = toNumber(raw, 3);
-  return Math.min(50, Math.max(1, n));
+export function getTimelineHistoryEventLimit(): number {
+  const raw = configService.get('TIMELINE_HISTORY_EVENT_LIMIT');
+  const n = toNumber(raw, 500);
+  return Math.min(5000, Math.max(1, n));
 }
 
 // Map one DB event row into a UI event for the chat websocket
@@ -186,45 +186,30 @@ export function mapDbEventToUiEvent(row: any, convId: string, sessionId: string,
   return out.map(event => spanId && !event.span_id ? { ...event, span_id: spanId } : event);
 }
 
-export function replayHistoryOnConnect(ws: WebSocket) {
+export function replayHistoryOnConnect(ws: WebSocket, requestedLimit?: number) {
   try {
-    const limit = getSessionHistoryLimit();
-    const conversations: any[] = dbListConversations(limit) || [];
+    const configuredLimit = getTimelineHistoryEventLimit();
+    const limit = requestedLimit === undefined
+      ? configuredLimit
+      : Math.min(5000, Math.max(configuredLimit, Math.floor(requestedLimit)));
+    const page = listTimelineEvents(limit);
+    const records = page.events as any[];
     if (isOpen(ws)) jsonSend(ws, { type: 'history.header', count: 0 });
-
-    let ordinal = 0;
-    const failedConversations: Array<{ id: string; error: string }> = [];
-    const records = conversations.flatMap(conv => {
-      let events: any[];
-      try {
-        events = listConversationEvents(conv.id) as any[];
-      } catch (error: any) {
-        const message = error?.message || String(error);
-        failedConversations.push({ id: conv.id, error: message });
-        console.warn(`[history] Failed to replay conversation ${conv.id}: ${message}`);
-        return [];
-      }
-      const base = events[0]?.created_at_ms || Date.now();
-      let previousSortTime = 0;
-      return events.map(event => {
-        previousSortTime = Math.max(previousSortTime, event.created_at_ms || base + event.seq);
-        return { conv, event, base, sortTime: previousSortTime, ordinal: ordinal++ };
-      });
-    }).sort((left, right) =>
-      left.sortTime - right.sortTime || left.ordinal - right.ordinal
-    );
     const activeSpans = new Map<string, string>();
+    const conversationMeta = new Map<string, any>();
     const seenThoughtflow = new Set<string>();
 
-    if (failedConversations.length && isOpen(ws)) jsonSend(ws, {
-      type: 'history.warning',
-      failed_count: failedConversations.length,
-      conversation_ids: failedConversations.map(item => item.id),
-      timestamp: Date.now(),
-    });
-
-    for (const { conv, event, base } of records) {
-      const convId = conv.id as string;
+    for (const event of records) {
+      const convId = event.conversation_id as string;
+      const conv = {
+        id: convId,
+        session_id: event.session_id,
+        channel: event.conversation_channel,
+        ended_at: event.conversation_ended_at,
+        status: event.conversation_status,
+      };
+      conversationMeta.set(convId, conv);
+      const base = event.created_at_ms || Date.now();
       if (event.kind === 'thoughtflow_artifacts') {
         if (seenThoughtflow.has(convId)) continue;
         seenThoughtflow.add(convId);
@@ -239,6 +224,16 @@ export function replayHistoryOnConnect(ws: WebSocket) {
           channel: payload.channel || conv.channel || 'text',
           timestamp: event.created_at_ms || base + event.seq,
         });
+        continue;
+      }
+      if (event.kind === 'activity_span_closed') {
+        const spanId = payload.span_id || activeSpans.get(convId);
+        if (spanId && isOpen(ws)) jsonSend(ws, {
+          type: 'timeline.span.closed', replay: true, span_id: spanId,
+          conversation_id: convId, reason: payload.reason || 'completed',
+          ...payload, timestamp: event.created_at_ms || base + event.seq,
+        });
+        if (spanId === activeSpans.get(convId)) activeSpans.delete(convId);
         continue;
       }
       let activeSpanId = activeSpans.get(convId);
@@ -271,7 +266,7 @@ export function replayHistoryOnConnect(ws: WebSocket) {
       }
     }
 
-    for (const conv of conversations) {
+    for (const conv of conversationMeta.values()) {
       const activeSpanId = activeSpans.get(conv.id);
       if (activeSpanId && conv.ended_at && isOpen(ws)) jsonSend(ws, {
         type: 'timeline.span.closed',
@@ -282,6 +277,13 @@ export function replayHistoryOnConnect(ws: WebSocket) {
         timestamp: new Date(conv.ended_at).getTime(),
       });
     }
+    if (isOpen(ws)) jsonSend(ws, {
+      type: 'history.page',
+      event_count: records.length,
+      limit: page.limit,
+      has_more: page.hasMore,
+      timestamp: Date.now(),
+    });
   } catch (e) {
     console.warn('[history] auto history replay failed:', (e as any)?.message || e);
   }

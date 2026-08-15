@@ -15,7 +15,7 @@ import { memoryModule } from '../memory';
 import type { ContextTurn } from '../memory';
 import { getMemoryConfig } from '../memory/memoryConfig';
 import { configService } from '../config';
-import { ensureActivitySpan } from '../timeline/activity';
+import { closeActivitySpan, ensureActivitySpan } from '../timeline/activity';
 import { createOpenAIClient } from '../services/openaiClient';
 import {
   buildContinuityContext,
@@ -319,6 +319,17 @@ export function buildRealtimeSessionConfig(channel: Channel, audioFormat: 'g711_
   };
 }
 
+export function buildRealtimeGreetingInstruction(outbound: boolean): string {
+  if (outbound) {
+    return "You called the user as a follow-up to your prior conversation. Greet them briefly and continue naturally from where you left off.";
+  }
+  const hasContinuity = Boolean(session.contextCapsule)
+    || Boolean(session.conversationHistory?.some(item => item.type === 'user' || item.type === 'assistant'));
+  return hasContinuity
+    ? "Greet the user briefly as someone whose ongoing conversation you remember. Do not introduce yourself or imply this is a first meeting, then await their input."
+    : "Greet the caller briefly in English, in a style that aligns with your given personality, before awaiting input.";
+}
+
 function stopHoldMusicLoop() {
   if (holdMusicTimer) {
     clearTimeout(holdMusicTimer);
@@ -528,6 +539,9 @@ export function processRealtimeCallEvent(data: RawData) {
       console.info("📞 Call closed");
       finalizeRun();
       stopTwilioSessionRecycleLoop();
+      if (session.currentActivitySpanKind === 'voice' && session.currentConversationId) {
+        closeActivitySpan(session.currentConversationId, 'voice_ended');
+      }
       closeAllConnections();
       break;
   }
@@ -582,9 +596,7 @@ export function establishRealtimeModelConnection(options?: { skipGreeting?: bool
 
     // Send greeting — contextual if outbound, generic if inbound
     if (session.twilioConn && !options?.skipGreeting) {
-      const greetingInstruction = outboundCtx && outboundCtx.recentTurns.length > 0
-        ? "You called the user as a follow-up to your prior conversation. Greet them briefly and continue naturally from where you left off."
-        : "Greet the caller briefly in English, in a style that aligns with your given personality, before awaiting input.";
+      const greetingInstruction = buildRealtimeGreetingInstruction(Boolean(outboundCtx?.recentTurns.length));
       jsonSend(session.modelConn, {
         type: "response.create",
         response: {
@@ -1098,6 +1110,8 @@ export function processRealtimeModelEvent(
             if (isOpen(ws)) jsonSend(ws, {
               type: "chat.response",
               content: textContent.text,
+              channel: 'voice',
+              conversation_id: (session as any).currentConversationId,
               timestamp: Date.now(),
             });
           }
