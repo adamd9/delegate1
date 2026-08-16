@@ -301,6 +301,7 @@ function establishBrowserRealtimeModelConnection(options?: { skipGreeting?: bool
 
   session.modelConn.on("open", () => {
     session.previousResponseId = undefined;
+    session.pendingCompactedInput = undefined;
     try {
       console.info('[ws][openai-realtime] browser model websocket open', {
         reason: options?.reason || 'browser_call_start',

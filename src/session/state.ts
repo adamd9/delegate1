@@ -58,13 +58,22 @@ export interface Session {
   openAIApiKey?: string;
   conversationHistory?: ConversationItem[];
   previousResponseId?: string; // For Responses API conversation tracking
+  // Replacement input returned by an explicit Responses compaction. Consumed only
+  // after the next Responses turn succeeds so a failed request cannot lose context.
+  pendingCompactedInput?: any[];
   contextCapsule?: {
     text: string;
     throughTimestampMs: number;
     updatedAtMs: number;
-    source: 'responses_compaction' | 'token_threshold' | 'realtime_threshold';
+    source: 'responses_compaction' | 'token_threshold' | 'realtime_threshold' | 'manual_compaction';
   };
   contextCompactionInFlight?: boolean;
+  latestContextCompaction?: {
+    atMs: number;
+    channel: Channel;
+    protocol: 'responses' | 'realtime';
+    source: 'automatic' | 'manual';
+  };
   latestModelUsage?: {
     channel: Channel;
     inputTokens: number;
@@ -145,8 +154,10 @@ export function closeModel() {
       currentActivitySpanConversationId: session.currentActivitySpanConversationId,
       conversationHistory: session.conversationHistory,
       previousResponseId: session.previousResponseId,
+      pendingCompactedInput: session.pendingCompactedInput,
       contextCapsule: session.contextCapsule,
       contextCompactionInFlight: session.contextCompactionInFlight,
+      latestContextCompaction: session.latestContextCompaction,
       latestModelUsage: session.latestModelUsage,
       lastAssistantStepId: session.lastAssistantStepId,
       lastUserStepId: session.lastUserStepId,

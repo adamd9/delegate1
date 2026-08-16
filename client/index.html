@@ -382,6 +382,12 @@
     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
     .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .context-control { display: flex; align-items: center; gap: 6px; }
+    .context-status {
+      color: var(--text-dim); font-family: var(--font); font-size: 10px;
+      white-space: nowrap;
+    }
+    .context-status.capsule-backed { color: var(--accent); }
 
     .tb-btn {
       padding: 10px 14px; border-radius: 12px;
@@ -735,6 +741,10 @@
       .topbar { padding: 14px 12px; gap: 8px; align-items: flex-start; }
       .topbar-title { font-size: 24px; }
       .topbar-nav { display: none; }
+      .topbar-right { margin-left: auto; }
+      .topbar-right > .tb-btn { display: none !important; }
+      .context-control { flex-direction: column; align-items: flex-end; gap: 3px; }
+      .context-control .tb-btn { padding: 6px 8px; border-radius: 8px; font-size: 10px; }
       .conv-label {
         font-size: 11px; overflow: hidden;
         text-overflow: ellipsis; white-space: nowrap; max-width: 130px;
@@ -879,6 +889,10 @@
         <div class="live-dot"></div>live
       </div>
       <div class="topbar-right">
+        <div class="context-control">
+          <span id="context-status" class="context-status" title="No active model context">context —</span>
+          <button class="tb-btn" id="btn-compact-context" type="button" disabled>compact now</button>
+        </div>
         <a class="tb-btn" href="/voice-direct" target="_blank" rel="noopener noreferrer" style="text-decoration:none;display:inline-flex;align-items:center;">open voice mode</a>
         <button class="tb-btn" id="btn-copy">copy transcript</button>
       </div>
@@ -948,6 +962,8 @@ const state = {
   historyHeaderCount: 0,
   historyEventLimit: 500,
   historyHasMore: false,
+  historyCursor: null,
+  historyPrepend: null,
 
   // Continuous timeline activity spans. Conversations remain resumable across checkpoints.
   spans: new Map(),
@@ -999,7 +1015,7 @@ function ensureDateSeparator(epochMs) {
   separator.className = 'timeline-date';
   separator.dataset.date = key;
   separator.textContent = dateLabel(epochMs);
-  document.getElementById('events')?.appendChild(separator);
+  timelineRenderRoot()?.appendChild(separator);
   state.lastRenderedDateKey = key;
 }
 
@@ -1047,6 +1063,8 @@ function connect() {
     state.currentConversationId = null;
     state.streaming = {};
     state.historyHeaderCount = 0;
+    state.historyCursor = null;
+    state.historyPrepend = null;
     updateHistoryHeader(0);
 
     setWsStatus('connected');
@@ -1086,6 +1104,10 @@ function resetTimelineRender() {
   seenFunctionCallBreadcrumbs.clear();
   const eventsEl = document.getElementById('events');
   if (eventsEl) eventsEl.innerHTML = '';
+}
+
+function timelineRenderRoot() {
+  return state.historyPrepend?.fragment || document.getElementById('events');
 }
 
 // ─── Event handler ────────────────────────────────────────────────────────────
@@ -1136,9 +1158,41 @@ function handleEvent(event) {
       break;
     }
 
+    case 'history.page.start': {
+      if (event.mode !== 'prepend' || state.historyPrepend) break;
+      state.historyPrepend = {
+        fragment: document.createDocumentFragment(),
+        currentSpanId: state.currentSpanId,
+        lastRenderedDateKey: state.lastRenderedDateKey,
+        currentConversationId: state.currentConversationId,
+      };
+      state.currentSpanId = null;
+      state.lastRenderedDateKey = null;
+      break;
+    }
+
     case 'history.page': {
       state.historyEventLimit = Number(event.limit) || state.historyEventLimit;
       state.historyHasMore = event.has_more === true;
+      state.historyCursor = event.next_cursor || null;
+      if (event.mode === 'prepend' && state.historyPrepend) {
+        const pending = state.historyPrepend;
+        const eventsEl = document.getElementById('events');
+        if (eventsEl) {
+          const olderDates = pending.fragment.querySelectorAll('.timeline-date');
+          const newestOlderDate = olderDates[olderDates.length - 1];
+          const oldestExistingDate = eventsEl.querySelector('.timeline-date');
+          if (newestOlderDate?.dataset.date === oldestExistingDate?.dataset.date) {
+            oldestExistingDate.remove();
+          }
+          eventsEl.insertBefore(pending.fragment, eventsEl.firstChild);
+        }
+        state.currentSpanId = pending.currentSpanId;
+        state.lastRenderedDateKey = pending.lastRenderedDateKey;
+        state.currentConversationId = pending.currentConversationId;
+        state.historyPrepend = null;
+        updateConvId();
+      }
       const button = document.getElementById('timeline-more');
       if (button) button.style.display = state.historyHasMore ? '' : 'none';
       break;
@@ -1358,6 +1412,7 @@ function handleEvent(event) {
         cached_tokens: cached,
         output_tokens: Number(event.outputTokens || 0).toLocaleString(),
       }, event.replay === true, event.timestamp);
+      if (!event.replay) void loadContextStatus();
       break;
     }
 
@@ -1369,6 +1424,7 @@ function handleEvent(event) {
         protocol: event.protocol,
         channel: event.channel,
       }, event.replay === true, event.timestamp);
+      if (!event.replay) void loadContextStatus();
       break;
     }
 
@@ -1385,6 +1441,7 @@ function handleEvent(event) {
         source: event.source,
         channel: event.channel,
       }, event.replay === true, event.timestamp);
+      if (!event.replay) void loadContextStatus();
       break;
     }
 
@@ -1605,7 +1662,7 @@ function startTimelineSpan(event) {
   });
   container.appendChild(header);
   container.appendChild(body);
-  document.getElementById('events')?.appendChild(container);
+  timelineRenderRoot()?.appendChild(container);
   state.spans.set(spanId, { container, header, body, startedAt, channel: event.channel || 'text', itemCount: 0 });
 }
 
@@ -1994,6 +2051,69 @@ function copyTranscript() {
   });
 }
 
+function relativeContextTime(epochMs) {
+  if (!epochMs) return 'never';
+  const elapsedSeconds = Math.max(0, Math.round((Date.now() - epochMs) / 1000));
+  if (elapsedSeconds < 60) return `${elapsedSeconds}s ago`;
+  const elapsedMinutes = Math.round(elapsedSeconds / 60);
+  if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`;
+  return `${Math.round(elapsedMinutes / 60)}h ago`;
+}
+
+function renderContextStatus(context) {
+  const statusEl = document.getElementById('context-status');
+  const compactButton = document.getElementById('btn-compact-context');
+  if (!statusEl || !compactButton) return;
+  if (!context?.active) {
+    statusEl.textContent = 'context —';
+    statusEl.title = 'No active conversation context';
+    statusEl.classList.remove('capsule-backed');
+    compactButton.disabled = true;
+    return;
+  }
+  const percent = Number(context.thresholdUtilizationPercent || 0);
+  const capsuleLabel = context.capsule?.active ? ' · capsule' : '';
+  statusEl.textContent = `context ${percent.toLocaleString()}%${capsuleLabel}`;
+  statusEl.classList.toggle('capsule-backed', context.capsule?.active === true);
+  const threshold = Number(context.compactThresholdTokens || 0).toLocaleString();
+  const input = Number(context.inputTokens || 0).toLocaleString();
+  const latest = context.latestCompaction;
+  statusEl.title = `${input} input tokens of ${threshold} automatic compaction threshold. `
+    + `Continuity capsule: ${context.capsule?.active ? `active, updated ${relativeContextTime(context.capsule.updatedAtMs)}` : 'not active'}. `
+    + `Last Responses compaction: ${latest ? `${relativeContextTime(latest.atMs)} (${latest.source})` : 'never'}.`;
+  compactButton.disabled = !context.canCompact;
+  compactButton.textContent = context.compactionInFlight ? 'compacting…' : 'compact now';
+}
+
+async function loadContextStatus() {
+  try {
+    const response = await fetch('/api/session/context', { credentials: 'include' });
+    if (response.ok) renderContextStatus(await response.json());
+  } catch (error) {
+    console.warn('Failed to load context status', error);
+  }
+}
+
+async function compactContextNow() {
+  const button = document.getElementById('btn-compact-context');
+  button.disabled = true;
+  button.textContent = 'compacting…';
+  try {
+    const response = await fetch('/api/session/context/compact', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || 'Context compaction failed');
+    renderContextStatus(result.context);
+    button.textContent = 'compacted';
+    setTimeout(() => loadContextStatus(), 1200);
+  } catch (error) {
+    button.textContent = 'failed';
+    button.title = error.message || 'Context compaction failed';
+    setTimeout(() => loadContextStatus(), 1800);
+  }
+}
+
 function openNote(data) {
   const overlay = document.getElementById('note-overlay');
   const iframe = document.getElementById('note-iframe');
@@ -2087,12 +2207,13 @@ async function loadChannelStatus() {
   }
 }
 loadChannelStatus();
+loadContextStatus();
 
 // ─── Event bindings ───────────────────────────────────────────────────────────
 document.getElementById('hist-toggle').addEventListener('click', toggleHistory);
 document.getElementById('timeline-more').addEventListener('click', () => {
-  if (!state.historyHasMore) return;
-  sendWs({ type: 'history.more', limit: Math.min(5000, state.historyEventLimit + 500) });
+  if (!state.historyHasMore || !state.historyCursor || state.historyPrepend) return;
+  sendWs({ type: 'history.more', cursor: state.historyCursor });
 });
 
 document.getElementById('int-send').addEventListener('click', sendMessage);
@@ -2111,6 +2232,7 @@ document.querySelectorAll('.lp-navitem').forEach(a =>
 );
 
 document.getElementById('btn-copy').addEventListener('click', copyTranscript);
+document.getElementById('btn-compact-context').addEventListener('click', compactContextNow);
 document.getElementById('vnc-btn-sidebar').addEventListener('click', () => {
   window.location.href = '/tasks?vnc=1';
 });

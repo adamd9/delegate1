@@ -34,6 +34,8 @@ The technical conversation remains open and resumable. The next interaction open
 
 Text-like channels (text, SMS, email, and autonomous Inner Context turns) use the Responses API. Requests continue through `previous_response_id`, and every initial request and tool continuation enables OpenAI's official server-side compaction. Compaction shortens the model's working chain while the durable timeline remains unchanged.
 
+The chat topbar reports current input usage as a percentage of the configured automatic compaction threshold, whether a continuity capsule is active, and the last Responses compaction time. **Compact now** calls the official Responses compaction endpoint, retains its replacement input until the next successful turn, and refreshes the durable capsule. It is disabled while a response or compaction is active.
+
 Phone and browser voice use the Realtime API. Realtime sessions use retention-ratio truncation, which drops older model context when the session reaches its context limit while retaining a recent fraction. Starting a voice session clears the Responses chain ID because it is a different protocol, not because the relationship has restarted.
 
 ## Continuity capsules
@@ -60,11 +62,11 @@ Context management is visible as expandable Inner Plane activity:
 | `context.compacted` | The Responses API compacted its working chain |
 | `context.capsule` | A continuity capsule refresh started, completed, or failed |
 
-Memory retrieval uses the same Inner Plane treatment. Usage, compaction, and completed capsule events are persisted and replayed inline with the activity that caused them. Capsule `started` and `failed` notifications are live observability only. None of these events impersonates a user message.
+Memory retrieval uses the same Inner Plane treatment. Usage, compaction, and completed capsule events are persisted and replayed inline with the activity that caused them. Late retrieval is surfaced only when deduplication and arbitration leave genuinely novel memory; delayed extraction is attached to the activity span that requested it. Capsule `started` and `failed` notifications are live observability only. None of these events impersonates a user message.
 
 ## History breadth
 
-The browser hydrates the latest globally ordered ledger events across every technical conversation record. `TIMELINE_HISTORY_EVENT_LIMIT` controls the initial event window (default 500), and **load older activity** expands that bounded window. An old record receiving a new task, memory, or Inner Context event no longer causes its entire historical contents to displace newer activity.
+The browser hydrates the latest globally ordered ledger events across every technical conversation record. `TIMELINE_HISTORY_EVENT_LIMIT` controls the initial page (default 500). **Load older activity** requests the next page with a compound timestamp/event-ID cursor and prepends only those events. Pages expand to the owning span start when necessary, so a configured boundary cannot split a modern activity span. Concurrent new events remain at the newest end and cannot shift or duplicate the older page.
 
 This setting controls replay breadth only. It is not a model token limit and does not prune SQLite; older events remain durable unless runtime data is explicitly reset or removed.
 

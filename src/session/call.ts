@@ -576,6 +576,7 @@ export function establishRealtimeModelConnection(options?: { skipGreeting?: bool
 
   session.modelConn.on("open", () => {
     session.previousResponseId = undefined;
+    session.pendingCompactedInput = undefined;
     const sessionConfig = buildRealtimeSessionConfig('voice', 'g711_ulaw');
 
     // If this is an agent-initiated outbound call, inject recent conversation as context

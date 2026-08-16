@@ -20,6 +20,7 @@ Routed in `src/ws/attach.ts` by URL path. Only one voice/call connection can be 
 
 ```json
 { "type": "chat.message", "content": "..." }
+{ "type": "history.more", "cursor": { "createdAtMs": 1700000000000, "id": "event-id" } }
 ```
 
 **Server → client**
@@ -28,9 +29,11 @@ Routed in `src/ws/attach.ts` by URL path. Only one voice/call connection can be 
 { "type": "chat.working", "request_id": "..." }
 { "type": "chat.response", "content": "...", "conversation_id": "..." }
 { "type": "chat.done", "request_id": "..." }
+{ "type": "history.page.start", "mode": "prepend" }
+{ "type": "history.page", "mode": "prepend", "next_cursor": { "createdAtMs": 1699999999000, "id": "older-event-id" }, "has_more": true }
 ```
 
-Timeline replay and live observability also use `conversation.item.*`, `timeline.span.*`, `memory.*`, `inner.activation`, `context.usage`, `context.compacted`, and `context.capsule` events. Context and memory events render as Inner Plane activity rather than user messages. See `src/session/chat.ts` and `src/session/history.ts` for the complete mapping.
+Timeline replay and live observability also use `conversation.item.*`, `timeline.span.*`, `memory.*`, `inner.activation`, `context.usage`, `context.compacted`, and `context.capsule` events. Initial replay is a bounded global event page; older cursor pages are bracketed by `history.page.start` and `history.page` so the client can prepend them atomically. Context and memory events render as Inner Plane activity rather than user messages. See `src/session/chat.ts` and `src/session/history.ts` for the complete mapping.
 
 ## `/browser-call`
 

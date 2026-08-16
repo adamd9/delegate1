@@ -39,6 +39,7 @@ import {
   incrementTurnCount,
   listTasks,
 } from './tasks';
+import { queueTaskDelivery, resumeTaskDeliveries } from './delivery';
 
 // ---------------------------------------------------------------------------
 // Shared single-task lock
@@ -386,6 +387,7 @@ async function processNextTurn(): Promise<void> {
       payload: { text: 'Copilot CLI not installed or not in PATH.' },
     });
     updateTask(chosenTaskId, { status: 'failed', ended_at_ms: Date.now() });
+    queueTaskDelivery(chosenTaskId);
     queueFor(chosenTaskId).shift();
     emit({ type: 'copilot.task.update', taskId: chosenTaskId });
     return;
@@ -517,6 +519,7 @@ async function processNextTurn(): Promise<void> {
       payload: { text: `process error: ${err.message}` },
     });
     updateTask(chosenTaskId!, { status: 'failed', ended_at_ms: Date.now() });
+    queueTaskDelivery(chosenTaskId!);
     emit({ type: 'copilot.task.update', taskId: chosenTaskId! });
     activeTurn = null;
     processNextTurn().catch(e => console.error('[copilot-tasks] processNextTurn error', e));
@@ -606,6 +609,7 @@ async function processNextTurn(): Promise<void> {
         lastGit: gitResult ? { status: gitResult.status, message: gitResult.message } : undefined,
       },
     });
+    queueTaskDelivery(chosenTaskId!);
     emit({ type: 'copilot.task.update', taskId: chosenTaskId! });
 
     try {
@@ -645,6 +649,7 @@ export function reconcileOnStartup(): void {
     if (stuck.length) {
       console.log(`[copilot-tasks] reconciled ${stuck.length} stuck running tasks → awaiting_user`);
     }
+    resumeTaskDeliveries();
   } catch (err: any) {
     console.warn('[copilot-tasks] reconcile error', err?.message || err);
   }

@@ -18,6 +18,7 @@ import {
   getBrowserStatus,
   startBrowserInfra,
 } from '../../src/browser';
+import { configService } from '../../src/config';
 
 let passed = 0;
 let failed = 0;
@@ -40,10 +41,9 @@ function skip(name: string, reason: string) {
   skipped++;
 }
 
-// Helper to save/restore env vars safely
-function restoreEnv(key: string, original: string | undefined) {
-  if (original !== undefined) process.env[key] = original;
-  else delete process.env[key];
+function restoreConfig(key: string, original: string | undefined, sensitive = false) {
+  if (original !== undefined) configService.set(key, original, sensitive);
+  else configService.delete(key);
 }
 
 async function main() {
@@ -53,27 +53,27 @@ async function main() {
 
   console.log('Group 1: Handler validation\n');
 
-  await test('Handler rejects when BROWSER_ENABLED is not set', async () => {
-    const origBrowser = process.env.BROWSER_ENABLED;
+  await test('Handler rejects when browser stack is explicitly disabled', async () => {
+    const origBrowser = configService.get('BROWSER_ENABLED');
     try {
-      delete process.env.BROWSER_ENABLED;
+      configService.set('BROWSER_ENABLED', 'false');
       const result = await copilotDispatchHandler.handler({ task: 'test' });
       assert.ok(result.error, 'Expected error in result');
       assert.ok(
-        result.error.includes('Browser agent not enabled'),
-        `Expected 'Browser agent not enabled', got: ${result.error}`,
+        result.error.includes('Copilot is not configured'),
+        `Expected Copilot configuration error, got: ${result.error}`,
       );
     } finally {
-      restoreEnv('BROWSER_ENABLED', origBrowser);
+      restoreConfig('BROWSER_ENABLED', origBrowser);
     }
   });
 
   await test('Handler rejects when COPILOT_GITHUB_TOKEN is not set', async () => {
-    const origBrowser = process.env.BROWSER_ENABLED;
-    const origToken = process.env.COPILOT_GITHUB_TOKEN;
+    const origBrowser = configService.get('BROWSER_ENABLED');
+    const origToken = configService.get('COPILOT_GITHUB_TOKEN');
     try {
-      process.env.BROWSER_ENABLED = 'true';
-      delete process.env.COPILOT_GITHUB_TOKEN;
+      configService.set('BROWSER_ENABLED', 'true');
+      configService.delete('COPILOT_GITHUB_TOKEN');
       const result = await copilotDispatchHandler.handler({ task: 'test' });
       assert.ok(result.error, 'Expected error in result');
       assert.ok(
@@ -81,8 +81,8 @@ async function main() {
         `Expected COPILOT_GITHUB_TOKEN error, got: ${result.error}`,
       );
     } finally {
-      restoreEnv('BROWSER_ENABLED', origBrowser);
-      restoreEnv('COPILOT_GITHUB_TOKEN', origToken);
+      restoreConfig('BROWSER_ENABLED', origBrowser);
+      restoreConfig('COPILOT_GITHUB_TOKEN', origToken, true);
     }
   });
 
@@ -135,29 +135,29 @@ async function main() {
   });
 
   await test('getBrowserStatus() returns correct state when disabled', async () => {
-    const orig = process.env.BROWSER_ENABLED;
+    const orig = configService.get('BROWSER_ENABLED');
     try {
-      delete process.env.BROWSER_ENABLED;
+      configService.set('BROWSER_ENABLED', 'false');
       const status = getBrowserStatus();
       assert.strictEqual(status.enabled, false, 'enabled should be false');
       assert.strictEqual(status.running, false, 'running should be false');
       assert.strictEqual(typeof status.profileDir, 'string', 'profileDir should be a string');
       assert.strictEqual(typeof status.workDir, 'string', 'workDir should be a string');
     } finally {
-      restoreEnv('BROWSER_ENABLED', orig);
+      restoreConfig('BROWSER_ENABLED', orig);
     }
   });
 
   await test('startBrowserInfra() is no-op when disabled', async () => {
-    const orig = process.env.BROWSER_ENABLED;
+    const orig = configService.get('BROWSER_ENABLED');
     try {
-      delete process.env.BROWSER_ENABLED;
+      configService.set('BROWSER_ENABLED', 'false');
       const result = await startBrowserInfra();
-      assert.deepStrictEqual(result, { ok: true }, 'Should return { ok: true }');
+      assert.deepStrictEqual(result, { ok: true, disabled: true }, 'Should report a disabled no-op');
       const status = getBrowserStatus();
       assert.strictEqual(status.running, false, 'running should still be false after no-op start');
     } finally {
-      restoreEnv('BROWSER_ENABLED', orig);
+      restoreConfig('BROWSER_ENABLED', orig);
     }
   });
 
@@ -165,7 +165,7 @@ async function main() {
 
   console.log('\nGroup 3: Integration (requires copilot CLI + token)\n');
 
-  const hasToken = !!process.env.COPILOT_GITHUB_TOKEN;
+  const hasToken = !!configService.get('COPILOT_GITHUB_TOKEN');
 
   let hasCli = false;
   if (hasToken) {
@@ -221,9 +221,9 @@ async function main() {
   });
 
   await test('Hook scaffold creates hooks.json and callback.sh when browser infra starts', async () => {
-    const origBrowser = process.env.BROWSER_ENABLED;
+    const origBrowser = configService.get('BROWSER_ENABLED');
     try {
-      process.env.BROWSER_ENABLED = 'true';
+      configService.set('BROWSER_ENABLED', 'true');
       await startBrowserInfra();
 
       const hooksDir = path.join(COPILOT_WORK_DIR, '.github', 'hooks');
@@ -261,17 +261,17 @@ async function main() {
       const stat = fs.statSync(callbackShPath);
       assert.ok((stat.mode & 0o111) !== 0, 'callback.sh should be executable');
     } finally {
-      restoreEnv('BROWSER_ENABLED', origBrowser);
+      restoreConfig('BROWSER_ENABLED', origBrowser);
     }
   });
 
   await test('Handler rejects concurrent sessions', async () => {
-    const origBrowser = process.env.BROWSER_ENABLED;
-    const origToken = process.env.COPILOT_GITHUB_TOKEN;
+    const origBrowser = configService.get('BROWSER_ENABLED');
+    const origToken = configService.get('COPILOT_GITHUB_TOKEN');
     try {
       // Enable browser + token so we get past the early guards
-      process.env.BROWSER_ENABLED = 'true';
-      process.env.COPILOT_GITHUB_TOKEN = 'test-token';
+      configService.set('BROWSER_ENABLED', 'true');
+      configService.set('COPILOT_GITHUB_TOKEN', 'test-token', true);
 
       // First call may fail (no CLI) or succeed — either way, if there's
       // an active session we can test the concurrent rejection.
@@ -281,8 +281,8 @@ async function main() {
       assert.ok(schema.parameters.additionalProperties === false, 'Schema should disallow additional properties');
       assert.ok(schema.parameters.properties.task.description.length > 0, 'task param should have a description');
     } finally {
-      restoreEnv('BROWSER_ENABLED', origBrowser);
-      restoreEnv('COPILOT_GITHUB_TOKEN', origToken);
+      restoreConfig('BROWSER_ENABLED', origBrowser);
+      restoreConfig('COPILOT_GITHUB_TOKEN', origToken, true);
     }
   });
 
@@ -359,9 +359,9 @@ async function main() {
 
   await test('copilot_continue handler rejects unknown task', async () => {
     const { copilotContinueHandler } = require('../../src/tools/handlers/copilotCli');
-    const origBrowser = process.env.BROWSER_ENABLED;
+    const origBrowser = configService.get('BROWSER_ENABLED');
     try {
-      process.env.BROWSER_ENABLED = 'true';
+      configService.set('BROWSER_ENABLED', 'true');
       const result = await copilotContinueHandler.handler({
         task_id_or_name: 'definitely-does-not-exist-xyz',
         prompt: 'hi',
@@ -369,7 +369,7 @@ async function main() {
       assert.ok(result.error, 'should error on unknown task');
       assert.ok(result.error.includes('No task found'));
     } finally {
-      restoreEnv('BROWSER_ENABLED', origBrowser);
+      restoreConfig('BROWSER_ENABLED', origBrowser);
     }
   });
 

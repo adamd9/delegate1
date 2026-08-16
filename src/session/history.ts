@@ -1,6 +1,6 @@
 import { WebSocket } from 'ws';
 import { jsonSend, isOpen } from './state';
-import { listTimelineEvents } from '../db/sqlite';
+import { listTimelineEvents, type TimelineCursor } from '../db/sqlite';
 import { configService } from '../config';
 
 function toNumber(value: any, fallback: number): number {
@@ -148,13 +148,13 @@ export function mapDbEventToUiEvent(row: any, convId: string, sessionId: string,
       timestamp: ts,
     });
   } else if (kind === 'memory_retrieved') {
-    out.push({ type: 'memory.retrieved', ...(replay ? { replay: true } : {}), conversation_id: convId, source: payload.source, count: payload.count, memories: payload.memories, preview: payload.preview, age_ms: payload.age_ms, elapsed_ms: payload.elapsed_ms, timestamp: ts });
+    out.push({ type: 'memory.retrieved', ...(replay ? { replay: true } : {}), conversation_id: convId, ...(payload.span_id ? { span_id: payload.span_id } : {}), source: payload.source, count: payload.count, memories: payload.memories, preview: payload.preview, age_ms: payload.age_ms, elapsed_ms: payload.elapsed_ms, timestamp: ts });
   } else if (kind === 'memory_pending') {
     out.push({ type: 'memory.pending', ...(replay ? { replay: true } : {}), elapsed_ms: payload.elapsed_ms, timestamp: ts });
   } else if (kind === 'memory_miss') {
     out.push({ type: 'memory.miss', ...(replay ? { replay: true } : {}), timestamp: ts });
   } else if (kind === 'memory_stored') {
-    out.push({ type: 'memory.stored', ...(replay ? { replay: true } : {}), facts: payload.facts, channel: payload.channel, timestamp: ts });
+    out.push({ type: 'memory.stored', ...(replay ? { replay: true } : {}), conversation_id: convId, ...(payload.span_id ? { span_id: payload.span_id } : {}), facts: payload.facts, channel: payload.channel, timestamp: ts });
   } else if (kind === 'model_usage') {
     out.push({ type: 'context.usage', ...(replay ? { replay: true } : {}), conversation_id: convId, ...payload, timestamp: ts });
   } else if (kind === 'context_compacted') {
@@ -186,15 +186,18 @@ export function mapDbEventToUiEvent(row: any, convId: string, sessionId: string,
   return out.map(event => spanId && !event.span_id ? { ...event, span_id: spanId } : event);
 }
 
-export function replayHistoryOnConnect(ws: WebSocket, requestedLimit?: number) {
+export function replayHistoryOnConnect(ws: WebSocket, requestedLimit?: number, cursor?: TimelineCursor) {
   try {
     const configuredLimit = getTimelineHistoryEventLimit();
     const limit = requestedLimit === undefined
       ? configuredLimit
       : Math.min(5000, Math.max(configuredLimit, Math.floor(requestedLimit)));
-    const page = listTimelineEvents(limit);
+    const page = listTimelineEvents(limit, cursor);
     const records = page.events as any[];
-    if (isOpen(ws)) jsonSend(ws, { type: 'history.header', count: 0 });
+    if (isOpen(ws)) {
+      if (cursor) jsonSend(ws, { type: 'history.page.start', mode: 'prepend', timestamp: Date.now() });
+      else jsonSend(ws, { type: 'history.header', count: 0 });
+    }
     const activeSpans = new Map<string, string>();
     const conversationMeta = new Map<string, any>();
     const seenThoughtflow = new Set<string>();
@@ -282,6 +285,8 @@ export function replayHistoryOnConnect(ws: WebSocket, requestedLimit?: number) {
       event_count: records.length,
       limit: page.limit,
       has_more: page.hasMore,
+      next_cursor: page.nextCursor,
+      mode: cursor ? 'prepend' : 'initial',
       timestamp: Date.now(),
     });
   } catch (e) {

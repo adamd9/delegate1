@@ -239,6 +239,82 @@ async function main() {
     'recent-record',
   ]);
   assert.strictEqual(recentPage.hasMore, true);
+  assert.ok(recentPage.nextCursor);
+  const firstPageIds = recentPage.events.map((event: any) => event.id);
+  sqlite.addConversationEvent({
+    conversation_id: 'recent-record',
+    kind: 'message_user',
+    payload: { text: 'Concurrent newest event', channel: 'text' },
+    created_at_ms: 40_000_000,
+  });
+  const olderPage = sqlite.listTimelineEvents(3, recentPage.nextCursor!);
+  assert.ok(olderPage.events.length > 0);
+  assert.strictEqual(
+    olderPage.events.some((event: any) => firstPageIds.includes(event.id)),
+    false,
+    'cursor pages must not duplicate the previous page',
+  );
+  assert.strictEqual(
+    olderPage.events.some((event: any) => event.created_at_ms === 40_000_000),
+    false,
+    'events inserted after page one must not shift the older cursor page',
+  );
+
+  sqlite.upsertConversation({
+    id: 'span-page-record',
+    session_id: 'session-1',
+    channel: 'text',
+    started_at: new Date(50_000_000).toISOString(),
+  });
+  for (const [offset, kind, payload] of [
+    [0, 'activity_span_started', { span_id: 'page-span', kind: 'user', channel: 'text' }],
+    [1, 'message_user', { text: 'Paged question', channel: 'text' }],
+    [2, 'message_assistant', { text: 'Paged answer', channel: 'text' }],
+    [3, 'activity_span_closed', { span_id: 'page-span', reason: 'idle', channel: 'text' }],
+  ] as const) {
+    sqlite.addConversationEvent({
+      conversation_id: 'span-page-record', kind, payload,
+      created_at_ms: 50_000_000 + offset,
+    });
+  }
+  const spanAlignedPage = sqlite.listTimelineEvents(2);
+  assert.deepStrictEqual(spanAlignedPage.events.map((event: any) => event.kind), [
+    'activity_span_started', 'message_user', 'message_assistant', 'activity_span_closed',
+  ]);
+
+  const contextEvents: any[] = [];
+  const activeSession = state.session;
+  activeSession.currentConversationId = 'conversation-1';
+  activeSession.currentRequest = undefined;
+  activeSession.previousResponseId = 'response-before-manual-compaction';
+  activeSession.contextCompactionInFlight = false;
+  activeSession.openaiClient = {
+    responses: {
+      compact: async (body: any) => ({
+        id: 'compaction-1',
+        output: [{ type: 'compaction', encrypted_content: 'compact-state' }],
+        usage: { input_tokens: 50_000, output_tokens: 100, total_tokens: 50_100 },
+        request: body,
+      }),
+      create: async () => ({
+        output_text: 'The relationship timeline and current work remain continuous.',
+        usage: { input_tokens: 200, output_tokens: 20, total_tokens: 220 },
+      }),
+    },
+  };
+  const { compactCurrentContext } = await import('../../src/session/contextControl');
+  const compactedStatus = await compactCurrentContext(event => contextEvents.push(event));
+  assert.strictEqual(activeSession.previousResponseId, undefined);
+  assert.deepStrictEqual(activeSession.pendingCompactedInput, [
+    { type: 'compaction', encrypted_content: 'compact-state' },
+  ]);
+  assert.strictEqual(activeSession.contextCapsule?.source, 'manual_compaction');
+  assert.strictEqual(compactedStatus.latestCompaction?.source, 'manual');
+  assert.deepStrictEqual(contextEvents.map(event => `${event.type}:${event.phase || event.source}`), [
+    'context.capsule:started',
+    'context.compacted:manual',
+    'context.capsule:completed',
+  ]);
 
   sqlite.getDb().close();
   Date.now = realDateNow;

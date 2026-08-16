@@ -248,6 +248,8 @@ export function checkpointConversation(conversationId: string, reason: string = 
     conversationId,
     channel: checkpoint.channel as Channel,
     turns: checkpoint.turns,
+    checkpointSeq: checkpoint.checkpointSeq,
+    spanId,
   });
   return { checkpointSeq: checkpoint.checkpointSeq, turnCount: checkpoint.turns.length };
 }
@@ -371,10 +373,17 @@ export function listConversationEvents(conversation_id: string) {
   return db.prepare('SELECT id, conversation_id, seq, kind, payload_json, created_at_ms FROM conversation_events WHERE conversation_id = ? ORDER BY seq ASC').all(conversation_id);
 }
 
-export function listTimelineEvents(limit: number) {
+export type TimelineCursor = { createdAtMs: number; id: string };
+
+function isOlderTimelinePosition(left: TimelineCursor, right: TimelineCursor): boolean {
+  return left.createdAtMs < right.createdAtMs
+    || (left.createdAtMs === right.createdAtMs && left.id < right.id);
+}
+
+export function listTimelineEvents(limit: number, cursor?: TimelineCursor) {
   const db = getDb();
   const safeLimit = Math.max(1, Math.min(5000, Math.floor(limit || 500)));
-  const rows = db.prepare(`
+  const select = `
     SELECT
       e.id,
       e.conversation_id,
@@ -388,12 +397,78 @@ export function listTimelineEvents(limit: number) {
       c.status AS conversation_status
     FROM conversation_events e
     JOIN conversations c ON c.id = e.conversation_id
+  `;
+  const upperWhere = cursor
+    ? 'WHERE (e.created_at_ms < ? OR (e.created_at_ms = ? AND e.id < ?))'
+    : '';
+  const upperParams = cursor ? [cursor.createdAtMs, cursor.createdAtMs, cursor.id] : [];
+  let rows = db.prepare(`${select}
+    ${upperWhere}
     ORDER BY e.created_at_ms DESC, e.id DESC
     LIMIT ?
-  `).all(safeLimit + 1) as any[];
-  const hasMore = rows.length > safeLimit;
-  if (hasMore) rows.pop();
-  return { events: rows.reverse(), hasMore, limit: safeLimit };
+  `).all(...upperParams, safeLimit + 1) as any[];
+  if (rows.length > safeLimit) rows.pop();
+
+  // Do not bisect a modern activity span. Extend the lower boundary to any
+  // span start that owns the earliest selected event for each conversation.
+  for (let pass = 0; rows.length && pass < 20; pass += 1) {
+    const earliestByConversation = new Map<string, any>();
+    for (const row of rows) earliestByConversation.set(row.conversation_id, row);
+    let boundary: TimelineCursor = {
+      createdAtMs: rows[rows.length - 1].created_at_ms,
+      id: rows[rows.length - 1].id,
+    };
+    for (const earliest of earliestByConversation.values()) {
+      const lifecycle = db.prepare(`
+        SELECT id, kind, payload_json, created_at_ms
+        FROM conversation_events
+        WHERE conversation_id = ?
+          AND kind IN ('activity_span_started', 'activity_span_closed')
+          AND (created_at_ms < ? OR (created_at_ms = ? AND id <= ?))
+        ORDER BY created_at_ms DESC, id DESC
+        LIMIT 1
+      `).get(
+        earliest.conversation_id,
+        earliest.created_at_ms,
+        earliest.created_at_ms,
+        earliest.id,
+      ) as any;
+      if (lifecycle?.kind !== 'activity_span_started') continue;
+      const lifecyclePosition = { createdAtMs: lifecycle.created_at_ms, id: lifecycle.id };
+      if (isOlderTimelinePosition(lifecyclePosition, boundary)) boundary = lifecyclePosition;
+    }
+    const currentBoundary = {
+      createdAtMs: rows[rows.length - 1].created_at_ms,
+      id: rows[rows.length - 1].id,
+    };
+    if (!isOlderTimelinePosition(boundary, currentBoundary)) break;
+    const lowerWhere = '(e.created_at_ms > ? OR (e.created_at_ms = ? AND e.id >= ?))';
+    rows = db.prepare(`${select}
+      ${upperWhere ? `${upperWhere} AND` : 'WHERE'} ${lowerWhere}
+      ORDER BY e.created_at_ms DESC, e.id DESC
+    `).all(
+      ...upperParams,
+      boundary.createdAtMs,
+      boundary.createdAtMs,
+      boundary.id,
+    ) as any[];
+  }
+
+  const oldest = rows.length ? {
+    createdAtMs: rows[rows.length - 1].created_at_ms,
+    id: rows[rows.length - 1].id,
+  } : null;
+  const hasMore = Boolean(oldest && db.prepare(`
+    SELECT 1 FROM conversation_events
+    WHERE created_at_ms < ? OR (created_at_ms = ? AND id < ?)
+    LIMIT 1
+  `).get(oldest.createdAtMs, oldest.createdAtMs, oldest.id));
+  return {
+    events: rows.reverse(),
+    hasMore,
+    limit: safeLimit,
+    nextCursor: hasMore ? oldest : null,
+  };
 }
 
 export function listRecentMemoryEvents(limit: number = 100): Array<{

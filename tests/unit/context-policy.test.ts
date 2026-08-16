@@ -1,6 +1,7 @@
 import assert from 'assert';
 import {
   buildContinuityContext,
+  getResponsesCompactThresholdTokens,
   getRealtimeTruncation,
   getResponsesContextManagement,
   normalizeTokenUsage,
@@ -8,6 +9,7 @@ import {
   shouldRefreshContextCapsule,
   writeContextCapsule,
 } from '../../src/session/contextPolicy';
+import { getContextStatus } from '../../src/session/contextControl';
 import type { Session } from '../../src/session/state';
 
 async function main() {
@@ -18,6 +20,7 @@ async function main() {
   assert.deepStrictEqual(getResponsesContextManagement(), [
     { type: 'compaction', compact_threshold: 64_000 },
   ]);
+  assert.strictEqual(getResponsesCompactThresholdTokens(), 64_000);
   assert.deepStrictEqual(getRealtimeTruncation(), {
     type: 'retention_ratio',
     retention_ratio: 0.75,
@@ -73,6 +76,19 @@ async function main() {
   assert.strictEqual(capsuleRequest.tools, undefined);
   assert.strictEqual(capsule.text, 'User has an unresolved voice follow-up.');
   assert.strictEqual(capsule.usage?.totalTokens, 220);
+
+  const status = getContextStatus({
+    currentConversationId: 'conversation-1',
+    previousResponseId: 'response-1',
+    latestModelUsage: {
+      channel: 'text', inputTokens: 32_000, outputTokens: 250,
+      totalTokens: 32_250, cachedTokens: 20_000, recordedAtMs: 500,
+    },
+    contextCapsule: state.contextCapsule,
+  });
+  assert.strictEqual(status.thresholdUtilizationPercent, 50);
+  assert.strictEqual(status.canCompact, true);
+  assert.strictEqual(status.capsule.active, true);
 
   console.log('context policy tests passed');
 }

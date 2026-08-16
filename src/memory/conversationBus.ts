@@ -3,7 +3,6 @@ import type { CompletedTurn, CompletedConversation } from './types';
 
 export interface ConversationBusEvents {
   turn_complete: (turn: CompletedTurn) => void;
-  conversation_complete: (conv: CompletedConversation) => void;
   conversation_checkpoint: (conv: CompletedConversation) => void;
   conversation_closed: (conversationId: string) => void;
 }
@@ -14,12 +13,6 @@ class ConversationBus extends EventEmitter {
   }
   onTurnComplete(listener: (turn: CompletedTurn) => void) {
     this.on('turn_complete', listener);
-  }
-  emitConversationComplete(conv: CompletedConversation) {
-    this.emit('conversation_complete', conv);
-  }
-  onConversationComplete(listener: (conv: CompletedConversation) => void) {
-    this.on('conversation_complete', listener);
   }
   emitConversationCheckpoint(conv: CompletedConversation) {
     this.emit('conversation_checkpoint', conv);

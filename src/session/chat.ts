@@ -102,8 +102,9 @@ export async function processChatSocketMessage(
         // Ensure a session exists and finalize it
         const { id } = ensureSession();
         const result = endSession();
-        // Clear previousResponseId so a new run starts fresh
-        try { (session as any).previousResponseId = undefined; } catch {}
+        // Clear Responses state so a new run starts fresh.
+        session.previousResponseId = undefined;
+        session.pendingCompactedInput = undefined;
         // Notify all chat clients that the session was finalized
         for (const ws of chatClients) {
           if (isOpen(ws)) jsonSend(ws, { type: 'session.finalized', session_id: id, ok: Boolean(result), timestamp: Date.now() });
@@ -117,10 +118,14 @@ export async function processChatSocketMessage(
     }
     case "history.more": {
       if (requester && isOpen(requester)) {
-        const currentLimit = Number((msg as any).limit) || getTimelineHistoryEventLimit();
-        const nextLimit = Math.min(5000, Math.max(getTimelineHistoryEventLimit(), currentLimit));
-        jsonSend(requester, { type: 'history.reset', timestamp: Date.now() });
-        replayHistoryOnConnect(requester, nextLimit);
+        const rawCursor = (msg as any).cursor;
+        const createdAtMs = Number(rawCursor?.createdAtMs);
+        const id = typeof rawCursor?.id === 'string' ? rawCursor.id : '';
+        if (!Number.isFinite(createdAtMs) || !id) {
+          jsonSend(requester, { type: 'history.error', error: 'valid_cursor_required', timestamp: Date.now() });
+          break;
+        }
+        replayHistoryOnConnect(requester, undefined, { createdAtMs, id });
       }
       break;
     }
@@ -240,6 +245,9 @@ export async function handleTextChatMessage(
         });
       }
       if (compacted) {
+        session.latestContextCompaction = {
+          atMs: Date.now(), channel, protocol: 'responses', source: 'automatic',
+        };
         addConversationEvent({
           conversation_id: conversationId,
           kind: 'context_compacted',
@@ -516,7 +524,10 @@ export async function handleTextChatMessage(
       content: content,
       role: isInnerContext ? "developer" : "user",
     };
-    requestBody.input = [userInput];
+    const pendingCompactedInput = session.pendingCompactedInput;
+    requestBody.input = pendingCompactedInput?.length
+      ? [...pendingCompactedInput, userInput]
+      : [userInput];
     console.log("[DEBUG] Responses API Request:", JSON.stringify(summarizeRequestForLog(requestBody), null, 2));
     // ThoughtFlow: LLM tool_call with prompt_provenance (Approach B)
     const llmStepId = `step_llm_${requestId}`;
@@ -597,6 +608,9 @@ export async function handleTextChatMessage(
 
     // Persist thread state regardless of tool usage so subsequent turns chain correctly
     session.previousResponseId = response.id;
+    if (pendingCompactedInput && session.pendingCompactedInput === pendingCompactedInput) {
+      session.pendingCompactedInput = undefined;
+    }
     console.log(
       "[DEBUG] Responses API Response:",
       JSON.stringify(

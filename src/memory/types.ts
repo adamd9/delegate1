@@ -19,6 +19,8 @@ export interface CompletedConversation {
   conversationId: string;
   channel: Channel;
   turns: Array<{ role: 'user' | 'assistant'; text: string }>;
+  checkpointSeq?: number;
+  spanId?: string;
 }
 
 /** Swappable backend interface — implement this to add a new memory provider */

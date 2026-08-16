@@ -194,7 +194,7 @@ export const copilotDispatchHandler: FunctionHandler = {
       title: result.task.title,
       task_url: taskUrl,
       notify,
-      message: `Task ${result.task.id} ("${result.task.title}") started. Share this link with the user so they can watch progress and read the outputs: ${taskUrl}. When it finishes you'll get a notification — deliver the result via the recorded preference (${notify || 'SMS by default'}) and include the link. Do NOT create a note for task tracking.`,
+      message: `Task ${result.task.id} ("${result.task.title}") started. Share this link with the user so they can watch progress and read the outputs: ${taskUrl}. The durable task runner will deliver the result via the recorded preference (${notify || 'SMS by default'}); do not send a duplicate. Do NOT create a note for task tracking.`,
     };
   },
 };

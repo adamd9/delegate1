@@ -68,6 +68,8 @@ If a stored response chain ends with an unresolved tool call, the server drops t
 
 Responses compaction is requested on every initial call and tool continuation. When OpenAI returns a compaction output item, Delegate 1 records `context.compacted` activity and refreshes the continuity capsule. A capsule can also refresh when input usage exceeds its lower local threshold, so other protocols can resume from a compact relationship summary before the Responses chain reaches its larger compaction threshold.
 
+The authenticated `GET /api/session/context` endpoint reports usage against that configured threshold, capsule state, and the latest Responses compaction. `POST /api/session/context/compact` performs explicit official compaction only when a stored Responses chain exists and no turn is active. Its compacted output becomes the input prefix for the next successful turn; failed turns do not discard it.
+
 The capsule-writing call is separate, uses `store: false`, and has no tools. Capsule text is internal context, not a synthetic user message. Usage, compaction, and capsule lifecycle events are persisted and shown as Inner Plane activity.
 
 ## Why this split exists

@@ -13,6 +13,13 @@ export type ModelTokenUsage = {
   cachedTokens: number;
 };
 
+export function getResponsesCompactThresholdTokens(): number {
+  return positiveInteger(
+    process.env.RESPONSES_COMPACT_THRESHOLD_TOKENS,
+    DEFAULT_RESPONSES_COMPACT_THRESHOLD,
+  );
+}
+
 function positiveInteger(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
@@ -21,10 +28,7 @@ function positiveInteger(value: string | undefined, fallback: number): number {
 export function getResponsesContextManagement() {
   return [{
     type: 'compaction',
-    compact_threshold: positiveInteger(
-      process.env.RESPONSES_COMPACT_THRESHOLD_TOKENS,
-      DEFAULT_RESPONSES_COMPACT_THRESHOLD,
-    ),
+    compact_threshold: getResponsesCompactThresholdTokens(),
   }];
 }
 

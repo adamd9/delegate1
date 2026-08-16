@@ -2,9 +2,30 @@ import type { Application, Request, Response } from 'express';
 import { WebSocket } from 'ws';
 import { session as stateSession, closeAllConnections, jsonSend, isOpen } from '../../session/state';
 import { memoryModule } from '../../memory';
+import { compactCurrentContext, getContextStatus } from '../../session/contextControl';
 
 export function registerSessionRoutes(app: Application, opts: { chatClients: Set<WebSocket>; logsClients: Set<WebSocket>; }) {
   const { chatClients, logsClients } = opts;
+  const broadcastContextActivity = (event: Record<string, unknown>) => {
+    for (const ws of chatClients) {
+      if (isOpen(ws)) jsonSend(ws, event);
+    }
+  };
+
+  app.get('/api/session/context', (_req: Request, res: Response) => {
+    res.json(getContextStatus());
+  });
+
+  app.post('/api/session/context/compact', async (_req: Request, res: Response) => {
+    try {
+      const status = await compactCurrentContext(broadcastContextActivity);
+      res.json({ status: 'ok', context: status });
+    } catch (error: any) {
+      const message = error?.message || 'Context compaction failed.';
+      const conflict = /already in progress|active response|no active Responses context/i.test(message);
+      res.status(conflict ? 409 : 500).json({ status: 'error', message, context: getContextStatus() });
+    }
+  });
 
   // Endpoint to reset session state: chat history and/or active connections
   // Body JSON shape: { chatHistory?: boolean, connections?: boolean }
@@ -48,6 +69,7 @@ export function registerSessionRoutes(app: Application, opts: { chatClients: Set
       if (chatHistory) {
         (stateSession as any).conversationHistory = [];
         (stateSession as any).previousResponseId = undefined;
+        (stateSession as any).pendingCompactedInput = undefined;
         memoryModule.clearCache();
         result.chatHistoryCleared = true;
       }

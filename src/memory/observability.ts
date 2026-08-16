@@ -5,6 +5,7 @@ type MemoryEventType =
   | 'retrieve.miss'
   | 'retrieve.fresh'
   | 'retrieve.late'
+  | 'retrieve.late_suppressed'
   | 'extract.start'
   | 'extract.none'
   | 'extract.stored'

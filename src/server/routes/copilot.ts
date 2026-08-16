@@ -123,16 +123,14 @@ export function registerCopilotRoutes(app: Application) {
           const errorMsg = payload.error?.message || 'Unknown error';
           const errorName = payload.error?.name || 'Error';
           const context = resolveLatestTask();
-          const convRef = context.conversationId ? `\nConversation ID: ${context.conversationId}` : '';
-          const taskIdLine = context.taskId ? `\nTask ID: ${context.taskId}` : '';
-          const linkLine = context.taskUrl ? `\nTask link: ${context.taskUrl}` : '';
-          const pref = context.notifyPref?.trim() || 'none recorded - default to SMS';
-          const message =
-            `[COPILOT TASK NOTIFICATION - this is NOT from the user]\n\n` +
-            `A background task encountered an error: ${errorName}: ${errorMsg}\n` +
-            `Task: "${context.title || 'unknown task'}"${taskIdLine}${convRef}${linkLine}\n\n` +
-            `Delivery preference: ${pref}.\n\n` +
-            `${context.taskId ? `Use \`copilot_task_status\` with \`task_id_or_name\` set to \`${context.taskId}\`` : 'Use `copilot_status`'} to see any available output. Inform the user via the recorded preference, include the task link, and retry or complete follow-up actions when appropriate.`;
+          const message = formatCopilotTaskNotification({
+            taskId: context.taskId,
+            title: `${context.title || 'unknown task'} (${errorName}: ${errorMsg})`,
+            status: 'error',
+            conversationId: context.conversationId,
+            taskUrl: context.taskUrl,
+            notifyPref: context.notifyPref,
+          });
 
           publishCopilotSignal(message, 'error', context.taskId, context.conversationId);
 

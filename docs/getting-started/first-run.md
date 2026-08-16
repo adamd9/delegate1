@@ -42,7 +42,7 @@ Delegate 1 automatically resumes the most recently active open technical convers
 
 Idle time closes the current activity span and creates an incremental memory checkpoint; it does not end the relationship timeline. A later text, call, SMS, email, or autonomous activation appears as another collapsible span in chronological order. Use **End conversation** only when you want an explicit technical boundary.
 
-The browser hydrates a configurable number of technical records, while SQLite remains the authoritative history. Model compaction or voice truncation can reduce working context without deleting that durable history.
+The browser hydrates a configurable page of globally ordered ledger events, while SQLite remains the authoritative history. Older pages load by cursor without resending the current page. Model compaction or voice truncation can reduce working context without deleting that durable history.
 
 ## The UI tour
 

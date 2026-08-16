@@ -40,7 +40,7 @@ The tasks UI can show live browser state (when browser infra is available). If V
 
 ### Background completion
 
-Copilot Tasks publish lifecycle signals such as `subprocess.completed`, `subprocess.needs_input`, and `subprocess.failed` through the [Inner Context Plane](../inner-context-plane/). The base agent uses its existing task and messaging tools to inspect output, finish follow-up work, and honour delivery preferences.
+Copilot Tasks publish lifecycle signals such as `subprocess.completed`, `subprocess.needs_input`, and `subprocess.failed` through the [Inner Context Plane](../inner-context-plane/). After the exact task row is finalized, the durable delivery worker sends its summary and task link through the preference captured at dispatch: chat, SMS, email, or an explicit email address/E.164 phone number. Delivery state and up to three attempts are recorded in task metadata and resumed after restart; the base agent is instructed not to send a duplicate.
 
 Key endpoints:
 

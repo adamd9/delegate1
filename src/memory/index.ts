@@ -114,9 +114,6 @@ class MemoryModule {
     conversationBus.onConversationClosed(() => {
       this._dedup.reset();
     });
-    conversationBus.onConversationComplete((conv) => {
-      this._extractAndStore(conv).catch(() => {});
-    });
   }
 
   private get openaiClient() {
@@ -216,18 +213,12 @@ class MemoryModule {
             this._cacheUpdatedAt = Date.now();
             const lines = result.split('\n').filter(Boolean);
             if (timedOut) {
-              console.log(`[memory] retrieve — late result (${lines.length} result(s)), broadcasting for UI`);
+              console.log(`[memory] retrieve — late result (${lines.length} result(s)), awaiting deduplication`);
               recordMemoryRuntimeEvent({
                 type: 'retrieve.late',
                 conversationId,
                 details: { count: lines.length, elapsed_ms: Date.now() - start },
               });
-              const latets = Date.now();
-              this._broadcast({ type: 'memory.retrieved', count: lines.length, memories: result, source: 'late', elapsed_ms: latets - start, timestamp: latets }, conversationId, spanId);
-              if (conversationId) {
-                this._persist(conversationId, 'memory_retrieved', { source: 'late', count: lines.length, elapsed_ms: latets - start, memories: result }, latets);
-                this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'late', count: lines.length }, latets);
-              }
             } else {
               console.log(`[memory] retrieve — cache populated (${lines.length} result(s), will be used next turn)`);
             }
@@ -235,9 +226,6 @@ class MemoryModule {
             console.log('[memory] retrieve — backend returned no results (cache stays cold)');
             if (timedOut) {
               recordMemoryRuntimeEvent({ type: 'retrieve.miss', conversationId, details: { source: 'late' } });
-              const missts = Date.now();
-              this._broadcast({ type: 'memory.miss', timestamp: missts }, conversationId, spanId);
-              if (conversationId) this._persist(conversationId, 'memory_miss', {}, missts);
             }
           }
           return result;
@@ -368,8 +356,13 @@ class MemoryModule {
       await backend.add(text, { channel: conv.channel, conversation_id: conv.conversationId });
       console.log('[memory] extraction — stored successfully');
       const storedts = Date.now();
-      this._broadcast({ type: 'memory.stored', facts: text, channel: conv.channel, timestamp: storedts }, conv.conversationId);
-      this._persist(conv.conversationId, 'memory_stored', { facts: text, channel: conv.channel }, storedts);
+      this._broadcast({ type: 'memory.stored', facts: text, channel: conv.channel, timestamp: storedts }, conv.conversationId, conv.spanId);
+      this._persist(conv.conversationId, 'memory_stored', {
+        facts: text,
+        channel: conv.channel,
+        ...(conv.spanId ? { span_id: conv.spanId } : {}),
+        ...(conv.checkpointSeq ? { checkpoint_seq: conv.checkpointSeq } : {}),
+      }, storedts);
       this._thoughtflowStep(conv.conversationId, 'memory.store', { channel: conv.channel, facts_length: text.length }, storedts);
       recordMemoryRuntimeEvent({
         type: 'extract.stored',
@@ -415,6 +408,7 @@ class MemoryModule {
     newMemories: string | null;
   }> {
     const { timeoutMs, conversationId, conversationHistory, onLateArrival } = opts ?? {};
+    const retrievalStartedAtMs = Date.now();
 
     // Sync dedup config from runtime config before each lookup
     const cfg = getMemoryConfig();
@@ -472,6 +466,32 @@ class MemoryModule {
           const arbResult = await this._runArbitrator(memories, newMemories, query, conversationHistory, conversationId);
           memories = arbResult.memories;
           newMemories = arbResult.newMemories;
+        }
+
+        if (newMemories) {
+          const lateTs = Date.now();
+          const count = newMemories.split('\n').filter(Boolean).length;
+          const elapsedMs = lateTs - retrievalStartedAtMs;
+          const activeSpanId = session.currentConversationId === conversationId
+            ? session.currentActivitySpanId
+            : undefined;
+          this._broadcast({
+            type: 'memory.retrieved', count, memories: newMemories,
+            source: 'late', elapsed_ms: elapsedMs, timestamp: lateTs,
+          }, conversationId, activeSpanId);
+          if (conversationId) {
+            this._persist(conversationId, 'memory_retrieved', {
+              source: 'late', count, elapsed_ms: elapsedMs,
+              memories: newMemories, ...(activeSpanId ? { span_id: activeSpanId } : {}),
+            }, lateTs);
+            this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'late', count }, lateTs);
+          }
+        } else {
+          recordMemoryRuntimeEvent({
+            type: 'retrieve.late_suppressed',
+            conversationId,
+            details: { reason: memories ? 'already_surfaced' : 'arbitrated_out' },
+          });
         }
 
         onLateArrival({ memories, newMemories });
