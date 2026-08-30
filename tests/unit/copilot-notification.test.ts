@@ -1,5 +1,6 @@
 import assert from 'assert';
 import { formatCopilotTaskNotification } from '../../src/copilot/notification';
+import { githubRepositoryUrl, redactGitError } from '../../src/browser';
 import {
   formatTaskDeliveryMessage,
   resolveDeliveryDestination,
@@ -37,6 +38,19 @@ assert.match(formatTaskDeliveryMessage({
 assert.notStrictEqual(
   taskDeliveryCompletionKey({ turn_count: 1, status: 'awaiting_user', ended_at_ms: 100 }),
   taskDeliveryCompletionKey({ turn_count: 2, status: 'completed', ended_at_ms: 200 }),
+);
+assert.strictEqual(githubRepositoryUrl('git@github.com:owner/project.git'), 'https://github.com/owner/project');
+assert.strictEqual(
+  githubRepositoryUrl('https://x-access-token:secret@github.com/owner/project.git'),
+  'https://github.com/owner/project',
+);
+assert.strictEqual(githubRepositoryUrl('https://gitlab.com/owner/project.git'), undefined);
+assert.doesNotMatch(
+  redactGitError(
+    new Error('git push "https://x-access-token:top-secret@github.com/owner/project.git" failed'),
+    ['top-secret'],
+  ),
+  /top-secret/,
 );
 
 console.log('copilot notification tests passed');

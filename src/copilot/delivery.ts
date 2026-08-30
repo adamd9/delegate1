@@ -16,7 +16,7 @@ export type DeliveryDestination = {
   target?: string;
 };
 
-type DeliveryState = {
+export type DeliveryState = {
   completionKey: string;
   status: 'pending' | 'delivering' | 'delivered' | 'failed';
   channel?: DeliveryChannel;
@@ -210,6 +210,36 @@ export function queueTaskDelivery(taskId: string): void {
     saveDelivery(task, { completionKey, status: 'pending', attempts: 0 });
   }
   scheduleTaskDelivery(taskId);
+}
+
+export function retryTaskDelivery(taskId: string): DeliveryState {
+  const task = getTask(taskId);
+  if (!task) throw new Error('Task not found.');
+  if (!TERMINAL_STATUSES.has(task.status)) {
+    throw new Error('Delivery can only be retried after a task turn finishes.');
+  }
+  const completionKey = taskDeliveryCompletionKey(task);
+  const delivery = parseMeta(task).delivery as DeliveryState | undefined;
+  if (!delivery || delivery.completionKey !== completionKey) {
+    throw new Error('There is no delivery attempt to retry for this task turn.');
+  }
+  if (delivery.status === 'delivered') throw new Error('This task turn was already delivered.');
+  if (delivery.status !== 'failed') throw new Error('Only a failed delivery can be retried.');
+
+  const timer = timers.get(taskId);
+  if (timer) clearTimeout(timer);
+  timers.delete(taskId);
+  const pending: DeliveryState = {
+    completionKey,
+    status: 'pending',
+    channel: delivery.channel,
+    target: delivery.target,
+    attempts: 0,
+  };
+  saveDelivery(task, pending);
+  addEvent({ task_id: taskId, kind: 'system', payload: { delivery: 'manual_retry_queued' } });
+  scheduleTaskDelivery(taskId);
+  return pending;
 }
 
 export function resumeTaskDeliveries(): void {

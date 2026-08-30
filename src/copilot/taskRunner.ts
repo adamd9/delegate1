@@ -575,7 +575,7 @@ async function processNextTurn(): Promise<void> {
       addEvent({
         task_id: chosenTaskId!,
         kind: 'git_sync',
-        payload: { status: gitResult.status, message: gitResult.message },
+        payload: gitResult,
       });
     } catch (err: any) {
       addEvent({
@@ -606,7 +606,7 @@ async function processNextTurn(): Promise<void> {
       meta: {
         ...(currentRow?.meta_json ? JSON.parse(currentRow.meta_json) : {}),
         lastExitCode: code,
-        lastGit: gitResult ? { status: gitResult.status, message: gitResult.message } : undefined,
+        lastGit: gitResult,
       },
     });
     queueTaskDelivery(chosenTaskId!);

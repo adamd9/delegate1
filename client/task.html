@@ -37,6 +37,15 @@
     .hdr-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
     .hdr-title { font-size: 14px; font-weight: 600; color: var(--text); }
     .hdr-meta { font-size: 11px; color: var(--text-mid); font-family: var(--font); display: flex; align-items: center; gap: 10px; }
+    .hdr-meta a { color: var(--blue); text-decoration: none; }
+    .hdr-meta a:hover { text-decoration: underline; }
+    .hdr-delivery {
+      display: none; align-items: center; gap: 8px; margin-top: 2px;
+      color: var(--text-mid); font-family: var(--font); font-size: 11px;
+    }
+    .hdr-delivery.show { display: flex; }
+    .hdr-delivery.failed { color: var(--red); }
+    .hdr-delivery.pending, .hdr-delivery.delivering { color: var(--amber); }
     .hdr-needs {
       margin-top: 4px; padding: 6px 10px; border-radius: 6px;
       background: rgba(251,191,36,0.08); border: 1px solid var(--amber);
@@ -241,6 +250,11 @@
     <div class="hdr-title" id="hdr-title">Loading…</div>
     <div class="hdr-meta">
       <span id="hdr-meta-text">—</span>
+      <a id="commit-link" href="#" target="_blank" rel="noopener noreferrer" style="display:none;">view commit</a>
+    </div>
+    <div class="hdr-delivery" id="hdr-delivery">
+      <span id="hdr-delivery-text"></span>
+      <button class="hdr-btn" id="retry-delivery-btn" style="display:none;">↻ retry delivery</button>
     </div>
     <div class="hdr-needs" id="hdr-needs"></div>
   </header>
@@ -341,6 +355,11 @@
     const h = Math.floor(m / 60);
     if (h < 24) return h + 'h ago';
     return Math.floor(h / 24) + 'd ago';
+  }
+  function timeUntil(ts) {
+    const seconds = Math.max(0, Math.ceil((Number(ts) - Date.now()) / 1000));
+    if (seconds < 60) return 'in ' + seconds + 's';
+    return 'in ' + Math.ceil(seconds / 60) + 'm';
   }
   function pillLabel(status) {
     return { running: 'running', awaiting_user: 'awaiting you', completed: 'done', failed: 'failed', idle: 'idle', archived: 'archived' }[status] || status;
@@ -513,6 +532,43 @@
     document.getElementById('hdr-meta-text').textContent =
       'last active ' + timeAgo(t.last_active_at) + ' · ' + turnTxt +
       (t.copilot_session_id ? ' · session ' + t.copilot_session_id.slice(0, 8) : '');
+    const commitLink = document.getElementById('commit-link');
+    const commitUrl = t.meta && t.meta.lastGit && t.meta.lastGit.commitUrl;
+    try {
+      const parsedCommitUrl = new URL(commitUrl || '');
+      if (parsedCommitUrl.protocol === 'https:' && parsedCommitUrl.hostname === 'github.com') {
+        commitLink.href = parsedCommitUrl.href;
+        commitLink.textContent = 'view commit ' + String(t.meta.lastGit.commitSha || '').slice(0, 7);
+        commitLink.style.display = '';
+      } else {
+        commitLink.style.display = 'none';
+      }
+    } catch {
+      commitLink.style.display = 'none';
+    }
+    const delivery = t.meta && t.meta.delivery;
+    const deliveryRow = document.getElementById('hdr-delivery');
+    const deliveryText = document.getElementById('hdr-delivery-text');
+    const retryDeliveryButton = document.getElementById('retry-delivery-btn');
+    deliveryRow.className = 'hdr-delivery';
+    retryDeliveryButton.style.display = 'none';
+    if (delivery) {
+      deliveryRow.classList.add('show', delivery.status || 'pending');
+      const channel = delivery.channel ? ' via ' + delivery.channel : '';
+      const attempts = Number(delivery.attempts || 0);
+      if (delivery.status === 'delivered') {
+        deliveryText.textContent = '✓ delivered' + channel + (attempts ? ' · ' + attempts + ' attempt' + (attempts === 1 ? '' : 's') : '');
+      } else if (delivery.status === 'failed') {
+        const retryAt = delivery.nextAttemptAtMs && delivery.nextAttemptAtMs > Date.now()
+          ? ' · retry ' + timeUntil(delivery.nextAttemptAtMs)
+          : '';
+        deliveryText.textContent = 'delivery failed' + channel + ' · ' + attempts + '/3 attempts' + retryAt
+          + (delivery.lastError ? ' · ' + delivery.lastError : '');
+        retryDeliveryButton.style.display = '';
+      } else {
+        deliveryText.textContent = delivery.status === 'delivering' ? 'delivering' + channel : 'delivery queued' + channel;
+      }
+    }
     const needs = document.getElementById('hdr-needs');
     if (t.status === 'awaiting_user' && t.needs_user_reason) {
       needs.classList.add('show');
@@ -634,6 +690,25 @@
       const res = await fetch('/api/copilot/tasks/' + encodeURIComponent(TASK_ID) + '/cancel', { method: 'POST', credentials: 'include' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
     } catch (err) { alert('Cancel failed: ' + (err.message || err)); }
+  });
+
+  document.getElementById('retry-delivery-btn').addEventListener('click', async () => {
+    const button = document.getElementById('retry-delivery-btn');
+    button.disabled = true;
+    try {
+      const res = await fetch('/api/copilot/tasks/' + encodeURIComponent(TASK_ID) + '/delivery/retry', {
+        method: 'POST', credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+      const deliveryRow = document.getElementById('hdr-delivery');
+      deliveryRow.className = 'hdr-delivery show pending';
+      document.getElementById('hdr-delivery-text').textContent = 'delivery queued';
+      button.style.display = 'none';
+    } catch (err) {
+      alert('Delivery retry failed: ' + (err.message || err));
+      button.disabled = false;
+    }
   });
 
   document.getElementById('archive-btn').addEventListener('click', async () => {

@@ -19,6 +19,7 @@
     "test:operations-metrics": "ts-node tests/unit/operations-metrics.test.ts",
     "test:checkpoint": "ts-node tests/unit/conversation-checkpoint.test.ts",
     "test:copilot-notification": "ts-node tests/unit/copilot-notification.test.ts",
+    "test:copilot-delivery": "ts-node tests/unit/copilot-delivery-recovery.test.ts",
     "test:copilot": "ts-node tests/unit/copilot-dispatch.test.ts",
     "clean": "rm -rf node_modules dist",
     "script:token": "node scripts/twilio/generate-token.js",

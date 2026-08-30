@@ -34,6 +34,7 @@ import {
   getActiveTurn,
   taskWorkdir,
 } from '../../copilot/taskRunner';
+import { retryTaskDelivery } from '../../copilot/delivery';
 
 const VALID_STATUSES: TaskStatus[] = ['running', 'awaiting_user', 'completed', 'failed', 'idle', 'archived'];
 
@@ -149,6 +150,17 @@ export function registerCopilotTasksRoutes(app: Application) {
     if (!t) return res.status(404).json({ error: 'not found' });
     const result = cancelActiveTurn(t.id);
     res.json(result);
+  });
+
+  // POST /api/copilot/tasks/:id/delivery/retry
+  app.post('/api/copilot/tasks/:id/delivery/retry', (req: Request, res: Response) => {
+    const t = getTask(String(req.params.id));
+    if (!t) return res.status(404).json({ error: 'not found' });
+    try {
+      res.json({ delivery: retryTaskDelivery(t.id) });
+    } catch (err: any) {
+      res.status(409).json({ error: err?.message || 'Delivery could not be retried.' });
+    }
   });
 
   // POST /api/copilot/tasks/:id/archive

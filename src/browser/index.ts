@@ -401,7 +401,42 @@ function delay(ms: number): Promise<void> {
 export type GitSyncResult = {
   status: 'no_changes' | 'committed' | 'pushed' | 'push_failed' | 'commit_failed';
   message: string;
+  commitSha?: string;
+  branch?: string;
+  repositoryUrl?: string;
+  commitUrl?: string;
 };
+
+export function githubRepositoryUrl(remoteUrl: string): string | undefined {
+  const trimmed = String(remoteUrl || '').trim();
+  let repositoryPath = '';
+  const sshMatch = trimmed.match(/^(?:ssh:\/\/)?git@github\.com[:/]([^?#]+)$/i);
+  if (sshMatch) {
+    repositoryPath = sshMatch[1];
+  } else {
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.hostname.toLowerCase() !== 'github.com') return undefined;
+      repositoryPath = parsed.pathname.replace(/^\/+/, '');
+    } catch {
+      return undefined;
+    }
+  }
+  repositoryPath = repositoryPath.replace(/\.git$/i, '').replace(/\/+$/, '');
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repositoryPath)) return undefined;
+  return `https://github.com/${repositoryPath}`;
+}
+
+export function redactGitError(error: unknown, secrets: Array<string | undefined> = []): string {
+  let message = error instanceof Error ? error.message : String(error);
+  message = message.replace(/https:\/\/[^\s/@]+:[^\s@]+@/gi, 'https://[REDACTED]@');
+  for (const secret of secrets) {
+    if (!secret) continue;
+    message = message.split(secret).join('[REDACTED]');
+    message = message.split(encodeURIComponent(secret)).join('[REDACTED]');
+  }
+  return message.slice(0, 1000);
+}
 
 export function commitAndPushWorkDir(taskSummary: string): GitSyncResult {
   try {
@@ -420,6 +455,8 @@ export function commitAndPushWorkDir(taskSummary: string): GitSyncResult {
     const commitMsg = `session: ${shortTask}`;
     execSync(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, { cwd: COPILOT_WORK_DIR, stdio: 'ignore' });
     console.log(`[browser] committed session output: ${commitMsg}`);
+    const commitSha = execSync('git rev-parse HEAD', { cwd: COPILOT_WORK_DIR, encoding: 'utf8' }).trim();
+    const branch = execSync('git branch --show-current', { cwd: COPILOT_WORK_DIR, encoding: 'utf8' }).trim();
 
     // Push if origin remote is configured
     let remoteUrl: string | null = null;
@@ -430,8 +467,15 @@ export function commitAndPushWorkDir(taskSummary: string): GitSyncResult {
     }
 
     if (!remoteUrl) {
-      return { status: 'committed', message: 'Committed locally (no remote configured)' };
+      return { status: 'committed', message: 'Committed locally (no remote configured)', commitSha, branch };
     }
+
+    const repositoryUrl = githubRepositoryUrl(remoteUrl);
+    const gitDetails = {
+      commitSha,
+      branch,
+      ...(repositoryUrl ? { repositoryUrl, commitUrl: `${repositoryUrl}/commit/${commitSha}` } : {}),
+    };
 
     const token = configService.get('COPILOT_GITHUB_TOKEN');
     try {
@@ -441,11 +485,11 @@ export function commitAndPushWorkDir(taskSummary: string): GitSyncResult {
         { cwd: COPILOT_WORK_DIR, encoding: 'utf8' }
       );
       console.log(`[browser] pushed to ${remoteUrl}`);
-      return { status: 'pushed', message: 'Committed and pushed to origin' };
+      return { status: 'pushed', message: 'Committed and pushed to origin', ...gitDetails };
     } catch (pushErr: any) {
-      const reason = pushErr.message || String(pushErr);
+      const reason = redactGitError(pushErr, [token]);
       console.warn('[browser] push failed (non-fatal):', reason);
-      return { status: 'push_failed', message: `Committed locally but push failed: ${reason}` };
+      return { status: 'push_failed', message: 'Committed locally but push failed', ...gitDetails };
     }
   } catch (err: any) {
     const reason = err.message || String(err);

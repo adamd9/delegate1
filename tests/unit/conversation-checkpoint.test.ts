@@ -320,6 +320,56 @@ async function main() {
     .map((event: any) => JSON.parse(event.payload_json).phase);
   assert.deepStrictEqual(compactionAttempts, ['started', 'completed']);
 
+  activeSession.previousResponseId = 'response-before-api-failure';
+  activeSession.openaiClient.responses.compact = async () => {
+    throw new Error('upstream unavailable');
+  };
+  await assert.rejects(
+    compactCurrentContext(() => {}),
+    /upstream unavailable/,
+  );
+  assert.strictEqual(activeSession.previousResponseId, 'response-before-api-failure');
+  assert.strictEqual(activeSession.contextCompactionInFlight, false);
+
+  activeSession.previousResponseId = 'response-before-empty-output';
+  activeSession.openaiClient.responses.compact = async () => ({ id: 'empty', output: [] });
+  await assert.rejects(
+    compactCurrentContext(() => {}),
+    /no replacement input/,
+  );
+  assert.strictEqual(activeSession.previousResponseId, 'response-before-empty-output');
+  assert.strictEqual(activeSession.contextCompactionInFlight, false);
+
+  const capsuleFailureEvents: any[] = [];
+  activeSession.previousResponseId = 'response-before-capsule-failure';
+  activeSession.openaiClient.responses.compact = async () => ({
+    id: 'compaction-with-capsule-failure',
+    output: [{ type: 'compaction', encrypted_content: 'replacement-after-capsule-failure' }],
+  });
+  activeSession.openaiClient.responses.create = async () => {
+    throw new Error('capsule unavailable');
+  };
+  const capsuleFailureStatus = await compactCurrentContext(event => capsuleFailureEvents.push(event));
+  assert.strictEqual(activeSession.previousResponseId, undefined);
+  assert.deepStrictEqual(activeSession.pendingCompactedInput, [
+    { type: 'compaction', encrypted_content: 'replacement-after-capsule-failure' },
+  ]);
+  assert.strictEqual(capsuleFailureStatus.latestCompaction?.source, 'manual');
+  assert.strictEqual(activeSession.contextCompactionInFlight, false);
+  assert.deepStrictEqual(
+    capsuleFailureEvents.map(event => `${event.type}:${event.phase || event.source}`),
+    ['context.capsule:started', 'context.compacted:manual', 'context.capsule:failed'],
+  );
+  const allCompactionAttempts = sqlite.listConversationEvents('conversation-1')
+    .filter((event: any) => event.kind === 'context_compaction_attempt')
+    .map((event: any) => JSON.parse(event.payload_json).phase);
+  assert.deepStrictEqual(allCompactionAttempts, [
+    'started', 'completed',
+    'started', 'failed',
+    'started', 'failed',
+    'started', 'completed',
+  ]);
+
   sqlite.getDb().close();
   Date.now = realDateNow;
   rmSync(runtimeDir, { recursive: true, force: true });

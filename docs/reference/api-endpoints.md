@@ -81,6 +81,7 @@ Selected REST surface. Most paths require an authenticated session; the **public
 | GET | `/api/copilot/tasks/:id` |
 | POST | `/api/copilot/tasks/:id/continue` |
 | POST | `/api/copilot/tasks/:id/cancel` |
+| POST | `/api/copilot/tasks/:id/delivery/retry` |
 | POST | `/api/copilot/tasks/:id/archive` |
 | GET | `/api/copilot/tasks/:id/events` |
 | GET | `/api/copilot/tasks/:id/events/stream` |

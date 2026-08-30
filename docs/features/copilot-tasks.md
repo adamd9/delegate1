@@ -17,6 +17,8 @@ Copilot Tasks is the async delegation layer for browser-heavy work. Instead of b
 - Live event stream: task logs/events stream into the UI using SSE.
 - Workspace visibility: browse files produced by the task directly from its workdir.
 - Safe handoff: ask a question about task state without creating a new Copilot turn.
+- Delivery recovery: see pending, delivered, failed, and retry state on the task; manually retry a failed delivery without rerunning the task.
+- Commit handoff: coding tasks link directly to their pushed GitHub commit when the workdir remote is GitHub.
 
 ## Typical flow
 
@@ -40,7 +42,9 @@ The tasks UI can show live browser state (when browser infra is available). If V
 
 ### Background completion
 
-Copilot Tasks publish lifecycle signals such as `subprocess.completed`, `subprocess.needs_input`, and `subprocess.failed` through the [Inner Context Plane](../inner-context-plane/). After the exact task row is finalized, the durable delivery worker sends its summary and task link through the preference captured at dispatch: chat, SMS, email, or an explicit email address/E.164 phone number. Delivery state and up to three attempts are recorded in task metadata and resumed after restart; the base agent is instructed not to send a duplicate.
+Copilot Tasks publish lifecycle signals such as `subprocess.completed`, `subprocess.needs_input`, and `subprocess.failed` through the [Inner Context Plane](../inner-context-plane/). After the exact task row is finalized, the durable delivery worker sends its summary and task link through the preference captured at dispatch: chat, SMS, email, or an explicit email address/E.164 phone number. Delivery state and up to three automatic attempts are recorded in task metadata and resumed after restart; the base agent is instructed not to send a duplicate. The task detail header shows the current state and offers **retry delivery** after a failure. Manual retry resets the attempt budget for that completed task turn without rerunning Copilot.
+
+After a coding turn, git sync records the commit SHA and branch. When the configured origin is GitHub, the task header links to the exact commit. Remote credentials are removed before any URL is persisted or returned to the browser.
 
 Key endpoints:
 
@@ -51,6 +55,7 @@ Key endpoints:
 | GET | `/api/copilot/tasks/:id` | Fetch one task |
 | POST | `/api/copilot/tasks/:id/continue` | Enqueue next user turn |
 | POST | `/api/copilot/tasks/:id/cancel` | Cancel active turn |
+| POST | `/api/copilot/tasks/:id/delivery/retry` | Retry failed result delivery |
 | POST | `/api/copilot/tasks/:id/archive` | Archive/unarchive |
 | GET | `/api/copilot/tasks/:id/events` | Poll events |
 | GET | `/api/copilot/tasks/:id/events/stream` | Stream events (SSE) |
