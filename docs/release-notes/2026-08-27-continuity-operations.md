@@ -6,9 +6,9 @@ nav_order: 1
 
 # Continuity and operations
 
-- **Status:** Draft for review
-- **Deployed foundation:** `21f73ac`
-- **Operational metrics:** not deployed yet
+- **Status:** Released
+- **Continuity foundation:** `21f73ac`
+- **Operational metrics release:** `6c52fa4`
 
 ## What changed
 
@@ -41,6 +41,6 @@ No second timeline, analytics database or client-side merge engine was introduce
 
 ## Verification
 
-The context policy, checkpoint/continuity, operations aggregation and TypeScript build checks pass locally. The deployed foundation was previously verified at commit `21f73ac`.
+The context policy, checkpoint/continuity, operations aggregation and TypeScript build checks pass. The continuity foundation was verified at commit `21f73ac`, and the operational metrics release was deployed from commit `6c52fa4`.
 
 The authenticated production **Compact now** exercise passed on 30 August 2026. An idle text turn established an eligible Responses chain, manual compaction returned `200`, input usage dropped from 5,375 tokens to 123, `latestCompaction.source` became `manual`, and the continuity capsule refreshed from the compacted context. A follow-up turn correctly recalled the exact pre-compaction phrase and established a new eligible Responses chain, confirming that the replacement input was consumed successfully without losing continuity.
