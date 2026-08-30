@@ -34,7 +34,7 @@ The technical conversation remains open and resumable. The next interaction open
 
 Text-like channels (text, SMS, email, and autonomous Inner Context turns) use the Responses API. Requests continue through `previous_response_id`, and every initial request and tool continuation enables OpenAI's official server-side compaction. Compaction shortens the model's working chain while the durable timeline remains unchanged.
 
-The chat topbar reports current input usage as a percentage of the configured automatic compaction threshold, whether a continuity capsule is active, and the last Responses compaction time. **Compact now** calls the official Responses compaction endpoint, retains its replacement input until the next successful turn, and refreshes the durable capsule. It is disabled while a response or compaction is active.
+The chat topbar reports current input usage as a percentage of the configured automatic compaction threshold, whether a continuity capsule is active, and the last Responses compaction time. **Compact now** calls the official Responses compaction endpoint, retains its replacement input until the next successful turn, and refreshes the durable capsule. It is disabled while a response or compaction is active. Manual attempt outcomes are recorded durably and summarised by the authenticated [operational metrics](../operations/observability/) endpoint.
 
 Phone and browser voice use the Realtime API. Realtime sessions use retention-ratio truncation, which drops older model context when the session reaches its context limit while retaining a recent fraction. Starting a voice session clears the Responses chain ID because it is a different protocol, not because the relationship has restarted.
 

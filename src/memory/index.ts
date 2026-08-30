@@ -468,10 +468,10 @@ class MemoryModule {
           newMemories = arbResult.newMemories;
         }
 
+        const lateTs = Date.now();
+        const elapsedMs = lateTs - retrievalStartedAtMs;
         if (newMemories) {
-          const lateTs = Date.now();
           const count = newMemories.split('\n').filter(Boolean).length;
-          const elapsedMs = lateTs - retrievalStartedAtMs;
           const activeSpanId = session.currentConversationId === conversationId
             ? session.currentActivitySpanId
             : undefined;
@@ -480,6 +480,7 @@ class MemoryModule {
             source: 'late', elapsed_ms: elapsedMs, timestamp: lateTs,
           }, conversationId, activeSpanId);
           if (conversationId) {
+            this._persist(conversationId, 'memory_late_outcome', { outcome: 'surfaced', count, elapsed_ms: elapsedMs }, lateTs);
             this._persist(conversationId, 'memory_retrieved', {
               source: 'late', count, elapsed_ms: elapsedMs,
               memories: newMemories, ...(activeSpanId ? { span_id: activeSpanId } : {}),
@@ -487,10 +488,14 @@ class MemoryModule {
             this._thoughtflowStep(conversationId, 'memory.retrieve', { source: 'late', count }, lateTs);
           }
         } else {
+          const reason = memories ? 'already_surfaced' : 'arbitrated_out';
+          if (conversationId) {
+            this._persist(conversationId, 'memory_late_outcome', { outcome: 'suppressed', reason, elapsed_ms: elapsedMs }, lateTs);
+          }
           recordMemoryRuntimeEvent({
             type: 'retrieve.late_suppressed',
             conversationId,
-            details: { reason: memories ? 'already_surfaced' : 'arbitrated_out' },
+            details: { reason },
           });
         }
 

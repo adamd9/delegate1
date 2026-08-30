@@ -131,6 +131,7 @@ export function getDb() {
       FOREIGN KEY(task_id) REFERENCES copilot_tasks(id)
     );
     CREATE INDEX IF NOT EXISTS idx_copilot_task_events_task ON copilot_task_events(task_id, id);
+    CREATE INDEX IF NOT EXISTS idx_copilot_task_events_created_at ON copilot_task_events(created_at_ms);
 
     CREATE TABLE IF NOT EXISTS inner_signals (
       id                TEXT PRIMARY KEY,

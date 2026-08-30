@@ -24,3 +24,7 @@ How to run the three test suites: Playwright end-to-end tests (require a live se
 ## [Logging](logging/)
 
 The in-process log buffer, the `/logs` viewer in the UI, and the production log scripts (`scripts/hk_app_logs.sh` for Azure App Service). Useful when you're debugging a failed tool call or tracing why the agent responded the way it did.
+
+## [Operational metrics](observability/)
+
+Authenticated context, delivery, timeline paging, and memory health signals. Includes the production manual-compaction verification procedure and explains which figures are durable or reset at restart.

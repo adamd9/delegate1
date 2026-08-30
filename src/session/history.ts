@@ -3,6 +3,19 @@ import { jsonSend, isOpen } from './state';
 import { listTimelineEvents, type TimelineCursor } from '../db/sqlite';
 import { configService } from '../config';
 
+const timelinePagingMetrics = {
+  startedAtMs: Date.now(),
+  initialRequests: 0,
+  cursorRequests: 0,
+  eventsSent: 0,
+  expandedEvents: 0,
+  maxPageEvents: 0,
+};
+
+export function getTimelinePagingMetrics() {
+  return { ...timelinePagingMetrics };
+}
+
 function toNumber(value: any, fallback: number): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -194,6 +207,11 @@ export function replayHistoryOnConnect(ws: WebSocket, requestedLimit?: number, c
       : Math.min(5000, Math.max(configuredLimit, Math.floor(requestedLimit)));
     const page = listTimelineEvents(limit, cursor);
     const records = page.events as any[];
+    if (cursor) timelinePagingMetrics.cursorRequests += 1;
+    else timelinePagingMetrics.initialRequests += 1;
+    timelinePagingMetrics.eventsSent += records.length;
+    timelinePagingMetrics.expandedEvents += Math.max(0, records.length - page.limit);
+    timelinePagingMetrics.maxPageEvents = Math.max(timelinePagingMetrics.maxPageEvents, records.length);
     if (isOpen(ws)) {
       if (cursor) jsonSend(ws, { type: 'history.page.start', mode: 'prepend', timestamp: Date.now() });
       else jsonSend(ws, { type: 'history.header', count: 0 });

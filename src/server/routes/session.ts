@@ -3,6 +3,7 @@ import { WebSocket } from 'ws';
 import { session as stateSession, closeAllConnections, jsonSend, isOpen } from '../../session/state';
 import { memoryModule } from '../../memory';
 import { compactCurrentContext, getContextStatus } from '../../session/contextControl';
+import { getOperationsMetrics } from '../../observability/operationsMetrics';
 
 export function registerSessionRoutes(app: Application, opts: { chatClients: Set<WebSocket>; logsClients: Set<WebSocket>; }) {
   const { chatClients, logsClients } = opts;
@@ -14,6 +15,12 @@ export function registerSessionRoutes(app: Application, opts: { chatClients: Set
 
   app.get('/api/session/context', (_req: Request, res: Response) => {
     res.json(getContextStatus());
+  });
+
+  app.get('/api/session/operations', (req: Request, res: Response) => {
+    const requestedHours = Number(req.query.hours) || 24;
+    const hours = Math.max(1, Math.min(24 * 30, requestedHours));
+    res.json(getOperationsMetrics(Date.now() - hours * 60 * 60 * 1000));
   });
 
   app.post('/api/session/context/compact', async (_req: Request, res: Response) => {

@@ -34,6 +34,9 @@ npx @playwright/test@1.55.0 test -g "web_search"
 
 ```bash
 npm run test:unit                 # memory deduplicator
+npm run test:context-policy       # context thresholds and continuity capsule policy
+npm run test:checkpoint           # durable timeline and manual compaction handoff
+npm run test:operations-metrics   # operational metric aggregation
 npm run test:copilot              # copilot-cli dispatch
 ```
 

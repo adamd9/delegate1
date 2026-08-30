@@ -72,12 +72,18 @@ export async function compactCurrentContext(
   const model = getAgent('base').textModel || getAgent('base').model || 'gpt-5-mini';
   const startedAtMs = Date.now();
   session.contextCompactionInFlight = true;
-  broadcast({
-    type: 'context.capsule', phase: 'started', conversation_id: conversationId,
-    channel: 'text', source: 'manual_compaction', timestamp: startedAtMs,
-  });
 
   try {
+    addConversationEvent({
+      conversation_id: conversationId,
+      kind: 'context_compaction_attempt',
+      payload: { phase: 'started', channel: 'text', protocol: 'responses', source: 'manual' },
+      created_at_ms: startedAtMs,
+    });
+    broadcast({
+      type: 'context.capsule', phase: 'started', conversation_id: conversationId,
+      channel: 'text', source: 'manual_compaction', timestamp: startedAtMs,
+    });
     if (!session.openaiClient) session.openaiClient = createOpenAIClient();
     const compacted = await session.openaiClient.responses.compact({
       model,
@@ -101,6 +107,14 @@ export async function compactCurrentContext(
       payload: {
         channel: 'text', protocol: 'responses', source: 'manual',
         compaction_id: compacted.id, usage,
+      },
+    });
+    addConversationEvent({
+      conversation_id: conversationId,
+      kind: 'context_compaction_attempt',
+      payload: {
+        phase: 'completed', channel: 'text', protocol: 'responses', source: 'manual',
+        duration_ms: Date.now() - startedAtMs,
       },
     });
     broadcast({
@@ -138,7 +152,16 @@ export async function compactCurrentContext(
         channel: 'text', source: 'manual_compaction', timestamp: Date.now(),
       });
     }
-  } catch (error) {
+  } catch (error: any) {
+    addConversationEvent({
+      conversation_id: conversationId,
+      kind: 'context_compaction_attempt',
+      payload: {
+        phase: 'failed', channel: 'text', protocol: 'responses', source: 'manual',
+        duration_ms: Date.now() - startedAtMs,
+        error: error?.message || String(error),
+      },
+    });
     broadcast({
       type: 'context.capsule', phase: 'failed', conversation_id: conversationId,
       channel: 'text', source: 'manual_compaction', timestamp: Date.now(),

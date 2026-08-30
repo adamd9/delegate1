@@ -315,6 +315,10 @@ async function main() {
     'context.compacted:manual',
     'context.capsule:completed',
   ]);
+  const compactionAttempts = sqlite.listConversationEvents('conversation-1')
+    .filter((event: any) => event.kind === 'context_compaction_attempt')
+    .map((event: any) => JSON.parse(event.payload_json).phase);
+  assert.deepStrictEqual(compactionAttempts, ['started', 'completed']);
 
   sqlite.getDb().close();
   Date.now = realDateNow;

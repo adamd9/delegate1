@@ -54,6 +54,15 @@ Selected REST surface. Most paths require an authenticated session; the **public
 | GET | `/api/conversations/:id` |
 | GET | `/api/conversations/:id/events` |
 
+## Session and operations
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/session/context` | Current model-context usage, compaction and capsule status |
+| POST | `/api/session/context/compact` | Compact an idle active Responses chain |
+| GET | `/api/session/operations?hours=24` | Windowed context, delivery and memory metrics plus process-runtime paging metrics |
+| POST | `/session/reset` | Reset selected session history or connections |
+
 ## Tools & agents
 
 | Method | Path |
