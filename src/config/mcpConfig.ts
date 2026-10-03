@@ -17,7 +17,7 @@ function validateServers(value: unknown): RemoteServerConfig[] {
     if (!entry || typeof entry !== 'object') {
       throw new Error('Each MCP server entry must be an object');
     }
-    const { type, url, name, headers } = entry as any;
+    const { type, url, name, auth, headers } = entry as any;
     if (type !== 'streamable-http') {
       throw new Error('Unsupported MCP server type');
     }
@@ -32,6 +32,31 @@ function validateServers(value: unknown): RemoteServerConfig[] {
       url: url.trim(),
       name: name.trim(),
     };
+    if (auth != null) {
+      if (!auth || typeof auth !== 'object' || Array.isArray(auth)) {
+        throw new Error(`MCP server "${name}" auth must be an object`);
+      }
+      if (auth.type === 'basic') {
+        if (typeof auth.username !== 'string') {
+          throw new Error(`MCP server "${name}" Basic auth username must be a string`);
+        }
+        if (typeof auth.password !== 'string' || !auth.password) {
+          throw new Error(`MCP server "${name}" Basic auth password is required`);
+        }
+        record.auth = {
+          type: 'basic',
+          username: auth.username,
+          password: auth.password,
+        };
+      } else if (auth.type === 'bearer') {
+        if (typeof auth.token !== 'string' || !auth.token) {
+          throw new Error(`MCP server "${name}" Bearer token is required`);
+        }
+        record.auth = { type: 'bearer', token: auth.token };
+      } else {
+        throw new Error(`MCP server "${name}" has an unsupported auth type`);
+      }
+    }
     // description/note in config are ignored; we prefer server-reported metadata post-initialize
     if (headers && typeof headers === 'object' && !Array.isArray(headers)) {
       // Only accept string:string pairs; coerce others to string where possible

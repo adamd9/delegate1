@@ -12,8 +12,25 @@ export type RemoteServerConfig = {
   type: 'streamable-http';
   url: string;
   name: string;
-  headers?: Record<string, string>; // optional custom headers (e.g., Authorization)
+  auth?:
+    | { type: 'basic'; username: string; password: string }
+    | { type: 'bearer'; token: string };
+  headers?: Record<string, string>;
 };
+
+export function buildRequestHeaders(serverConfig: RemoteServerConfig): Record<string, string> | undefined {
+  const headers = { ...(serverConfig.headers || {}) };
+  if (serverConfig.auth?.type === 'basic') {
+    const credentials = Buffer.from(
+      `${serverConfig.auth.username}:${serverConfig.auth.password}`,
+      'utf8',
+    ).toString('base64');
+    headers.Authorization = `Basic ${credentials}`;
+  } else if (serverConfig.auth?.type === 'bearer') {
+    headers.Authorization = `Bearer ${serverConfig.auth.token}`;
+  }
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
 
 export type DiscoveredTool = {
   name: string;
@@ -76,8 +93,9 @@ export class MCPClient {
 
       const client: MCPClientSDK = new Client({ name: `delegate1-mcp-${serverConfig.name}`, version: '1.0.0' } as any);
       const transportOptions: any = {};
-      if (serverConfig.headers && typeof serverConfig.headers === 'object') {
-        transportOptions.requestInit = { headers: serverConfig.headers };
+      const headers = buildRequestHeaders(serverConfig);
+      if (headers) {
+        transportOptions.requestInit = { headers };
       }
       const transport: HTTPTransport = new (StreamableHTTPClientTransport as any)(new URL(serverConfig.url), transportOptions) as any;
 
